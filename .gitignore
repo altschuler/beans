@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.output/
+dist/
+build/
+.vinxi/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local tooling/session artifacts
+.superpowers/
+.zero-cache/
+zero.db*
+
+# Test artifacts
+playwright-report/
+test-results/
+coverage/
+
+# OS/editor
+.DS_Store
