@@ -21,7 +21,9 @@ export const Route = createFileRoute('/api/zero/mutate')({
           dbProvider,
           handler: transact =>
             transact((tx, name, args) => {
-              const mutator = mustGetMutator(mutators, name)
+              const mutator = mustGetMutator(mutators, name) as {
+                fn: (input: {args: typeof args; tx: typeof tx; ctx: ZeroContext}) => Promise<void>
+              }
               return mutator.fn({args, tx, ctx})
             }),
           request,

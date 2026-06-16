@@ -1,24 +1,22 @@
-import {test} from '@playwright/test'
+import {expect, test} from '@playwright/test'
 import {testUser} from '../tests/fixtures/users'
-import {app} from './helpers/app'
 import {auth} from './helpers/auth'
-import {expectItemHidden, expectItemVisible} from './helpers/assertions'
 
-test('auth and Zero-backed demo item flow works end to end', async ({page}) => {
+test('authenticated app renders banking dashboard', async ({page}) => {
   const user = testUser()
-  const itemTitle = `Playwright item ${crypto.randomUUID()}`
 
   await auth.signUp(page, user)
-  await app.createItem(page, itemTitle)
-  await expectItemVisible(page, itemTitle)
-
-  await app.updateFirstItem(page, `${itemTitle} updated`)
-  await expectItemVisible(page, `${itemTitle} updated`)
-
-  await app.deleteFirstItem(page)
-  await expectItemHidden(page, `${itemTitle} updated`)
+  await expect(page.getByRole('heading', {name: 'Connect bank'})).toBeVisible()
+  await expect(page.getByRole('heading', {name: 'Linked accounts'})).toBeVisible()
+  await expect(page.getByRole('heading', {name: 'Transactions'})).toBeVisible()
+  await expect(page.getByTestId('institution-filter')).toBeVisible()
+  await expect(page.getByTestId('connect-bank')).toBeVisible()
 
   await auth.signOut(page)
   await auth.signIn(page, user)
-  await expectItemHidden(page, `${itemTitle} updated`)
+  await expect(page.getByRole('heading', {name: 'Connect bank'})).toBeVisible()
+  await expect(page.getByRole('heading', {name: 'Linked accounts'})).toBeVisible()
+  await expect(page.getByRole('heading', {name: 'Transactions'})).toBeVisible()
+  await expect(page.getByTestId('institution-filter')).toBeVisible()
+  await expect(page.getByTestId('connect-bank')).toBeVisible()
 })

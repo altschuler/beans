@@ -1,5 +1,5 @@
 import {relations} from 'drizzle-orm'
-import {boolean, index, pgTable, text, timestamp, uniqueIndex} from 'drizzle-orm/pg-core'
+import {boolean, index, jsonb, numeric, pgTable, text, timestamp, uniqueIndex} from 'drizzle-orm/pg-core'
 
 export const user = pgTable(
   'user',
@@ -61,6 +61,128 @@ export const account = pgTable(
   }),
 )
 
+export const teams = pgTable(
+  'teams',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    personalOwnerUserId: text('personal_owner_user_id').references(() => user.id, {onDelete: 'cascade'}),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    personalOwnerIdx: uniqueIndex('teams_personal_owner_unique').on(table.personalOwnerUserId),
+  }),
+)
+
+export const teamMembers = pgTable(
+  'team_members',
+  {
+    id: text('id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, {onDelete: 'cascade'}),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, {onDelete: 'cascade'}),
+    role: text('role').notNull(),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    teamUserIdx: uniqueIndex('team_members_team_user_unique').on(table.teamId, table.userId),
+    userIdx: index('team_members_user_idx').on(table.userId),
+  }),
+)
+
+export const bankConnections = pgTable(
+  'bank_connections',
+  {
+    id: text('id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, {onDelete: 'cascade'}),
+    provider: text('provider').notNull(),
+    providerInstitutionId: text('provider_institution_id').notNull(),
+    providerRequisitionId: text('provider_requisition_id').notNull(),
+    reference: text('reference').notNull(),
+    status: text('status').notNull(),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    teamIdx: index('bank_connections_team_idx').on(table.teamId),
+    referenceIdx: uniqueIndex('bank_connections_reference_unique').on(table.provider, table.reference),
+    requisitionIdx: uniqueIndex('bank_connections_requisition_unique').on(
+      table.provider,
+      table.providerRequisitionId,
+    ),
+  }),
+)
+
+export const bankAccounts = pgTable(
+  'bank_accounts',
+  {
+    id: text('id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, {onDelete: 'cascade'}),
+    bankConnectionId: text('bank_connection_id').references(() => bankConnections.id, {onDelete: 'set null'}),
+    provider: text('provider').notNull(),
+    providerInstitutionId: text('provider_institution_id').notNull(),
+    providerRequisitionId: text('provider_requisition_id').notNull(),
+    providerAccountId: text('provider_account_id').notNull(),
+    name: text('name').notNull(),
+    iban: text('iban'),
+    currency: text('currency'),
+    status: text('status').notNull(),
+    syncStatus: text('sync_status').notNull().default('idle'),
+    syncError: text('sync_error'),
+    syncStartedAt: timestamp('sync_started_at', {mode: 'date'}),
+    lastSyncedAt: timestamp('last_synced_at', {mode: 'date'}),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    teamIdx: index('bank_accounts_team_idx').on(table.teamId),
+    providerAccountIdx: uniqueIndex('bank_accounts_provider_team_account_unique').on(
+      table.provider,
+      table.teamId,
+      table.providerAccountId,
+    ),
+    requisitionIdx: index('bank_accounts_requisition_idx').on(table.provider, table.providerRequisitionId),
+  }),
+)
+
+export const bankTransactions = pgTable(
+  'bank_transactions',
+  {
+    id: text('id').primaryKey(),
+    bankAccountId: text('bank_account_id')
+      .notNull()
+      .references(() => bankAccounts.id, {onDelete: 'cascade'}),
+    providerTransactionId: text('provider_transaction_id').notNull(),
+    status: text('status').notNull(),
+    bookingDate: text('booking_date'),
+    valueDate: text('value_date'),
+    amount: numeric('amount', {precision: 18, scale: 4}).notNull(),
+    currency: text('currency').notNull(),
+    description: text('description').notNull(),
+    counterpartyName: text('counterparty_name'),
+    raw: jsonb('raw').notNull(),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    accountIdx: index('bank_transactions_account_idx').on(table.bankAccountId),
+    accountDateIdx: index('bank_transactions_account_booking_date_idx').on(table.bankAccountId, table.bookingDate),
+    providerTransactionIdx: uniqueIndex('bank_transactions_provider_unique').on(
+      table.bankAccountId,
+      table.providerTransactionId,
+    ),
+  }),
+)
+
 export const verification = pgTable('verification', {
   id: text('id').primaryKey(),
   identifier: text('identifier').notNull(),
@@ -70,26 +192,11 @@ export const verification = pgTable('verification', {
   updatedAt: timestamp('updatedAt', {mode: 'date'}).notNull(),
 })
 
-export const items = pgTable(
-  'items',
-  {
-    id: text('id').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, {onDelete: 'cascade'}),
-    title: text('title').notNull(),
-    createdAt: text('created_at').notNull(),
-    updatedAt: text('updated_at').notNull(),
-  },
-  table => ({
-    userCreatedIdx: index('items_user_created_idx').on(table.userId, table.createdAt),
-  }),
-)
-
 export const userRelations = relations(user, ({many}) => ({
   sessions: many(session),
   accounts: many(account),
-  items: many(items),
+  personalTeams: many(teams),
+  teamMemberships: many(teamMembers),
 }))
 
 export const sessionRelations = relations(session, ({one}) => ({
@@ -106,9 +213,50 @@ export const accountRelations = relations(account, ({one}) => ({
   }),
 }))
 
-export const itemsRelations = relations(items, ({one}) => ({
-  user: one(user, {
-    fields: [items.userId],
+export const teamsRelations = relations(teams, ({one, many}) => ({
+  personalOwner: one(user, {
+    fields: [teams.personalOwnerUserId],
     references: [user.id],
+  }),
+  members: many(teamMembers),
+  bankConnections: many(bankConnections),
+  bankAccounts: many(bankAccounts),
+}))
+
+export const teamMembersRelations = relations(teamMembers, ({one}) => ({
+  team: one(teams, {
+    fields: [teamMembers.teamId],
+    references: [teams.id],
+  }),
+  user: one(user, {
+    fields: [teamMembers.userId],
+    references: [user.id],
+  }),
+}))
+
+export const bankConnectionsRelations = relations(bankConnections, ({one, many}) => ({
+  team: one(teams, {
+    fields: [bankConnections.teamId],
+    references: [teams.id],
+  }),
+  bankAccounts: many(bankAccounts),
+}))
+
+export const bankAccountsRelations = relations(bankAccounts, ({one, many}) => ({
+  team: one(teams, {
+    fields: [bankAccounts.teamId],
+    references: [teams.id],
+  }),
+  connection: one(bankConnections, {
+    fields: [bankAccounts.bankConnectionId],
+    references: [bankConnections.id],
+  }),
+  transactions: many(bankTransactions),
+}))
+
+export const bankTransactionsRelations = relations(bankTransactions, ({one}) => ({
+  bankAccount: one(bankAccounts, {
+    fields: [bankTransactions.bankAccountId],
+    references: [bankAccounts.id],
   }),
 }))

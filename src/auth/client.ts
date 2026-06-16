@@ -1,5 +1,5 @@
 import {createAuthClient} from 'better-auth/react'
 
 export const authClient = createAuthClient({
-  baseURL: import.meta.env.VITE_PUBLIC_APP_URL ?? 'http://localhost:3000',
+  baseURL: import.meta.env.VITE_PUBLIC_APP_URL ?? 'https://localhost:3000',
 })

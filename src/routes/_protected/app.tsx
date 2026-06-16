@@ -1,10 +1,10 @@
 import {createFileRoute} from '@tanstack/react-router'
-import {ItemsPanel} from '@/components/items/items-panel'
+import {BankingDashboard} from '@/components/banking/banking-dashboard'
 
 export const Route = createFileRoute('/_protected/app')({
   component: AppPage,
 })
 
 function AppPage() {
-  return <ItemsPanel />
+  return <BankingDashboard />
 }

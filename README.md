@@ -22,8 +22,10 @@ just setup
 just dev
 ```
 
-App: http://localhost:3000  
+App: https://localhost:3000  
 Zero cache: http://localhost:4848
+
+The dev app uses a self-signed localhost certificate generated in `.cert/`. Your browser will ask you to accept the certificate the first time.
 
 ## Database
 

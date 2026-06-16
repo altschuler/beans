@@ -10,12 +10,14 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: [['list'], ['html', {open: 'never'}]],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'https://localhost:3000',
+    ignoreHTTPSErrors: true,
     trace: 'on-first-retry',
   },
   webServer: {
     command: 'just dev',
-    url: 'http://localhost:3000',
+    url: 'https://localhost:3000',
+    ignoreHTTPSErrors: true,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
