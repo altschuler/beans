@@ -1,5 +1,11 @@
 import {describe, expect, it, vi} from 'vitest'
-import {syncBankAccountTransactions, type BankingSyncRepository} from '@/banking/sync'
+import {
+  syncAllBankAccountsSequentially,
+  syncBankAccountTransactions,
+  syncClaimedBankAccount,
+  type BankAccountSyncRepository,
+  type BankingSyncRepository,
+} from '@/banking/sync'
 
 function repository(latestTransactionDate: string | null): BankingSyncRepository {
   return {
@@ -9,6 +15,122 @@ function repository(latestTransactionDate: string | null): BankingSyncRepository
     markAccountSyncFailed: vi.fn(async () => undefined),
   }
 }
+
+describe('syncClaimedBankAccount', () => {
+  it('claims an account, refreshes details, and syncs transactions', async () => {
+    const repo: BankAccountSyncRepository = {
+      ...repository(null),
+      claimBankAccountSync: vi.fn(async () => true),
+      updateBankAccountDetails: vi.fn(async () => undefined),
+    }
+    const client = {
+      getAccountDetails: vi.fn(async () => ({account: {displayName: 'Checking', currency: 'DKK'}})),
+      getAccountTransactions: vi.fn(async () => ({transactions: {booked: [], pending: []}})),
+    }
+
+    const result = await syncClaimedBankAccount({
+      account: {id: 'bank-account-1', providerAccountId: 'provider-account-1'},
+      client,
+      repository: repo,
+    })
+
+    expect(result).toEqual({dateFrom: undefined, fetched: 0, upserted: 2})
+    expect(repo.claimBankAccountSync).toHaveBeenCalledWith('bank-account-1')
+    expect(client.getAccountDetails).toHaveBeenCalledWith('provider-account-1')
+    expect(repo.updateBankAccountDetails).toHaveBeenCalledWith('bank-account-1', {account: {displayName: 'Checking', currency: 'DKK'}})
+    expect(repo.markAccountSynced).toHaveBeenCalledWith('bank-account-1')
+  })
+
+  it('marks an account failed when refreshing account details fails', async () => {
+    const repo: BankAccountSyncRepository = {
+      ...repository(null),
+      claimBankAccountSync: vi.fn(async () => true),
+      updateBankAccountDetails: vi.fn(async () => undefined),
+    }
+    const client = {
+      getAccountDetails: vi.fn(async () => {
+        throw new Error('Details unavailable')
+      }),
+      getAccountTransactions: vi.fn(async () => ({transactions: {booked: [], pending: []}})),
+    }
+
+    await expect(
+      syncClaimedBankAccount({
+        account: {id: 'bank-account-1', providerAccountId: 'provider-account-1'},
+        client,
+        repository: repo,
+      }),
+    ).rejects.toThrow('Details unavailable')
+
+    expect(repo.markAccountSyncFailed).toHaveBeenCalledWith('bank-account-1', 'Details unavailable')
+    expect(client.getAccountTransactions).not.toHaveBeenCalled()
+  })
+})
+
+describe('syncAllBankAccountsSequentially', () => {
+  it('continues syncing remaining accounts after one account fails', async () => {
+    const repo: BankAccountSyncRepository = {
+      ...repository(null),
+      claimBankAccountSync: vi.fn(async () => true),
+      updateBankAccountDetails: vi.fn(async () => undefined),
+    }
+    const client = {
+      getAccountDetails: vi.fn(async (accountId: string) => {
+        if (accountId === 'provider-account-2') throw new Error('Second account failed')
+        return {account: {displayName: accountId}}
+      }),
+      getAccountTransactions: vi.fn(async () => ({transactions: {booked: [], pending: []}})),
+    }
+
+    const summary = await syncAllBankAccountsSequentially({
+      accounts: [
+        {id: 'bank-account-1', name: 'Checking', providerAccountId: 'provider-account-1'},
+        {id: 'bank-account-2', name: 'Savings', providerAccountId: 'provider-account-2'},
+        {id: 'bank-account-3', name: 'Budget', providerAccountId: 'provider-account-3'},
+      ],
+      client,
+      repository: repo,
+    })
+
+    expect(summary).toEqual({
+      total: 3,
+      synced: 2,
+      failed: 1,
+      skipped: 0,
+      fetched: 0,
+      upserted: 4,
+      failures: [{bankAccountId: 'bank-account-2', name: 'Savings', message: 'Second account failed'}],
+    })
+    expect(client.getAccountDetails).toHaveBeenCalledTimes(3)
+    expect(client.getAccountTransactions).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports an already syncing account as skipped and continues', async () => {
+    const repo: BankAccountSyncRepository = {
+      ...repository(null),
+      claimBankAccountSync: vi.fn(async (bankAccountId: string) => bankAccountId !== 'bank-account-1'),
+      updateBankAccountDetails: vi.fn(async () => undefined),
+    }
+    const client = {
+      getAccountDetails: vi.fn(async () => ({account: {displayName: 'Checking'}})),
+      getAccountTransactions: vi.fn(async () => ({transactions: {booked: [], pending: []}})),
+    }
+
+    const summary = await syncAllBankAccountsSequentially({
+      accounts: [
+        {id: 'bank-account-1', name: 'Checking', providerAccountId: 'provider-account-1'},
+        {id: 'bank-account-2', name: 'Savings', providerAccountId: 'provider-account-2'},
+      ],
+      client,
+      repository: repo,
+    })
+
+    expect(summary.skipped).toBe(1)
+    expect(summary.synced).toBe(1)
+    expect(summary.failures).toEqual([{bankAccountId: 'bank-account-1', name: 'Checking', message: 'Bank account is already syncing'}])
+    expect(client.getAccountDetails).toHaveBeenCalledTimes(1)
+  })
+})
 
 describe('syncBankAccountTransactions', () => {
   it('omits date_from on first sync and upserts booked and pending transactions', async () => {

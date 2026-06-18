@@ -18,6 +18,7 @@ import { Route as ApiZeroMutateRouteImport } from './routes/api/zero/mutate'
 import { Route as ApiGocardlessCallbackRouteImport } from './routes/api/gocardless/callback'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ProtectedAppBanksRouteImport } from './routes/_protected/app/banks'
+import { Route as ProtectedAppAccountsAccountIdRouteImport } from './routes/_protected/app/accounts/$accountId'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -63,6 +64,12 @@ const ProtectedAppBanksRoute = ProtectedAppBanksRouteImport.update({
   path: '/banks',
   getParentRoute: () => ProtectedAppRoute,
 } as any)
+const ProtectedAppAccountsAccountIdRoute =
+  ProtectedAppAccountsAccountIdRouteImport.update({
+    id: '/accounts/$accountId',
+    path: '/accounts/$accountId',
+    getParentRoute: () => ProtectedAppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -73,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/api/gocardless/callback': typeof ApiGocardlessCallbackRoute
   '/api/zero/mutate': typeof ApiZeroMutateRoute
   '/api/zero/query': typeof ApiZeroQueryRoute
+  '/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -83,6 +91,7 @@ export interface FileRoutesByTo {
   '/api/gocardless/callback': typeof ApiGocardlessCallbackRoute
   '/api/zero/mutate': typeof ApiZeroMutateRoute
   '/api/zero/query': typeof ApiZeroQueryRoute
+  '/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -95,6 +104,7 @@ export interface FileRoutesById {
   '/api/gocardless/callback': typeof ApiGocardlessCallbackRoute
   '/api/zero/mutate': typeof ApiZeroMutateRoute
   '/api/zero/query': typeof ApiZeroQueryRoute
+  '/_protected/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/api/gocardless/callback'
     | '/api/zero/mutate'
     | '/api/zero/query'
+    | '/app/accounts/$accountId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/api/gocardless/callback'
     | '/api/zero/mutate'
     | '/api/zero/query'
+    | '/app/accounts/$accountId'
   id:
     | '__root__'
     | '/'
@@ -128,6 +140,7 @@ export interface FileRouteTypes {
     | '/api/gocardless/callback'
     | '/api/zero/mutate'
     | '/api/zero/query'
+    | '/_protected/app/accounts/$accountId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -205,15 +218,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedAppBanksRouteImport
       parentRoute: typeof ProtectedAppRoute
     }
+    '/_protected/app/accounts/$accountId': {
+      id: '/_protected/app/accounts/$accountId'
+      path: '/accounts/$accountId'
+      fullPath: '/app/accounts/$accountId'
+      preLoaderRoute: typeof ProtectedAppAccountsAccountIdRouteImport
+      parentRoute: typeof ProtectedAppRoute
+    }
   }
 }
 
 interface ProtectedAppRouteChildren {
   ProtectedAppBanksRoute: typeof ProtectedAppBanksRoute
+  ProtectedAppAccountsAccountIdRoute: typeof ProtectedAppAccountsAccountIdRoute
 }
 
 const ProtectedAppRouteChildren: ProtectedAppRouteChildren = {
   ProtectedAppBanksRoute: ProtectedAppBanksRoute,
+  ProtectedAppAccountsAccountIdRoute: ProtectedAppAccountsAccountIdRoute,
 }
 
 const ProtectedAppRouteWithChildren = ProtectedAppRoute._addFileChildren(

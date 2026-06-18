@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useState} from 'react'
 import {useQuery} from '@rocicorp/zero/react'
 import {listDanishInstitutions, startBankLink, syncBankAccount} from '@/banking/banking-fns'
+import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
 import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
 import {Input} from '@/components/ui/input'
@@ -73,9 +74,12 @@ export function BankingDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Bank connections</h2>
-        <p className="text-muted-foreground">Link accounts and sync imported bank transactions.</p>
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Bank connections</h2>
+          <p className="text-muted-foreground">Link accounts and sync imported bank transactions.</p>
+        </div>
+        <SyncAllBankAccountsButton accounts={accounts} onMessage={setMessage} />
       </div>
 
       <Card>

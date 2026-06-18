@@ -8,7 +8,7 @@ const queryRows = vi.hoisted(() => ({
   ledgerTransactions: [] as Array<{id: string; bankTransactionId: string | null; source: string; status: string; date: string | null; description: string}>,
   movements: [] as Array<{id: string; ledgerTransactionId: string; debitAccountId: string; creditAccountId: string; amount: string; currency: string; sortOrder: number}>,
   bankTransactions: [] as Array<{id: string; bankAccountId: string; amount: string; currency: string; bookingDate: string | null; valueDate: string | null; description: string}>,
-  bankAccounts: [] as Array<{id: string; name: string}>,
+  bankAccounts: [] as Array<{id: string; name: string; syncStatus?: string}>,
 }))
 
 vi.mock('@rocicorp/zero/react', () => ({
@@ -24,6 +24,13 @@ vi.mock('@rocicorp/zero/react', () => ({
   useZero: vi.fn(() => ({mutate: vi.fn()})),
 }))
 
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({children, to, params, className}: {children: React.ReactNode; to: string; params?: {accountId?: string}; className?: string}) => {
+    const href = params?.accountId ? `/app/accounts/${params.accountId}` : to
+    return React.createElement('a', {href, className}, children)
+  },
+}))
+
 vi.mock('@/zero/queries', () => ({
   queries: {
     domain: {
@@ -35,6 +42,10 @@ vi.mock('@/zero/queries', () => ({
       bankAccounts: () => ({name: 'bankAccounts'}),
     },
   },
+}))
+
+vi.mock('@/banking/banking-fns', () => ({
+  syncAllBankAccounts: vi.fn(),
 }))
 
 vi.mock('@/zero/mutators', () => ({
@@ -68,6 +79,12 @@ describe('LedgerDashboard', () => {
     queryRows.bankAccounts = [{id: 'bank-account-1', name: 'Checking'}]
   })
 
+  it('shows a sync all accounts action', () => {
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    expect(markup).toContain('Sync all accounts')
+  })
+
   it('renders grouped balances and review count', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
@@ -75,6 +92,8 @@ describe('LedgerDashboard', () => {
     expect(markup).toContain('1 needs review')
     expect(markup).toContain('Everyday spending')
     expect(markup).toContain('Uncategorized')
+    expect(markup).toContain('href="/app/accounts/uncategorized"')
+    expect(markup).toContain('href="/app/accounts/groceries"')
     expect(markup).toContain('Netto')
     expect(markup).toContain('Split')
   })

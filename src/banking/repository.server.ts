@@ -10,7 +10,7 @@ import {
   SYSTEM_LEDGER_ACCOUNT_KEYS,
 } from '@/ledger/repository.server'
 import type {GoCardlessAccountDetails} from './gocardless/types'
-import type {BankingSyncRepository} from './sync'
+import type {BankAccountSyncRepository} from './sync'
 import type {NormalizedBankTransaction} from './transactions'
 
 export async function userCanAccessTeam(teamId: string, userId: string) {
@@ -124,6 +124,19 @@ export async function requireAccessibleBankAccount(bankAccountId: string, userId
   return account
 }
 
+export async function listAccessibleBankAccountsForSync(userId: string) {
+  return db
+    .select({
+      id: bankAccounts.id,
+      name: bankAccounts.name,
+      providerAccountId: bankAccounts.providerAccountId,
+    })
+    .from(bankAccounts)
+    .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
+    .where(and(eq(teamMembers.userId, userId), eq(bankAccounts.status, 'linked')))
+    .orderBy(bankAccounts.name)
+}
+
 export async function claimBankAccountSync(bankAccountId: string) {
   const now = new Date()
   const [claimed] = await db
@@ -213,7 +226,9 @@ export async function updateBankAccountDetails(bankAccountId: string, details: G
   }
 }
 
-export const drizzleBankingSyncRepository: BankingSyncRepository = {
+export const drizzleBankingSyncRepository: BankAccountSyncRepository = {
+  claimBankAccountSync,
+  updateBankAccountDetails,
   async latestTransactionDate(bankAccountId) {
     const [latest] = await db
       .select({date: bankTransactions.bookingDate})

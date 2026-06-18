@@ -1,5 +1,7 @@
 import {useMemo, useState} from 'react'
+import {Link} from '@tanstack/react-router'
 import {useQuery, useZero} from '@rocicorp/zero/react'
+import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
 import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
 import {Input} from '@/components/ui/input'
@@ -74,8 +76,11 @@ export function LedgerDashboard() {
           <h2 className="text-3xl font-bold tracking-tight">Ledger dashboard</h2>
           <p className="text-muted-foreground">Review imported transactions and keep your envelope ledger categorized.</p>
         </div>
-        <div className="rounded-md border bg-background px-4 py-3 text-sm font-semibold">
-          {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-md border bg-background px-4 py-3 text-sm font-semibold">
+            {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
+          </div>
+          <SyncAllBankAccountsButton accounts={bankAccounts} onMessage={setMessage} />
         </div>
       </div>
 
@@ -93,10 +98,15 @@ export function LedgerDashboard() {
                 <h3 className="text-sm font-semibold text-muted-foreground">{group.name}</h3>
                 <div className="space-y-2">
                   {group.accounts.map(account => (
-                    <div key={account.id} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                    <Link
+                      key={account.id}
+                      to="/app/accounts/$accountId"
+                      params={{accountId: account.id}}
+                      className="flex items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted"
+                    >
                       <span>{account.name}</span>
                       <span className="font-mono">{account.balance}</span>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </section>

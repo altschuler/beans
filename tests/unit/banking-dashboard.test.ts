@@ -37,6 +37,7 @@ vi.mock('@/banking/banking-fns', () => ({
   listDanishInstitutions: vi.fn(async () => []),
   startBankLink: vi.fn(),
   syncBankAccount: vi.fn(),
+  syncAllBankAccounts: vi.fn(),
 }))
 
 import {BankingDashboard} from '@/components/banking/banking-dashboard'
@@ -52,6 +53,12 @@ describe('BankingDashboard', () => {
 
     expect(markup).toContain('Bank connections')
     expect(markup).toContain('Link accounts and sync imported bank transactions')
+  })
+
+  it('shows a sync all accounts action', () => {
+    const markup = renderToStaticMarkup(React.createElement(BankingDashboard))
+
+    expect(markup).toContain('Sync all accounts')
   })
 
   it('shows the total transaction count in the transaction header', () => {

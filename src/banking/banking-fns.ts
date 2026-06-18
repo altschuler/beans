@@ -45,37 +45,31 @@ export const syncBankAccount = createServerFn({method: 'POST'})
   .handler(async ({data}) => {
     const {ensureSession} = await import('@/auth/session')
     const {createGoCardlessClient} = await import('./gocardless/client.server')
-    const {syncBankAccountTransactions} = await import('./sync')
-    const {
-      claimBankAccountSync,
-      drizzleBankingSyncRepository,
-      requireAccessibleBankAccount,
-      updateBankAccountDetails,
-    } = await import('./repository.server')
+    const {syncClaimedBankAccount} = await import('./sync')
+    const {drizzleBankingSyncRepository, requireAccessibleBankAccount} = await import('./repository.server')
 
     const session = await ensureSession()
     const account = await requireAccessibleBankAccount(data.bankAccountId, session.user.id)
-    const claimed = await claimBankAccountSync(account.id)
 
-    if (!claimed) {
-      throw new Error('Bank account is already syncing')
-    }
-
-    const client = createGoCardlessClient()
-
-    try {
-      const details = await client.getAccountDetails(account.providerAccountId)
-      await updateBankAccountDetails(account.id, details)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown sync failure'
-      await drizzleBankingSyncRepository.markAccountSyncFailed(account.id, message)
-      throw error
-    }
-
-    return syncBankAccountTransactions({
-      bankAccountId: account.id,
-      providerAccountId: account.providerAccountId,
-      client,
+    return syncClaimedBankAccount({
+      account,
+      client: createGoCardlessClient(),
       repository: drizzleBankingSyncRepository,
     })
   })
+
+export const syncAllBankAccounts = createServerFn({method: 'POST'}).handler(async () => {
+  const {ensureSession} = await import('@/auth/session')
+  const {createGoCardlessClient} = await import('./gocardless/client.server')
+  const {syncAllBankAccountsSequentially} = await import('./sync')
+  const {drizzleBankingSyncRepository, listAccessibleBankAccountsForSync} = await import('./repository.server')
+
+  const session = await ensureSession()
+  const accounts = await listAccessibleBankAccountsForSync(session.user.id)
+
+  return syncAllBankAccountsSequentially({
+    accounts,
+    client: createGoCardlessClient(),
+    repository: drizzleBankingSyncRepository,
+  })
+})
