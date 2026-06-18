@@ -3,7 +3,7 @@ import {mustGetMutator} from '@rocicorp/zero'
 import {handleMutateRequest} from '@rocicorp/zero/server'
 import {getSessionFromRequest} from '@/auth/session.server'
 import {dbProvider} from '@/db/zero-provider'
-import {mutators} from '@/zero/mutators'
+import {serverMutators} from '@/zero/mutators.server'
 import type {ZeroContext} from '@/zero/context'
 
 export const Route = createFileRoute('/api/zero/mutate')({
@@ -21,7 +21,7 @@ export const Route = createFileRoute('/api/zero/mutate')({
           dbProvider,
           handler: transact =>
             transact((tx, name, args) => {
-              const mutator = mustGetMutator(mutators, name) as {
+              const mutator = mustGetMutator(serverMutators, name) as {
                 fn: (input: {args: typeof args; tx: typeof tx; ctx: ZeroContext}) => Promise<void>
               }
               return mutator.fn({args, tx, ctx})

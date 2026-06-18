@@ -47,6 +47,13 @@ describe('BankingDashboard', () => {
     queryRows.transactions = []
   })
 
+  it('describes the dedicated bank linking page', () => {
+    const markup = renderToStaticMarkup(React.createElement(BankingDashboard))
+
+    expect(markup).toContain('Bank connections')
+    expect(markup).toContain('Link accounts and sync imported bank transactions')
+  })
+
   it('shows the total transaction count in the transaction header', () => {
     queryRows.transactions = [
       {
