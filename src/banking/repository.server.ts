@@ -2,7 +2,13 @@ import '@tanstack/react-start/server-only'
 
 import {and, desc, eq, isNotNull, ne} from 'drizzle-orm'
 import {db} from '@/db/client'
-import {bankAccounts, bankConnections, bankTransactions, teamMembers} from '@/db/schema'
+import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, teamMembers} from '@/db/schema'
+import {
+  ensureGeneratedLedgerTransactionForBankTransaction,
+  ensureLedgerAccountForBankAccount,
+  requireSystemLedgerAccountId,
+  SYSTEM_LEDGER_ACCOUNT_KEYS,
+} from '@/ledger/repository.server'
 import type {GoCardlessAccountDetails} from './gocardless/types'
 import type {BankingSyncRepository} from './sync'
 import type {NormalizedBankTransaction} from './transactions'
@@ -58,35 +64,45 @@ export async function upsertLinkedAccounts(input: {
 }) {
   const now = new Date()
 
-  for (const providerAccountId of input.providerAccountIds) {
-    await db
-      .insert(bankAccounts)
-      .values({
-        id: crypto.randomUUID(),
-        teamId: input.teamId,
-        bankConnectionId: input.bankConnectionId,
-        provider: 'gocardless',
-        providerInstitutionId: input.providerInstitutionId,
-        providerRequisitionId: input.providerRequisitionId,
-        providerAccountId,
-        name: 'Linked bank account',
-        status: 'linked',
-        syncStatus: 'idle',
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [bankAccounts.provider, bankAccounts.teamId, bankAccounts.providerAccountId],
-        set: {
+  await db.transaction(async tx => {
+    for (const providerAccountId of input.providerAccountIds) {
+      const [account] = await tx
+        .insert(bankAccounts)
+        .values({
+          id: crypto.randomUUID(),
           teamId: input.teamId,
           bankConnectionId: input.bankConnectionId,
+          provider: 'gocardless',
           providerInstitutionId: input.providerInstitutionId,
           providerRequisitionId: input.providerRequisitionId,
+          providerAccountId,
+          name: 'Linked bank account',
           status: 'linked',
+          syncStatus: 'idle',
+          createdAt: now,
           updatedAt: now,
-        },
+        })
+        .onConflictDoUpdate({
+          target: [bankAccounts.provider, bankAccounts.teamId, bankAccounts.providerAccountId],
+          set: {
+            teamId: input.teamId,
+            bankConnectionId: input.bankConnectionId,
+            providerInstitutionId: input.providerInstitutionId,
+            providerRequisitionId: input.providerRequisitionId,
+            status: 'linked',
+            updatedAt: now,
+          },
+        })
+        .returning({id: bankAccounts.id, name: bankAccounts.name})
+
+      await ensureLedgerAccountForBankAccount(tx, {
+        teamId: input.teamId,
+        bankAccountId: account.id,
+        name: account.name,
+        now,
       })
-  }
+    }
+  })
 }
 
 export async function requireAccessibleBankAccount(bankAccountId: string, userId: string) {
@@ -173,15 +189,28 @@ export async function listTransactionsForTeam(teamId: string, userId: string) {
 
 export async function updateBankAccountDetails(bankAccountId: string, details: GoCardlessAccountDetails) {
   const account = details.account
+  const name = account?.displayName ?? account?.name ?? account?.product ?? account?.iban ?? 'Linked bank account'
+  const now = new Date()
+
   await db
     .update(bankAccounts)
     .set({
-      name: account?.displayName ?? account?.name ?? account?.product ?? account?.iban ?? 'Linked bank account',
+      name,
       iban: account?.iban ?? null,
       currency: account?.currency ?? null,
-      updatedAt: new Date(),
+      updatedAt: now,
     })
     .where(eq(bankAccounts.id, bankAccountId))
+
+  const [bankAccount] = await db
+    .select({teamId: bankAccounts.teamId})
+    .from(bankAccounts)
+    .where(eq(bankAccounts.id, bankAccountId))
+    .limit(1)
+
+  if (bankAccount) {
+    await ensureLedgerAccountForBankAccount(db, {teamId: bankAccount.teamId, bankAccountId, name, now})
+  }
 }
 
 export const drizzleBankingSyncRepository: BankingSyncRepository = {
@@ -195,28 +224,45 @@ export const drizzleBankingSyncRepository: BankingSyncRepository = {
     return latest?.date ?? null
   },
   async upsertTransactions(bankAccountId, transactions: NormalizedBankTransaction[]) {
-    const now = new Date()
-    for (const transaction of transactions) {
-      await db
-        .insert(bankTransactions)
-        .values({
-          id: crypto.randomUUID(),
-          bankAccountId,
-          providerTransactionId: transaction.providerTransactionId,
-          status: transaction.status,
-          bookingDate: transaction.bookingDate,
-          valueDate: transaction.valueDate,
-          amount: transaction.amount,
-          currency: transaction.currency,
-          description: transaction.description,
-          counterpartyName: transaction.counterpartyName,
-          raw: transaction.raw,
-          createdAt: now,
-          updatedAt: now,
+    return db.transaction(async tx => {
+      const [bankAccount] = await tx
+        .select({
+          id: bankAccounts.id,
+          teamId: bankAccounts.teamId,
+          name: bankAccounts.name,
+          ledgerAccountId: ledgerAccounts.id,
         })
-        .onConflictDoUpdate({
-          target: [bankTransactions.bankAccountId, bankTransactions.providerTransactionId],
-          set: {
+        .from(bankAccounts)
+        .leftJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
+        .where(eq(bankAccounts.id, bankAccountId))
+        .limit(1)
+
+      if (!bankAccount) {
+        throw new Error('Bank account not found')
+      }
+
+      const bankLedgerAccountId =
+        bankAccount.ledgerAccountId ??
+        (await ensureLedgerAccountForBankAccount(tx, {
+          teamId: bankAccount.teamId,
+          bankAccountId: bankAccount.id,
+          name: bankAccount.name,
+        }))
+
+      const uncategorizedAccountId = await requireSystemLedgerAccountId(
+        tx,
+        bankAccount.teamId,
+        SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized,
+      )
+
+      const now = new Date()
+      for (const transaction of transactions) {
+        const [bankTransaction] = await tx
+          .insert(bankTransactions)
+          .values({
+            id: crypto.randomUUID(),
+            bankAccountId,
+            providerTransactionId: transaction.providerTransactionId,
             status: transaction.status,
             bookingDate: transaction.bookingDate,
             valueDate: transaction.valueDate,
@@ -225,11 +271,40 @@ export const drizzleBankingSyncRepository: BankingSyncRepository = {
             description: transaction.description,
             counterpartyName: transaction.counterpartyName,
             raw: transaction.raw,
+            createdAt: now,
             updatedAt: now,
-          },
+          })
+          .onConflictDoUpdate({
+            target: [bankTransactions.bankAccountId, bankTransactions.providerTransactionId],
+            set: {
+              status: transaction.status,
+              bookingDate: transaction.bookingDate,
+              valueDate: transaction.valueDate,
+              amount: transaction.amount,
+              currency: transaction.currency,
+              description: transaction.description,
+              counterpartyName: transaction.counterpartyName,
+              raw: transaction.raw,
+              updatedAt: now,
+            },
+          })
+          .returning({id: bankTransactions.id})
+
+        await ensureGeneratedLedgerTransactionForBankTransaction(tx, {
+          teamId: bankAccount.teamId,
+          bankTransactionId: bankTransaction.id,
+          bankLedgerAccountId,
+          oppositeAccountId: uncategorizedAccountId,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          description: transaction.description,
+          date: transaction.bookingDate ?? transaction.valueDate ?? null,
+          status: 'needs_review',
         })
-    }
-    return transactions.length
+      }
+
+      return transactions.length
+    })
   },
   async markAccountSynced(bankAccountId) {
     const now = new Date()

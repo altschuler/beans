@@ -1,5 +1,5 @@
 import {relations} from 'drizzle-orm'
-import {boolean, index, jsonb, numeric, pgTable, text, timestamp, uniqueIndex} from 'drizzle-orm/pg-core'
+import {boolean, foreignKey, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex} from 'drizzle-orm/pg-core'
 
 export const user = pgTable(
   'user',
@@ -183,6 +183,113 @@ export const bankTransactions = pgTable(
   }),
 )
 
+export const ledgerAccountGroups = pgTable(
+  'ledger_account_groups',
+  {
+    id: text('id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, {onDelete: 'cascade'}),
+    name: text('name').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    teamIdx: index('ledger_account_groups_team_idx').on(table.teamId),
+    teamNameIdx: uniqueIndex('ledger_account_groups_team_name_unique').on(table.teamId, table.name),
+  }),
+)
+
+export const ledgerAccounts = pgTable(
+  'ledger_accounts',
+  {
+    id: text('id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, {onDelete: 'cascade'}),
+    groupId: text('group_id')
+      .notNull()
+      .references(() => ledgerAccountGroups.id, {onDelete: 'restrict'}),
+    linkedBankAccountId: text('linked_bank_account_id').references(() => bankAccounts.id, {onDelete: 'set null'}),
+    systemKey: text('system_key'),
+    type: text('type').notNull(),
+    normalBalance: text('normal_balance').notNull(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    status: text('status').notNull().default('active'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    teamIdx: index('ledger_accounts_team_idx').on(table.teamId),
+    groupIdx: index('ledger_accounts_group_idx').on(table.groupId),
+    linkedBankAccountIdx: uniqueIndex('ledger_accounts_linked_bank_account_unique').on(table.linkedBankAccountId),
+    teamNameIdx: uniqueIndex('ledger_accounts_team_name_unique').on(table.teamId, table.name),
+    teamSystemKeyIdx: uniqueIndex('ledger_accounts_team_system_key_unique').on(table.teamId, table.systemKey),
+  }),
+)
+
+export const ledgerTransactions = pgTable(
+  'ledger_transactions',
+  {
+    id: text('id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, {onDelete: 'cascade'}),
+    bankTransactionId: text('bank_transaction_id').references(() => bankTransactions.id, {onDelete: 'cascade'}),
+    source: text('source').notNull(),
+    status: text('status').notNull(),
+    aiConfidence: numeric('ai_confidence', {precision: 5, scale: 4}),
+    date: text('date'),
+    description: text('description').notNull(),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    teamIdx: index('ledger_transactions_team_idx').on(table.teamId),
+    bankTransactionIdx: uniqueIndex('ledger_transactions_bank_transaction_unique').on(table.bankTransactionId),
+    statusIdx: index('ledger_transactions_status_idx').on(table.teamId, table.status),
+    dateIdx: index('ledger_transactions_date_idx').on(table.teamId, table.date),
+  }),
+)
+
+export const ledgerTransactionMovements = pgTable(
+  'ledger_transaction_movements',
+  {
+    id: text('id').primaryKey(),
+    ledgerTransactionId: text('ledger_transaction_id').notNull(),
+    debitAccountId: text('debit_account_id').notNull(),
+    creditAccountId: text('credit_account_id').notNull(),
+    amount: numeric('amount', {precision: 18, scale: 4}).notNull(),
+    currency: text('currency').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    transactionIdx: index('ledger_transaction_movements_transaction_idx').on(table.ledgerTransactionId),
+    debitAccountIdx: index('ledger_transaction_movements_debit_account_idx').on(table.debitAccountId),
+    creditAccountIdx: index('ledger_transaction_movements_credit_account_idx').on(table.creditAccountId),
+    transactionFk: foreignKey({
+      name: 'ledger_movements_transaction_fk',
+      columns: [table.ledgerTransactionId],
+      foreignColumns: [ledgerTransactions.id],
+    }).onDelete('cascade'),
+    debitAccountFk: foreignKey({
+      name: 'ledger_movements_debit_account_fk',
+      columns: [table.debitAccountId],
+      foreignColumns: [ledgerAccounts.id],
+    }).onDelete('restrict'),
+    creditAccountFk: foreignKey({
+      name: 'ledger_movements_credit_account_fk',
+      columns: [table.creditAccountId],
+      foreignColumns: [ledgerAccounts.id],
+    }).onDelete('restrict'),
+  }),
+)
+
 export const verification = pgTable('verification', {
   id: text('id').primaryKey(),
   identifier: text('identifier').notNull(),
@@ -221,6 +328,9 @@ export const teamsRelations = relations(teams, ({one, many}) => ({
   members: many(teamMembers),
   bankConnections: many(bankConnections),
   bankAccounts: many(bankAccounts),
+  ledgerAccountGroups: many(ledgerAccountGroups),
+  ledgerAccounts: many(ledgerAccounts),
+  ledgerTransactions: many(ledgerTransactions),
 }))
 
 export const teamMembersRelations = relations(teamMembers, ({one}) => ({
@@ -252,11 +362,73 @@ export const bankAccountsRelations = relations(bankAccounts, ({one, many}) => ({
     references: [bankConnections.id],
   }),
   transactions: many(bankTransactions),
+  ledgerAccount: one(ledgerAccounts, {
+    fields: [bankAccounts.id],
+    references: [ledgerAccounts.linkedBankAccountId],
+  }),
 }))
 
 export const bankTransactionsRelations = relations(bankTransactions, ({one}) => ({
   bankAccount: one(bankAccounts, {
     fields: [bankTransactions.bankAccountId],
     references: [bankAccounts.id],
+  }),
+  ledgerTransaction: one(ledgerTransactions, {
+    fields: [bankTransactions.id],
+    references: [ledgerTransactions.bankTransactionId],
+  }),
+}))
+
+export const ledgerAccountGroupsRelations = relations(ledgerAccountGroups, ({one, many}) => ({
+  team: one(teams, {
+    fields: [ledgerAccountGroups.teamId],
+    references: [teams.id],
+  }),
+  accounts: many(ledgerAccounts),
+}))
+
+export const ledgerAccountsRelations = relations(ledgerAccounts, ({one, many}) => ({
+  team: one(teams, {
+    fields: [ledgerAccounts.teamId],
+    references: [teams.id],
+  }),
+  group: one(ledgerAccountGroups, {
+    fields: [ledgerAccounts.groupId],
+    references: [ledgerAccountGroups.id],
+  }),
+  linkedBankAccount: one(bankAccounts, {
+    fields: [ledgerAccounts.linkedBankAccountId],
+    references: [bankAccounts.id],
+  }),
+  debitMovements: many(ledgerTransactionMovements, {relationName: 'debitAccount'}),
+  creditMovements: many(ledgerTransactionMovements, {relationName: 'creditAccount'}),
+}))
+
+export const ledgerTransactionsRelations = relations(ledgerTransactions, ({one, many}) => ({
+  team: one(teams, {
+    fields: [ledgerTransactions.teamId],
+    references: [teams.id],
+  }),
+  bankTransaction: one(bankTransactions, {
+    fields: [ledgerTransactions.bankTransactionId],
+    references: [bankTransactions.id],
+  }),
+  movements: many(ledgerTransactionMovements),
+}))
+
+export const ledgerTransactionMovementsRelations = relations(ledgerTransactionMovements, ({one}) => ({
+  ledgerTransaction: one(ledgerTransactions, {
+    fields: [ledgerTransactionMovements.ledgerTransactionId],
+    references: [ledgerTransactions.id],
+  }),
+  debitAccount: one(ledgerAccounts, {
+    fields: [ledgerTransactionMovements.debitAccountId],
+    references: [ledgerAccounts.id],
+    relationName: 'debitAccount',
+  }),
+  creditAccount: one(ledgerAccounts, {
+    fields: [ledgerTransactionMovements.creditAccountId],
+    references: [ledgerAccounts.id],
+    relationName: 'creditAccount',
   }),
 }))

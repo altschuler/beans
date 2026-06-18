@@ -32,5 +32,31 @@ export const queries = defineQueries({
         )
         .orderBy('bookingDate', 'desc')
     }),
+    ledgerAccountGroups: defineQuery(({ctx}) => {
+      const userID = requireUserID(ctx)
+      return zql.ledgerAccountGroups
+        .whereExists('team', team => team.whereExists('members', member => member.where('userId', userID)))
+        .orderBy('sortOrder', 'asc')
+    }),
+    ledgerAccounts: defineQuery(({ctx}) => {
+      const userID = requireUserID(ctx)
+      return zql.ledgerAccounts
+        .whereExists('team', team => team.whereExists('members', member => member.where('userId', userID)))
+        .orderBy('sortOrder', 'asc')
+    }),
+    ledgerTransactions: defineQuery(({ctx}) => {
+      const userID = requireUserID(ctx)
+      return zql.ledgerTransactions
+        .whereExists('team', team => team.whereExists('members', member => member.where('userId', userID)))
+        .orderBy('date', 'desc')
+    }),
+    ledgerTransactionMovements: defineQuery(({ctx}) => {
+      const userID = requireUserID(ctx)
+      return zql.ledgerTransactionMovements
+        .whereExists('ledgerTransaction', transaction =>
+          transaction.whereExists('team', team => team.whereExists('members', member => member.where('userId', userID))),
+        )
+        .orderBy('sortOrder', 'asc')
+    }),
   },
 })

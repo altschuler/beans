@@ -4,6 +4,7 @@ import {eq} from 'drizzle-orm'
 import {ensureSession} from '@/auth/session'
 import {db} from '@/db/client'
 import {teamMembers, teams} from '@/db/schema'
+import {seedDefaultLedgerChartForTeam} from '@/ledger/repository.server'
 import {ensurePersonalTeamForUser, type TeamRepository} from './personal-team'
 
 export const drizzleTeamRepository: TeamRepository = {
@@ -27,6 +28,8 @@ export const drizzleTeamRepository: TeamRepository = {
         .insert(teamMembers)
         .values({...input.membership, teamId})
         .onConflictDoNothing({target: [teamMembers.teamId, teamMembers.userId]})
+
+      await seedDefaultLedgerChartForTeam(tx, teamId)
 
       return teamId
     })
