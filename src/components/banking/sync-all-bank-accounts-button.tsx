@@ -1,6 +1,7 @@
 import {useState} from 'react'
 import {syncAllBankAccounts} from '@/banking/banking-fns'
 import {Button} from '@/components/ui/button'
+import {showErrorToast} from '@/lib/show-error-toast'
 
 type BankAccountSyncState = {
   syncStatus?: string
@@ -11,7 +12,7 @@ export function SyncAllBankAccountsButton({
   onMessage,
 }: {
   accounts: BankAccountSyncState[]
-  onMessage: (message: string) => void
+  onMessage?: (message: string) => void
 }) {
   const [isSyncingAll, setIsSyncingAll] = useState(false)
   const hasAccounts = accounts.length > 0
@@ -20,13 +21,22 @@ export function SyncAllBankAccountsButton({
 
   async function syncAll() {
     setIsSyncingAll(true)
-    onMessage('Syncing all connected bank accounts...')
+    onMessage?.('Syncing all connected bank accounts...')
 
     try {
       const result = await syncAllBankAccounts()
-      onMessage(formatSyncAllResult(result))
+      const message = formatSyncAllResult(result)
+      if (onMessage) {
+        onMessage(message)
+      } else if (result.failed > 0) {
+        showErrorToast(new Error(message), 'Could not sync bank accounts')
+      }
     } catch (error) {
-      onMessage(error instanceof Error ? error.message : 'Could not sync bank accounts')
+      if (onMessage) {
+        onMessage(error instanceof Error ? error.message : 'Could not sync bank accounts')
+      } else {
+        showErrorToast(error, 'Could not sync bank accounts')
+      }
     } finally {
       setIsSyncingAll(false)
     }

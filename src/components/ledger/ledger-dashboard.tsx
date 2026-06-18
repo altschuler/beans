@@ -6,7 +6,9 @@ import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
+import {showErrorToast} from '@/lib/show-error-toast'
 import {mutators} from '@/zero/mutators'
+import {saveDashboardSplitTransaction} from './save-dashboard-split-transaction'
 import {queries} from '@/zero/queries'
 import {buildLedgerDashboardModel} from './ledger-dashboard-model'
 
@@ -27,7 +29,6 @@ export function LedgerDashboard() {
   const [movements] = useQuery(queries.domain.ledgerTransactionMovements())
   const [bankTransactions] = useQuery(queries.domain.bankTransactions())
   const [bankAccounts] = useQuery(queries.domain.bankAccounts())
-  const [message, setMessage] = useState('')
   const [splitTransactionId, setSplitTransactionId] = useState<string | null>(null)
   const [splitLines, setSplitLines] = useState<SplitLine[]>([])
 
@@ -38,12 +39,10 @@ export function LedgerDashboard() {
 
   async function categorizeTransaction(ledgerTransactionId: string, accountId: string) {
     if (!accountId) return
-    setMessage('Saving category…')
     try {
       await zero.mutate(mutators.ledger.categorizeTransaction({ledgerTransactionId, accountId}))
-      setMessage('Category saved.')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not save category')
+      showErrorToast(error, 'Could not save category')
     }
   }
 
@@ -56,16 +55,18 @@ export function LedgerDashboard() {
     )
   }
 
-  async function saveSplit(ledgerTransactionId: string) {
-    setMessage('Saving split…')
-    try {
-      await zero.mutate(mutators.ledger.splitTransaction({ledgerTransactionId, lines: splitLines}))
-      setSplitTransactionId(null)
-      setSplitLines([])
-      setMessage('Split saved.')
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not save split')
-    }
+  async function saveSplit(row: DashboardRowForSplit) {
+    await saveDashboardSplitTransaction({
+      ledgerTransactionId: row.id,
+      bankAmount: row.amount,
+      lines: splitLines,
+      mutate: mutation => zero.mutate(mutation),
+      onSuccess: () => {
+        setSplitTransactionId(null)
+        setSplitLines([])
+      },
+      onError: showErrorToast,
+    })
   }
 
   return (
@@ -80,11 +81,9 @@ export function LedgerDashboard() {
           <div className="rounded-md border bg-background px-4 py-3 text-sm font-semibold">
             {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
           </div>
-          <SyncAllBankAccountsButton accounts={bankAccounts} onMessage={setMessage} />
+          <SyncAllBankAccountsButton accounts={bankAccounts} />
         </div>
       </div>
-
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
 
       <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
         <Card>
@@ -205,7 +204,7 @@ export function LedgerDashboard() {
                         <Button type="button" variant="outline" onClick={() => setSplitTransactionId(null)}>
                           Cancel
                         </Button>
-                        <Button type="button" onClick={() => void saveSplit(row.id)}>
+                        <Button type="button" onClick={() => void saveSplit(row)}>
                           Save split
                         </Button>
                       </div>

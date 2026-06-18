@@ -3,6 +3,11 @@ export type CategorizationLineInput = {
   amount: string
 }
 
+export type BankLinkedCategorizationLinesInput = {
+  bankAmount: string
+  lines: CategorizationLineInput[]
+}
+
 export type BankLinkedCategorizationMovementInput = {
   ledgerTransactionId: string
   bankLedgerAccountId: string
@@ -43,7 +48,7 @@ export type CategorizationAccountCandidate = {
 const MONEY_SCALE = 4n
 const MONEY_FACTOR = 10_000n
 
-export function buildBankLinkedCategorizationMovements(input: BankLinkedCategorizationMovementInput): BuiltLedgerMovement[] {
+export function validateBankLinkedCategorizationLines(input: BankLinkedCategorizationLinesInput) {
   if (input.lines.length === 0) {
     throw new Error('At least one categorization line is required')
   }
@@ -65,6 +70,11 @@ export function buildBankLinkedCategorizationMovements(input: BankLinkedCategori
     throw new Error('Split total must equal the bank transaction amount')
   }
 
+  return {bankAmountUnits, lineUnits}
+}
+
+export function buildBankLinkedCategorizationMovements(input: BankLinkedCategorizationMovementInput): BuiltLedgerMovement[] {
+  const {bankAmountUnits, lineUnits} = validateBankLinkedCategorizationLines(input)
   const now = input.now ?? new Date()
   return input.lines.map((line, sortOrder) => {
     const amount = formatScaledUnits(lineUnits[sortOrder] ?? 0n)
