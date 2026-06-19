@@ -15,6 +15,7 @@ build/
 # Local tooling/session artifacts
 .superpowers/
 .zero-cache/
+.local/
 .cert/
 zero.db*
 
