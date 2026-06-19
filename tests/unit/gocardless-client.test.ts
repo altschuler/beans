@@ -50,6 +50,64 @@ describe('createGoCardlessClient', () => {
     })
   })
 
+  it('fetches institution details including supported features', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({access: 'access-token-123', access_expires: 3600}), {status: 200}))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({id: 'BANK_DK', name: 'Danish Bank', countries: ['DK'], supported_features: ['account_selection']}),
+          {status: 200},
+        ),
+      )
+    const client = createGoCardlessClient({
+      secretId: 'secret-id-123',
+      secretKey: 'secret-key-123',
+      baseUrl: 'https://example.test/api/v2',
+      fetchImpl,
+    })
+
+    const institution = await client.getInstitution('BANK_DK')
+
+    expect(institution.supported_features).toEqual(['account_selection'])
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, 'https://example.test/api/v2/institutions/BANK_DK/', {
+      headers: {Authorization: 'Bearer access-token-123', Accept: 'application/json'},
+    })
+  })
+
+  it('can request GoCardless account selection when creating a requisition', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({access: 'access-token-123', access_expires: 3600}), {status: 200}))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({id: 'requisition-1', link: 'https://example.test/link', accounts: []}), {status: 201}),
+      )
+    const client = createGoCardlessClient({
+      secretId: 'secret-id-123',
+      secretKey: 'secret-key-123',
+      baseUrl: 'https://example.test/api/v2',
+      fetchImpl,
+    })
+
+    await client.createRequisition({
+      institutionId: 'BANK_DK',
+      redirectUrl: 'https://app.test/api/gocardless/callback',
+      reference: 'reference-123',
+      accountSelection: true,
+    })
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, 'https://example.test/api/v2/requisitions/', {
+      headers: {Authorization: 'Bearer access-token-123', Accept: 'application/json', 'Content-Type': 'application/json'},
+      method: 'POST',
+      body: JSON.stringify({
+        institution_id: 'BANK_DK',
+        redirect: 'https://app.test/api/gocardless/callback',
+        reference: 'reference-123',
+        account_selection: true,
+      }),
+    })
+  })
+
   it('throws when GoCardless secrets are missing', () => {
     expect(() =>
       createGoCardlessClient({secretId: '', secretKey: '', baseUrl: 'https://example.test/api/v2', fetchImpl: vi.fn()}),

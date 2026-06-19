@@ -90,11 +90,15 @@ export function createGoCardlessClient(options: ClientOptions = {}) {
     listInstitutions(country = 'DK') {
       return request<GoCardlessInstitution[]>('GET', `/institutions/?country=${encodeURIComponent(country)}`)
     },
-    createRequisition(input: {institutionId: string; redirectUrl: string; reference: string}) {
+    getInstitution(institutionId: string) {
+      return request<GoCardlessInstitution>('GET', `/institutions/${encodeURIComponent(institutionId)}/`)
+    },
+    createRequisition(input: {institutionId: string; redirectUrl: string; reference: string; accountSelection?: boolean}) {
       return request<GoCardlessRequisition>('POST', '/requisitions/', {
         institution_id: input.institutionId,
         redirect: input.redirectUrl,
         reference: input.reference,
+        ...(input.accountSelection ? {account_selection: true} : {}),
       })
     },
     getRequisition(requisitionId: string) {

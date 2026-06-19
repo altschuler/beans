@@ -5,6 +5,7 @@ export type GoCardlessInstitution = {
   transaction_total_days?: string
   countries: string[]
   logo?: string
+  supported_features?: string[]
 }
 
 export type GoCardlessRequisition = {
