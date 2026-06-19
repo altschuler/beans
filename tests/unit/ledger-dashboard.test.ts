@@ -96,6 +96,21 @@ vi.mock('@/components/ui/button', async () => {
   }
 })
 
+vi.mock('@/components/ui/dialog', async () => {
+  const ReactModule = await import('react')
+  const passthrough = ({children}: {children: React.ReactNode}) => ReactModule.createElement(ReactModule.Fragment, null, children)
+  return {
+    Dialog: passthrough,
+    DialogClose: passthrough,
+    DialogContent: passthrough,
+    DialogDescription: passthrough,
+    DialogFooter: passthrough,
+    DialogHeader: passthrough,
+    DialogTitle: passthrough,
+    DialogTrigger: ({children}: {children: React.ReactNode}) => ReactModule.createElement(ReactModule.Fragment, null, children),
+  }
+})
+
 vi.mock('@/zero/queries', () => ({
   queries: {
     domain: {
@@ -124,6 +139,7 @@ vi.mock('@/zero/mutators', () => ({
       categorizeTransaction: vi.fn(input => ({type: 'categorizeTransaction', input})),
       splitTransaction: vi.fn(input => ({type: 'splitTransaction', input})),
       confirmTransaction: vi.fn(input => ({type: 'confirmTransaction', input})),
+      clearCategorizations: vi.fn(input => ({type: 'clearCategorizations', input})),
     },
   },
 }))
@@ -292,6 +308,19 @@ describe('LedgerDashboard', () => {
     await flushPromises()
 
     expect(zeroMutate).toHaveBeenCalledWith({type: 'confirmTransaction', input: {ledgerTransactionId: 'ledger-transaction-1'}})
+  })
+
+  it('clears all categorizations only after dialog confirmation', async () => {
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    expect(markup).toContain('Clear categorizations')
+    expect(markup).toContain('Imported bank transactions will be kept.')
+    expect(zeroMutate).not.toHaveBeenCalled()
+
+    findButton('Clear all categorizations')?.onClick?.()
+    await flushPromises()
+
+    expect(zeroMutate).toHaveBeenCalledWith({type: 'clearCategorizations', input: {}})
   })
 })
 

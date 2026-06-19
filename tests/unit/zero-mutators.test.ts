@@ -2,8 +2,9 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 
 const categorizeLedgerTransaction = vi.hoisted(() => vi.fn(async () => undefined))
 const confirmLedgerTransaction = vi.hoisted(() => vi.fn(async () => undefined))
+const clearLedgerCategorizations = vi.hoisted(() => vi.fn(async () => ({cleared: 2})))
 
-vi.mock('@/ledger/categorization.server', () => ({categorizeLedgerTransaction, confirmLedgerTransaction}))
+vi.mock('@/ledger/categorization.server', () => ({categorizeLedgerTransaction, confirmLedgerTransaction, clearLedgerCategorizations}))
 
 describe('ledger Zero mutators', () => {
   beforeEach(() => {
@@ -69,18 +70,38 @@ describe('ledger Zero mutators', () => {
     })
   })
 
+  it('clears all categorizations on the server transaction', async () => {
+    const {serverMutators} = await import('@/zero/mutators.server')
+    const request = serverMutators.ledger.clearCategorizations({})
+
+    await request.mutator.fn({
+      args: request.args,
+      ctx: {userID: 'user-1'},
+      tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never,
+    })
+
+    expect(clearLedgerCategorizations).toHaveBeenCalledWith('wrapped-tx', {userId: 'user-1'})
+  })
+
   it('does not run server-only persistence during optimistic client execution', async () => {
     const {mutators} = await import('@/zero/mutators')
     const request = mutators.ledger.categorizeTransaction({ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries'})
+    const clearRequest = mutators.ledger.clearCategorizations({})
 
     await request.mutator.fn({
       args: request.args,
       ctx: {userID: 'user-1'},
       tx: {location: 'client'} as never,
     })
+    await clearRequest.mutator.fn({
+      args: clearRequest.args,
+      ctx: {userID: 'user-1'},
+      tx: {location: 'client'} as never,
+    })
 
     expect(categorizeLedgerTransaction).not.toHaveBeenCalled()
     expect(confirmLedgerTransaction).not.toHaveBeenCalled()
+    expect(clearLedgerCategorizations).not.toHaveBeenCalled()
   })
 
   it('does not expose AI orchestration as Zero mutators', async () => {

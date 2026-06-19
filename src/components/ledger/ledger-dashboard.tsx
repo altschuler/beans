@@ -5,6 +5,7 @@ import {GitBranch, Sparkles} from 'lucide-react'
 import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
 import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
+import {Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger} from '@/components/ui/dialog'
 import {Input} from '@/components/ui/input'
 import {showErrorToast} from '@/lib/show-error-toast'
 import {aiCategorizeNeedsReviewBatch, aiCategorizeTransaction} from '@/ledger/ai-categorization-fns'
@@ -34,6 +35,7 @@ export function LedgerDashboard() {
   const [splitLines, setSplitLines] = useState<SplitLine[]>([])
   const [message, setMessage] = useState('')
   const [isAiRequestPending, setIsAiRequestPending] = useState(false)
+  const [isClearPending, setIsClearPending] = useState(false)
   const isAiRequestPendingRef = useRef(false)
 
   const model = useMemo(
@@ -92,6 +94,20 @@ export function LedgerDashboard() {
     }
   }
 
+  async function clearCategorizations() {
+    if (isClearPending) return
+
+    setIsClearPending(true)
+    try {
+      await zero.mutate(mutators.ledger.clearCategorizations({}))
+      setMessage('Cleared ledger categorizations. Imported bank transactions were kept.')
+    } catch (error) {
+      showErrorToast(error, 'Could not clear categorizations')
+    } finally {
+      setIsClearPending(false)
+    }
+  }
+
   function openSplit(row: DashboardRowForSplit) {
     setSplitTransactionId(row.id)
     setSplitLines(
@@ -135,6 +151,32 @@ export function LedgerDashboard() {
           <Button type="button" variant="outline" disabled={model.reviewCount === 0 || isAiRequestPending} onClick={() => void aiCategorizeBatch()}>
             AI categorize up to 25
           </Button>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button type="button" variant="outline" disabled={model.transactionRows.length === 0 || isClearPending}>
+                Clear categorizations
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Clear all ledger categorizations?</DialogTitle>
+                <DialogDescription>
+                  Imported bank transactions will be kept. This clears categories, splits, confirmations, and AI metadata for all imported ledger transactions, then moves them back to
+                  Uncategorized.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button type="button" variant="destructive" disabled={isClearPending} onClick={() => void clearCategorizations()}>
+                  Clear all categorizations
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <SyncAllBankAccountsButton accounts={bankAccounts} onMessage={setMessage} />
         </div>
       </div>

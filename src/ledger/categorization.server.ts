@@ -36,6 +36,10 @@ type ConfirmLedgerTransactionInput = {
   ledgerTransactionId: string
 }
 
+type ClearLedgerCategorizationsInput = {
+  userId: string
+}
+
 const AI_PROCESSING_STALE_AFTER_MS = 30 * 60 * 1000
 const MAX_AI_REASONING_LENGTH = 500
 
@@ -158,6 +162,66 @@ export async function categorizeLedgerTransaction(tx: DrizzleTransaction, input:
   await tx.insert(ledgerTransactionMovements).values(movements)
   await tx.update(ledgerTransactions).set(nextTransactionValues).where(eq(ledgerTransactions.id, ledgerTransaction.id))
   return true
+}
+
+export async function clearLedgerCategorizations(tx: DrizzleTransaction, input: ClearLedgerCategorizationsInput) {
+  const rows = await tx
+    .select({
+      ledgerTransactionId: ledgerTransactions.id,
+      teamId: ledgerTransactions.teamId,
+      bankAmount: bankTransactions.amount,
+      currency: bankTransactions.currency,
+      bankLedgerAccountId: ledgerAccounts.id,
+    })
+    .from(ledgerTransactions)
+    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
+    .innerJoin(bankTransactions, eq(bankTransactions.id, ledgerTransactions.bankTransactionId))
+    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+    .innerJoin(ledgerAccounts, and(eq(ledgerAccounts.teamId, ledgerTransactions.teamId), eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id)))
+    .where(and(eq(teamMembers.userId, input.userId), eq(ledgerTransactions.source, 'bank_import'), eq(bankAccounts.teamId, ledgerTransactions.teamId)))
+
+  if (rows.length === 0) return {cleared: 0}
+
+  const teamIds = [...new Set(rows.map(row => row.teamId))]
+  const uncategorizedAccounts = await tx
+    .select({id: ledgerAccounts.id, teamId: ledgerAccounts.teamId})
+    .from(ledgerAccounts)
+    .where(and(inArray(ledgerAccounts.teamId, teamIds), eq(ledgerAccounts.systemKey, SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized)))
+  const uncategorizedByTeamId = new Map(uncategorizedAccounts.map(account => [account.teamId, account.id]))
+
+  const now = new Date()
+  const transactionIds = rows.map(row => row.ledgerTransactionId)
+  const replacementMovements = rows.map(row => {
+    const uncategorizedAccountId = uncategorizedByTeamId.get(row.teamId)
+    if (!uncategorizedAccountId) throw new Error('Uncategorized ledger account not found')
+    const [movement] = buildBankLinkedCategorizationMovements({
+      ledgerTransactionId: row.ledgerTransactionId,
+      bankLedgerAccountId: row.bankLedgerAccountId,
+      bankAmount: row.bankAmount,
+      currency: row.currency,
+      lines: [{accountId: uncategorizedAccountId, amount: absoluteMoneyString(row.bankAmount)}],
+      now,
+    })
+    return movement
+  })
+
+  await tx.delete(ledgerTransactionMovements).where(inArray(ledgerTransactionMovements.ledgerTransactionId, transactionIds))
+  await tx.insert(ledgerTransactionMovements).values(replacementMovements)
+  await tx
+    .update(ledgerTransactions)
+    .set({
+      status: 'needs_review',
+      aiConfidence: null,
+      aiReasoning: null,
+      aiProcessingStartedAt: null,
+      categorizedBy: null,
+      userConfirmedAt: null,
+      userConfirmedBy: null,
+      updatedAt: now,
+    })
+    .where(inArray(ledgerTransactions.id, transactionIds))
+
+  return {cleared: rows.length}
 }
 
 export async function confirmLedgerTransaction(tx: DrizzleTransaction, input: ConfirmLedgerTransactionInput) {

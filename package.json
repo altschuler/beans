@@ -23,6 +23,7 @@
   "dependencies": {
     "@ai-sdk/openai": "3.0.73",
     "@better-auth/drizzle-adapter": "1.6.18",
+    "@radix-ui/react-dialog": "1.1.17",
     "@radix-ui/react-slot": "1.2.4",
     "@rocicorp/zero": "1.6.2",
     "@tanstack/react-router": "1.170.15",

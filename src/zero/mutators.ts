@@ -22,10 +22,13 @@ export const confirmTransactionInput = z.object({
   ledgerTransactionId: z.string().min(1),
 })
 
+export const clearCategorizationsInput = z.object({})
+
 export const mutators = defineMutators({
   ledger: {
     categorizeTransaction: defineMutator(categorizeTransactionInput, async () => {}),
     splitTransaction: defineMutator(splitTransactionInput, async () => {}),
     confirmTransaction: defineMutator(confirmTransactionInput, async () => {}),
+    clearCategorizations: defineMutator(clearCategorizationsInput, async () => {}),
   },
 })

@@ -1,4 +1,5 @@
 import {useState} from 'react'
+import {toast} from 'sonner'
 import {syncAllBankAccounts} from '@/banking/banking-fns'
 import {Button} from '@/components/ui/button'
 import {showErrorToast} from '@/lib/show-error-toast'
@@ -30,6 +31,8 @@ export function SyncAllBankAccountsButton({
         onMessage(message)
       } else if (result.failed > 0) {
         showErrorToast(new Error(message), 'Could not sync bank accounts')
+      } else {
+        toast.success(message)
       }
     } catch (error) {
       if (onMessage) {

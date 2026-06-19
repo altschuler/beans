@@ -423,6 +423,118 @@ describe('categorizeLedgerTransaction', () => {
     expect(movement).toMatchObject({debitAccountId: 'uncategorized', creditAccountId: 'bank-ledger-account'})
   })
 
+  it('clears all authorized bank-import categorizations back to Uncategorized without changing bank transactions', async () => {
+    const {clearLedgerCategorizations} = await import('@/ledger/categorization.server')
+    const now = new Date('2026-06-18T11:00:00.000Z')
+
+    await db.insert(bankTransactions).values({
+      id: 'bank-transaction-2',
+      bankAccountId: 'bank-account-1',
+      providerTransactionId: 'provider-transaction-2',
+      status: 'booked',
+      bookingDate: '2026-06-19',
+      valueDate: null,
+      amount: '250.00',
+      currency: 'DKK',
+      description: 'Salary',
+      counterpartyName: null,
+      raw: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+    await db.insert(ledgerTransactions).values({
+      id: 'ledger-transaction-2',
+      teamId: 'team-1',
+      bankTransactionId: 'bank-transaction-2',
+      source: 'bank_import',
+      status: 'confirmed',
+      aiConfidence: 2,
+      aiReasoning: 'High confidence income.',
+      aiProcessingStartedAt: now,
+      categorizedBy: 'ai',
+      userConfirmedAt: now,
+      userConfirmedBy: 'user-1',
+      date: '2026-06-19',
+      description: 'Salary',
+      createdAt: now,
+      updatedAt: now,
+    })
+    await db.delete(ledgerTransactionMovements).where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+    await db.insert(ledgerTransactionMovements).values([
+      {
+        id: 'movement-groceries-cleared-1',
+        ledgerTransactionId: 'ledger-transaction-1',
+        debitAccountId: 'groceries',
+        creditAccountId: 'bank-ledger-account',
+        amount: '70.00',
+        currency: 'DKK',
+        sortOrder: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'movement-household-cleared-1',
+        ledgerTransactionId: 'ledger-transaction-1',
+        debitAccountId: 'household',
+        creditAccountId: 'bank-ledger-account',
+        amount: '30.00',
+        currency: 'DKK',
+        sortOrder: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'movement-salary-cleared-1',
+        ledgerTransactionId: 'ledger-transaction-2',
+        debitAccountId: 'bank-ledger-account',
+        creditAccountId: 'groceries',
+        amount: '250.00',
+        currency: 'DKK',
+        sortOrder: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+
+    const result = await db.transaction(tx => clearLedgerCategorizations(tx, {userId: 'user-1'}))
+
+    const transactions = await db.select().from(ledgerTransactions).orderBy(ledgerTransactions.id)
+    const movements = await db.select().from(ledgerTransactionMovements).orderBy(ledgerTransactionMovements.ledgerTransactionId, ledgerTransactionMovements.sortOrder)
+    const bankRows = await db.select().from(bankTransactions).orderBy(bankTransactions.id)
+
+    expect(result).toEqual({cleared: 2})
+    expect(transactions.filter(transaction => transaction.id.startsWith('ledger-transaction-'))).toMatchObject([
+      {
+        id: 'ledger-transaction-1',
+        status: 'needs_review',
+        aiConfidence: null,
+        aiReasoning: null,
+        aiProcessingStartedAt: null,
+        categorizedBy: null,
+        userConfirmedAt: null,
+        userConfirmedBy: null,
+      },
+      {
+        id: 'ledger-transaction-2',
+        status: 'needs_review',
+        aiConfidence: null,
+        aiReasoning: null,
+        aiProcessingStartedAt: null,
+        categorizedBy: null,
+        userConfirmedAt: null,
+        userConfirmedBy: null,
+      },
+    ])
+    expect(movements).toMatchObject([
+      {ledgerTransactionId: 'ledger-transaction-1', debitAccountId: 'uncategorized', creditAccountId: 'bank-ledger-account', amount: '100.0000', currency: 'DKK'},
+      {ledgerTransactionId: 'ledger-transaction-2', debitAccountId: 'bank-ledger-account', creditAccountId: 'uncategorized', amount: '250.0000', currency: 'DKK'},
+    ])
+    expect(bankRows.map(row => ({id: row.id, amount: row.amount, description: row.description}))).toEqual([
+      {id: 'bank-transaction-1', amount: '-100.0000', description: 'Supermarket'},
+      {id: 'bank-transaction-2', amount: '250.0000', description: 'Salary'},
+    ])
+  })
+
   it('rejects users outside the transaction team', async () => {
     const {categorizeLedgerTransaction} = await import('@/ledger/categorization.server')
 
