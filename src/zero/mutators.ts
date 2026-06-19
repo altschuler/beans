@@ -18,9 +18,19 @@ export const splitTransactionInput = z.object({
     .min(2),
 })
 
+export const aiCategorizeTransactionInput = z.object({
+  ledgerTransactionId: z.string().min(1),
+})
+
+export const aiCategorizeNeedsReviewBatchInput = z.object({
+  limit: z.number().int().positive().optional(),
+})
+
 export const mutators = defineMutators({
   ledger: {
     categorizeTransaction: defineMutator(categorizeTransactionInput, async () => {}),
     splitTransaction: defineMutator(splitTransactionInput, async () => {}),
+    aiCategorizeTransaction: defineMutator(aiCategorizeTransactionInput, async () => {}),
+    aiCategorizeNeedsReviewBatch: defineMutator(aiCategorizeNeedsReviewBatchInput, async () => {}),
   },
 })

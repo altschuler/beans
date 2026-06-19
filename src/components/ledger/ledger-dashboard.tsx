@@ -1,4 +1,4 @@
-import {useMemo, useState} from 'react'
+import {useMemo, useRef, useState} from 'react'
 import {Link} from '@tanstack/react-router'
 import {useQuery, useZero} from '@rocicorp/zero/react'
 import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
@@ -31,6 +31,11 @@ export function LedgerDashboard() {
   const [bankAccounts] = useQuery(queries.domain.bankAccounts())
   const [splitTransactionId, setSplitTransactionId] = useState<string | null>(null)
   const [splitLines, setSplitLines] = useState<SplitLine[]>([])
+  const [message, setMessage] = useState('')
+  const [isBatchAiPending, setIsBatchAiPending] = useState(false)
+  const [pendingAiTransactionIds, setPendingAiTransactionIds] = useState<Set<string>>(() => new Set())
+  const isBatchAiPendingRef = useRef(false)
+  const pendingAiTransactionIdsRef = useRef(new Set<string>())
 
   const model = useMemo(
     () => buildLedgerDashboardModel({groups, accounts, ledgerTransactions, movements, bankTransactions, bankAccounts}),
@@ -43,6 +48,44 @@ export function LedgerDashboard() {
       await zero.mutate(mutators.ledger.categorizeTransaction({ledgerTransactionId, accountId}))
     } catch (error) {
       showErrorToast(error, 'Could not save category')
+    }
+  }
+
+  async function aiCategorizeBatch() {
+    if (isBatchAiPendingRef.current) return
+
+    isBatchAiPendingRef.current = true
+    setIsBatchAiPending(true)
+    setMessage('AI categorizing up to 25 transactions…')
+    try {
+      await zero.mutate(mutators.ledger.aiCategorizeNeedsReviewBatch({limit: 25}))
+      setMessage('AI categorization finished. Review any transactions still marked needs review.')
+    } catch {
+      setMessage('AI categorization failed. Try again.')
+    } finally {
+      isBatchAiPendingRef.current = false
+      setIsBatchAiPending(false)
+    }
+  }
+
+  async function aiCategorizeOne(ledgerTransactionId: string) {
+    if (pendingAiTransactionIdsRef.current.has(ledgerTransactionId)) return
+
+    pendingAiTransactionIdsRef.current.add(ledgerTransactionId)
+    setPendingAiTransactionIds(current => new Set(current).add(ledgerTransactionId))
+    setMessage('AI categorizing transaction…')
+    try {
+      await zero.mutate(mutators.ledger.aiCategorizeTransaction({ledgerTransactionId}))
+      setMessage('AI categorization finished. Review the transaction if it still needs review.')
+    } catch {
+      setMessage('AI could not categorize this transaction.')
+    } finally {
+      pendingAiTransactionIdsRef.current.delete(ledgerTransactionId)
+      setPendingAiTransactionIds(current => {
+        const next = new Set(current)
+        next.delete(ledgerTransactionId)
+        return next
+      })
     }
   }
 
@@ -81,9 +124,14 @@ export function LedgerDashboard() {
           <div className="rounded-md border bg-background px-4 py-3 text-sm font-semibold">
             {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
           </div>
-          <SyncAllBankAccountsButton accounts={bankAccounts} />
+          <Button type="button" variant="outline" disabled={model.reviewCount === 0 || isBatchAiPending} onClick={() => void aiCategorizeBatch()}>
+            {isBatchAiPending ? 'AI categorizing…' : 'AI categorize up to 25'}
+          </Button>
+          <SyncAllBankAccountsButton accounts={bankAccounts} onMessage={setMessage} />
         </div>
       </div>
+
+      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
 
       <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
         <Card>
@@ -158,9 +206,16 @@ export function LedgerDashboard() {
                         ))}
                       </select>
                     </div>
-                    <Button type="button" variant="outline" onClick={() => openSplit(row)}>
-                      Split
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      {row.needsReview ? (
+                        <Button type="button" variant="outline" disabled={pendingAiTransactionIds.has(row.id)} onClick={() => void aiCategorizeOne(row.id)}>
+                          {pendingAiTransactionIds.has(row.id) ? 'AI categorizing…' : 'AI categorize'}
+                        </Button>
+                      ) : null}
+                      <Button type="button" variant="outline" onClick={() => openSplit(row)}>
+                        Split
+                      </Button>
+                    </div>
                   </div>
 
                   {splitTransactionId === row.id ? (

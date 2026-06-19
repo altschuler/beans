@@ -21,11 +21,13 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e"
   },
   "dependencies": {
+    "@ai-sdk/openai": "3.0.73",
     "@better-auth/drizzle-adapter": "1.6.18",
     "@radix-ui/react-slot": "1.2.4",
     "@rocicorp/zero": "1.6.2",
     "@tanstack/react-router": "1.170.15",
     "@tanstack/react-start": "1.168.25",
+    "ai": "6.0.208",
     "better-auth": "1.6.18",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

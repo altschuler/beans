@@ -1,5 +1,9 @@
-process.env.DATABASE_URL ??= 'postgres://postgres:postgres@localhost:5432/penge'
-process.env.ZERO_UPSTREAM_DB ??= process.env.DATABASE_URL
+import {resolveTestDatabaseUrl} from '../helpers/db-safety'
+
+const testDatabaseUrl = resolveTestDatabaseUrl()
+
+process.env.DATABASE_URL = testDatabaseUrl
+process.env.ZERO_UPSTREAM_DB = testDatabaseUrl
 process.env.ZERO_QUERY_URL ??= 'https://localhost:3000/api/zero/query'
 process.env.ZERO_MUTATE_URL ??= 'https://localhost:3000/api/zero/mutate'
 process.env.ZERO_QUERY_FORWARD_COOKIES ??= 'true'

@@ -16,9 +16,14 @@ import {buildBankLinkedCategorizationMovements, isCategorizationAccount, type Ca
 type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 type DrizzleTransaction = DatabaseTransaction | ZeroDrizzleTransaction<Database>
 
+type LedgerTransactionFinalStatus = 'confirmed' | 'needs_review'
+
 type CategorizeLedgerTransactionInput = {
   userId: string
   ledgerTransactionId: string
+  status?: LedgerTransactionFinalStatus
+  aiConfidence?: string | null
+  requiredCurrentStatus?: LedgerTransactionFinalStatus
 } & ({accountId: string; lines?: never} | {accountId?: never; lines: CategorizationLineInput[]})
 
 export async function categorizeLedgerTransaction(tx: DrizzleTransaction, input: CategorizeLedgerTransactionInput) {
@@ -92,9 +97,26 @@ export async function categorizeLedgerTransaction(tx: DrizzleTransaction, input:
     lines,
   })
 
+  const nextTransactionValues = {status: input.status ?? 'confirmed', aiConfidence: input.aiConfidence ?? null, updatedAt: new Date()}
+
+  if (input.requiredCurrentStatus) {
+    const [updatedTransaction] = await tx
+      .update(ledgerTransactions)
+      .set(nextTransactionValues)
+      .where(and(eq(ledgerTransactions.id, ledgerTransaction.id), eq(ledgerTransactions.status, input.requiredCurrentStatus)))
+      .returning({id: ledgerTransactions.id})
+
+    if (!updatedTransaction) return false
+
+    await tx.delete(ledgerTransactionMovements).where(eq(ledgerTransactionMovements.ledgerTransactionId, ledgerTransaction.id))
+    await tx.insert(ledgerTransactionMovements).values(movements)
+    return true
+  }
+
   await tx.delete(ledgerTransactionMovements).where(eq(ledgerTransactionMovements.ledgerTransactionId, ledgerTransaction.id))
   await tx.insert(ledgerTransactionMovements).values(movements)
-  await tx.update(ledgerTransactions).set({status: 'confirmed', updatedAt: new Date()}).where(eq(ledgerTransactions.id, ledgerTransaction.id))
+  await tx.update(ledgerTransactions).set(nextTransactionValues).where(eq(ledgerTransactions.id, ledgerTransaction.id))
+  return true
 }
 
 function absoluteMoneyString(amount: string) {

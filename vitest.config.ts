@@ -8,6 +8,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./tests/setup/env.ts'],
     include: ['tests/**/*.test.ts', 'src/**/*.test.ts'],
+    fileParallelism: false,
     coverage: {
       reporter: ['text', 'html'],
     },

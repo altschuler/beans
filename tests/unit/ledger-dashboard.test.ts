@@ -11,6 +11,11 @@ const queryRows = vi.hoisted(() => ({
   bankAccounts: [] as Array<{id: string; name: string; syncStatus?: string}>,
 }))
 
+const zeroMutate = vi.hoisted(() => vi.fn(async () => undefined))
+const renderedButtons = vi.hoisted(
+  () => [] as Array<{children: React.ReactNode; disabled?: boolean; onClick?: () => void; type?: 'button' | 'submit' | 'reset'}>,
+)
+
 vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string}) => {
     if (query.name === 'ledgerAccountGroups') return [queryRows.groups]
@@ -21,7 +26,7 @@ vi.mock('@rocicorp/zero/react', () => ({
     if (query.name === 'bankAccounts') return [queryRows.bankAccounts]
     throw new Error(`Unexpected query: ${query.name}`)
   }),
-  useZero: vi.fn(() => ({mutate: vi.fn()})),
+  useZero: vi.fn(() => ({mutate: zeroMutate})),
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -30,6 +35,16 @@ vi.mock('@tanstack/react-router', () => ({
     return React.createElement('a', {href, className}, children)
   },
 }))
+
+vi.mock('@/components/ui/button', async () => {
+  const ReactModule = await import('react')
+  return {
+    Button: ({children, disabled, onClick, type}: {children: React.ReactNode; disabled?: boolean; onClick?: () => void; type?: 'button' | 'submit' | 'reset'}) => {
+      renderedButtons.push({children, disabled, onClick, type})
+      return ReactModule.createElement('button', {disabled, onClick, type}, children)
+    },
+  }
+})
 
 vi.mock('@/zero/queries', () => ({
   queries: {
@@ -53,14 +68,20 @@ vi.mock('@/zero/mutators', () => ({
     ledger: {
       categorizeTransaction: vi.fn(input => ({type: 'categorizeTransaction', input})),
       splitTransaction: vi.fn(input => ({type: 'splitTransaction', input})),
+      aiCategorizeTransaction: vi.fn(input => ({type: 'aiCategorizeTransaction', input})),
+      aiCategorizeNeedsReviewBatch: vi.fn(input => ({type: 'aiCategorizeNeedsReviewBatch', input})),
     },
   },
 }))
 
+import {mutators} from '@/zero/mutators'
 import {LedgerDashboard} from '@/components/ledger/ledger-dashboard'
 
 describe('LedgerDashboard', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
+    zeroMutate.mockResolvedValue(undefined)
+    renderedButtons.length = 0
     queryRows.groups = [{id: 'group-1', name: 'Everyday spending', sortOrder: 0}]
     queryRows.accounts = [
       {id: 'checking', groupId: 'group-1', name: 'Checking', type: 'bank', normalBalance: 'debit', status: 'active', sortOrder: 0},
@@ -97,4 +118,57 @@ describe('LedgerDashboard', () => {
     expect(markup).toContain('Netto')
     expect(markup).toContain('Split')
   })
+
+  it('renders batch and per-row AI categorization actions for transactions needing review', () => {
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    expect(markup).toContain('AI categorize up to 25')
+    expect(findButton('AI categorize up to 25')?.disabled).toBe(false)
+    expect(findButton('AI categorize')?.disabled).toBe(false)
+  })
+
+  it('does not render a per-row AI categorization action for confirmed transactions', () => {
+    queryRows.ledgerTransactions = [{...queryRows.ledgerTransactions[0]!, status: 'confirmed'}]
+
+    renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    expect(findButton('AI categorize up to 25')?.disabled).toBe(true)
+    expect(findButton('AI categorize')).toBeUndefined()
+  })
+
+  it('runs the batch AI mutator with the server cap', async () => {
+    renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    findButton('AI categorize up to 25')?.onClick?.()
+    await flushPromises()
+
+    expect(mutators.ledger.aiCategorizeNeedsReviewBatch).toHaveBeenCalledWith({limit: 25})
+    expect(zeroMutate).toHaveBeenCalledWith({type: 'aiCategorizeNeedsReviewBatch', input: {limit: 25}})
+  })
+
+  it('runs the row AI mutator with the ledger transaction id', async () => {
+    renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    findButton('AI categorize')?.onClick?.()
+    await flushPromises()
+
+    expect(mutators.ledger.aiCategorizeTransaction).toHaveBeenCalledWith({ledgerTransactionId: 'ledger-transaction-1'})
+    expect(zeroMutate).toHaveBeenCalledWith({type: 'aiCategorizeTransaction', input: {ledgerTransactionId: 'ledger-transaction-1'}})
+  })
 })
+
+function findButton(text: string) {
+  return renderedButtons.find(button => textFromNode(button.children) === text)
+}
+
+function textFromNode(node: React.ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(textFromNode).join('')
+  if (React.isValidElement<{children?: React.ReactNode}>(node)) return textFromNode(node.props.children)
+  return ''
+}
+
+async function flushPromises() {
+  await Promise.resolve()
+  await Promise.resolve()
+}

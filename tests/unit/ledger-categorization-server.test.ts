@@ -239,6 +239,59 @@ describe('categorizeLedgerTransaction', () => {
     expect(movement?.debitAccountId).toBe('groceries')
   })
 
+  it('can keep an AI suggestion in review and persist confidence', async () => {
+    const {categorizeLedgerTransaction} = await import('@/ledger/categorization.server')
+
+    await db.transaction(tx =>
+      categorizeLedgerTransaction(tx, {
+        userId: 'user-1',
+        ledgerTransactionId: 'ledger-transaction-1',
+        accountId: 'groceries',
+        status: 'needs_review',
+        aiConfidence: '0.8500',
+      }),
+    )
+
+    const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    const [movement] = await db
+      .select()
+      .from(ledgerTransactionMovements)
+      .where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+
+    expect(transaction?.status).toBe('needs_review')
+    expect(transaction?.aiConfidence).toBe('0.8500')
+    expect(movement).toMatchObject({
+      debitAccountId: 'groceries',
+      creditAccountId: 'bank-ledger-account',
+      amount: '100.0000',
+    })
+  })
+
+  it('skips writing movements when the required current status no longer matches', async () => {
+    const {categorizeLedgerTransaction} = await import('@/ledger/categorization.server')
+
+    await db.update(ledgerTransactions).set({status: 'confirmed'}).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+
+    const result = await db.transaction(tx =>
+      categorizeLedgerTransaction(tx, {
+        userId: 'user-1',
+        ledgerTransactionId: 'ledger-transaction-1',
+        accountId: 'groceries',
+        requiredCurrentStatus: 'needs_review',
+      }),
+    )
+
+    const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    const [movement] = await db
+      .select()
+      .from(ledgerTransactionMovements)
+      .where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+
+    expect(result).toBe(false)
+    expect(transaction?.status).toBe('confirmed')
+    expect(movement).toMatchObject({debitAccountId: 'uncategorized', creditAccountId: 'bank-ledger-account'})
+  })
+
   it('rejects users outside the transaction team', async () => {
     const {categorizeLedgerTransaction} = await import('@/ledger/categorization.server')
 
