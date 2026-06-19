@@ -98,6 +98,7 @@ export default drizzleZeroConfig(drizzleSchema, {
       source: true,
       status: true,
       aiConfidence: true,
+      aiProcessingStartedAt: true,
       date: true,
       description: true,
       createdAt: true,

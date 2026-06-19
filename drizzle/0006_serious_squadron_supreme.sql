@@ -1,0 +1,2 @@
+ALTER TABLE "ledger_transactions" ALTER COLUMN "ai_confidence" TYPE integer USING CASE WHEN "ai_confidence" >= 0.9 THEN 2 WHEN "ai_confidence" IS NOT NULL THEN 1 ELSE NULL END;--> statement-breakpoint
+ALTER TABLE "ledger_transactions" ADD COLUMN "ai_processing_started_at" timestamp;

@@ -39,6 +39,7 @@ describe('banking schema exports', () => {
     expect(ledgerAccounts.normalBalance).toBeDefined()
     expect(ledgerTransactions.bankTransactionId).toBeDefined()
     expect(ledgerTransactions.aiConfidence).toBeDefined()
+    expect(ledgerTransactions.aiProcessingStartedAt).toBeDefined()
     expect(ledgerTransactionMovements.debitAccountId).toBeDefined()
     expect(ledgerTransactionMovements.creditAccountId).toBeDefined()
   })

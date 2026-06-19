@@ -11,7 +11,7 @@ export type BankImportLedgerDraftInput = {
   description: string
   date: string | null
   status: LedgerTransactionStatus
-  aiConfidence?: string | null
+  aiConfidence?: 0 | 1 | 2 | null
 }
 
 export function buildBankImportLedgerDraft(input: BankImportLedgerDraftInput) {
@@ -28,6 +28,7 @@ export function buildBankImportLedgerDraft(input: BankImportLedgerDraftInput) {
       source: 'bank_import' as const,
       status: input.status,
       aiConfidence: input.aiConfidence ?? null,
+      aiProcessingStartedAt: null,
       date: input.date,
       description: input.description,
       createdAt: now,

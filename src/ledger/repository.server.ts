@@ -153,7 +153,7 @@ export async function ensureGeneratedLedgerTransactionForBankTransaction(
     description: string
     date: string | null
     status?: LedgerTransactionStatus
-    aiConfidence?: string | null
+    aiConfidence?: 0 | 1 | 2 | null
   },
 ) {
   const [existing] = await tx

@@ -140,6 +140,7 @@ async function seedCategorizationFixture() {
     source: 'bank_import',
     status: 'needs_review',
     aiConfidence: null,
+    aiProcessingStartedAt: null,
     date: '2026-06-18',
     description: 'Supermarket',
     createdAt: now,
@@ -239,8 +240,13 @@ describe('categorizeLedgerTransaction', () => {
     expect(movement?.debitAccountId).toBe('groceries')
   })
 
-  it('can keep an AI suggestion in review and persist confidence', async () => {
+  it('can keep an AI suggestion in review, persist enum confidence, and clear processing', async () => {
     const {categorizeLedgerTransaction} = await import('@/ledger/categorization.server')
+
+    await db
+      .update(ledgerTransactions)
+      .set({aiProcessingStartedAt: new Date('2026-06-18T10:30:00.000Z')})
+      .where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
 
     await db.transaction(tx =>
       categorizeLedgerTransaction(tx, {
@@ -248,7 +254,7 @@ describe('categorizeLedgerTransaction', () => {
         ledgerTransactionId: 'ledger-transaction-1',
         accountId: 'groceries',
         status: 'needs_review',
-        aiConfidence: '0.8500',
+        aiConfidence: 1,
       }),
     )
 
@@ -259,7 +265,8 @@ describe('categorizeLedgerTransaction', () => {
       .where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
 
     expect(transaction?.status).toBe('needs_review')
-    expect(transaction?.aiConfidence).toBe('0.8500')
+    expect(transaction?.aiConfidence).toBe(1)
+    expect(transaction?.aiProcessingStartedAt).toBeNull()
     expect(movement).toMatchObject({
       debitAccountId: 'groceries',
       creditAccountId: 'bank-ledger-account',

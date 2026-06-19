@@ -43,6 +43,13 @@
       "when": 1781768225122,
       "tag": "0005_amazing_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781856831860,
+      "tag": "0006_serious_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }

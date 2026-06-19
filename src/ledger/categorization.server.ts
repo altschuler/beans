@@ -17,12 +17,13 @@ type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 type DrizzleTransaction = DatabaseTransaction | ZeroDrizzleTransaction<Database>
 
 type LedgerTransactionFinalStatus = 'confirmed' | 'needs_review'
+type LedgerTransactionAiConfidence = 0 | 1 | 2
 
 type CategorizeLedgerTransactionInput = {
   userId: string
   ledgerTransactionId: string
   status?: LedgerTransactionFinalStatus
-  aiConfidence?: string | null
+  aiConfidence?: LedgerTransactionAiConfidence | null
   requiredCurrentStatus?: LedgerTransactionFinalStatus
 } & ({accountId: string; lines?: never} | {accountId?: never; lines: CategorizationLineInput[]})
 
@@ -97,7 +98,12 @@ export async function categorizeLedgerTransaction(tx: DrizzleTransaction, input:
     lines,
   })
 
-  const nextTransactionValues = {status: input.status ?? 'confirmed', aiConfidence: input.aiConfidence ?? null, updatedAt: new Date()}
+  const nextTransactionValues = {
+    status: input.status ?? 'confirmed',
+    aiConfidence: input.aiConfidence ?? null,
+    aiProcessingStartedAt: null,
+    updatedAt: new Date(),
+  }
 
   if (input.requiredCurrentStatus) {
     const [updatedTransaction] = await tx

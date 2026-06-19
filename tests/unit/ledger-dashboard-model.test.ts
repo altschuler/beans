@@ -16,6 +16,8 @@ describe('buildLedgerDashboardModel', () => {
           bankTransactionId: 'bank-transaction-1',
           source: 'bank_import',
           status: 'needs_review',
+          aiConfidence: 1,
+          aiProcessingStartedAt: new Date(),
           date: '2026-06-18',
           description: 'Netto',
         },
@@ -46,6 +48,7 @@ describe('buildLedgerDashboardModel', () => {
     })
 
     expect(model.reviewCount).toBe(1)
+    expect(model.aiProcessingCount).toBe(1)
     expect(model.categorizationAccounts.map(account => account.name)).toEqual(['Uncategorized', 'Groceries'])
     expect(model.accountGroups[0]).toMatchObject({name: 'Everyday spending'})
     expect(model.accountGroups[0]?.accounts.find(account => account.id === 'uncategorized')?.balance).toBe('-100.0000')
@@ -58,6 +61,9 @@ describe('buildLedgerDashboardModel', () => {
       categoryAccountId: 'uncategorized',
       isSplit: false,
       needsReview: true,
+      aiConfidence: 1,
+      aiProcessing: true,
+      aiIndicator: {kind: 'processing', title: 'AI is currently categorizing this transaction'},
     })
   })
 })

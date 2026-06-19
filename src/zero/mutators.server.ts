@@ -1,10 +1,9 @@
 import '@tanstack/react-start/server-only'
 
 import {defineMutator, defineMutators} from '@rocicorp/zero'
-import {aiCategorizeLedgerTransactions} from '@/ledger/ai-categorization.server'
 import {categorizeLedgerTransaction} from '@/ledger/categorization.server'
 import {requireUserID} from './context'
-import {aiCategorizeNeedsReviewBatchInput, aiCategorizeTransactionInput, categorizeTransactionInput, mutators, splitTransactionInput} from './mutators'
+import {categorizeTransactionInput, mutators, splitTransactionInput} from './mutators'
 
 export const serverMutators = defineMutators(mutators, {
   ledger: {
@@ -22,20 +21,6 @@ export const serverMutators = defineMutators(mutators, {
         userId: requireUserID(ctx),
         ledgerTransactionId: args.ledgerTransactionId,
         lines: args.lines,
-      })
-    }),
-    aiCategorizeTransaction: defineMutator(aiCategorizeTransactionInput, async ({args, ctx, tx}) => {
-      if (tx.location !== 'server') return
-      await aiCategorizeLedgerTransactions(tx.dbTransaction.wrappedTransaction, {
-        userId: requireUserID(ctx),
-        ledgerTransactionIds: [args.ledgerTransactionId],
-      })
-    }),
-    aiCategorizeNeedsReviewBatch: defineMutator(aiCategorizeNeedsReviewBatchInput, async ({args, ctx, tx}) => {
-      if (tx.location !== 'server') return
-      await aiCategorizeLedgerTransactions(tx.dbTransaction.wrappedTransaction, {
-        userId: requireUserID(ctx),
-        limit: args.limit,
       })
     }),
   },

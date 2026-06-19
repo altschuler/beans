@@ -2,21 +2,22 @@ import '@tanstack/react-start/server-only'
 
 import {openai} from '@ai-sdk/openai'
 import {generateObject} from 'ai'
-import {and, desc, eq, inArray, isNull} from 'drizzle-orm'
-import type {DrizzleTransaction as ZeroDrizzleTransaction} from '@rocicorp/zero/server/adapters/drizzle'
+import {and, desc, eq, inArray, isNull, lt, or} from 'drizzle-orm'
 import {z} from 'zod'
-import type {Database} from '@/db/client'
+import {db, type Database} from '@/db/client'
 import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerTransactions, teamMembers} from '@/db/schema'
 import {categorizeLedgerTransaction} from './categorization.server'
 
 export const AI_CATEGORIZATION_MODEL = 'gpt-5.4-nano'
-export const AI_CATEGORIZATION_CONFIRM_THRESHOLD = 0.9
 export const MAX_AI_CATEGORIZATION_BATCH_SIZE = 25
+const AI_PROCESSING_STALE_AFTER_MS = 30 * 60 * 1000
+
+const aiConfidenceSchema = z.union([z.literal(0), z.literal(1), z.literal(2)])
 
 const suggestionSchema = z.object({
   ledgerTransactionId: z.string().min(1),
-  categoryAccountId: z.string().min(1),
-  confidence: z.number().min(0).max(1),
+  categoryAccountId: z.string().min(1).nullable(),
+  confidence: aiConfidenceSchema,
   reasoning: z.string().nullable(),
 })
 
@@ -59,7 +60,7 @@ export type AiCategorizationResult = {
 }
 
 type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
-type DrizzleTransaction = DatabaseTransaction | ZeroDrizzleTransaction<Database>
+type DrizzleTransaction = DatabaseTransaction
 
 type AiCategorizeLedgerTransactionsInput = {
   userId: string
@@ -72,99 +73,66 @@ type CategorizeWithModel = (input: AiCategorizationModelInput) => Promise<AiCate
 type LoadedAiCategorizationCategory = AiCategorizationCategory & {teamId: string}
 type LoadedAiCategorizationTransaction = AiCategorizationTransaction & {teamId: string}
 
+type ClaimedAiCategorizationWork = {
+  transactions: LoadedAiCategorizationTransaction[]
+  categories: LoadedAiCategorizationCategory[]
+  processingStartedAt: Date
+}
+
+type ApplySuggestionContext = {
+  categoryTeamsById: Map<string, string>
+  transactionTeamsById: Map<string, string>
+  categorizedTransactionIds: Set<string>
+}
+
 export async function aiCategorizeLedgerTransactions(
-  tx: DrizzleTransaction,
   input: AiCategorizeLedgerTransactionsInput,
   categorizeWithModel: CategorizeWithModel = categorizeWithOpenAI,
 ): Promise<AiCategorizationResult> {
-  const transactions = input.ledgerTransactionIds?.length
-    ? await loadRequestedTransactions(tx, input.userId, input.ledgerTransactionIds)
-    : await loadNeedsReviewBatch(tx, input.userId, input.limit)
+  const work = await db.transaction(tx => claimAiCategorizationWork(tx, input))
+  const transactionIds = work.transactions.map(transaction => transaction.id)
 
-  if (transactions.length === 0) {
-    throw new Error('No transactions available for AI categorization')
-  }
+  try {
+    let suggested = 0
+    let applied = 0
+    let confirmed = 0
+    let stillNeedsReview = 0
+    let skipped = 0
+    const categoryTeamsById = new Map(work.categories.map(category => [category.id, category.teamId]))
+    const transactionTeamsById = new Map(work.transactions.map(transaction => [transaction.id, transaction.teamId]))
+    const categorizedTransactionIds = new Set<string>()
 
-  const transactionTeams = uniqueStrings(transactions.map(transaction => transaction.teamId))
-  const categories = await loadEligibleCategories(tx, input.userId, transactionTeams)
-  if (categories.length === 0) {
-    throw new Error('No categories available for AI categorization')
-  }
+    for (const teamId of uniqueStrings(work.transactions.map(transaction => transaction.teamId))) {
+      const teamTransactions = work.transactions.filter(transaction => transaction.teamId === teamId)
+      const teamCategories = work.categories.filter(category => category.teamId === teamId)
 
-  const categoryTeamsById = new Map(categories.map(category => [category.id, category.teamId]))
-  const transactionTeamsById = new Map(transactions.map(transaction => [transaction.id, transaction.teamId]))
-  const categorizedTransactionIds = new Set<string>()
-  let suggested = 0
-  let applied = 0
-  let confirmed = 0
-  let stillNeedsReview = 0
-  let skipped = 0
-
-  for (const teamId of transactionTeams) {
-    const teamTransactions = transactions.filter(transaction => transaction.teamId === teamId)
-    const teamCategories = categories.filter(category => category.teamId === teamId)
-
-    if (teamCategories.length === 0) {
-      skipped += teamTransactions.length
-      continue
-    }
-
-    const teamSuggestions = await categorizeWithModel({
-      categories: teamCategories.map(toModelCategory),
-      transactions: teamTransactions.map(toModelTransaction),
-    })
-    suggested += teamSuggestions.length
-
-    for (const suggestion of teamSuggestions) {
-      const transactionTeamId = transactionTeamsById.get(suggestion.ledgerTransactionId)
-      const categoryTeamId = categoryTeamsById.get(suggestion.categoryAccountId)
-
-      if (transactionTeamId !== teamId || categoryTeamId !== teamId) {
-        skipped += 1
+      if (teamCategories.length === 0) {
+        skipped += teamTransactions.length
         continue
       }
 
-      if (categorizedTransactionIds.has(suggestion.ledgerTransactionId)) {
-        skipped += 1
-        continue
-      }
-
-      const currentTransaction = await loadCurrentTransactionForAiApplication(tx, input.userId, suggestion.ledgerTransactionId)
-      if (!currentTransaction || currentTransaction.teamId !== transactionTeamId || currentTransaction.status !== 'needs_review') {
-        categorizedTransactionIds.add(suggestion.ledgerTransactionId)
-        skipped += 1
-        continue
-      }
-
-      const status = suggestion.confidence >= AI_CATEGORIZATION_CONFIRM_THRESHOLD ? 'confirmed' : 'needs_review'
-      const didApply = await categorizeLedgerTransaction(tx, {
-        userId: input.userId,
-        ledgerTransactionId: suggestion.ledgerTransactionId,
-        accountId: suggestion.categoryAccountId,
-        status,
-        aiConfidence: formatConfidence(suggestion.confidence),
-        requiredCurrentStatus: 'needs_review',
+      const teamSuggestions = await categorizeWithModel({
+        categories: teamCategories.map(toModelCategory),
+        transactions: teamTransactions.map(toModelTransaction),
       })
+      suggested += teamSuggestions.length
 
-      categorizedTransactionIds.add(suggestion.ledgerTransactionId)
-      if (!didApply) {
-        skipped += 1
-        continue
-      }
-
-      applied += 1
-      if (status === 'confirmed') confirmed += 1
-      else stillNeedsReview += 1
+      const applyResult = await db.transaction(tx =>
+        applyAiCategorizationSuggestions(tx, input.userId, teamId, teamSuggestions, {
+          categoryTeamsById,
+          transactionTeamsById,
+          categorizedTransactionIds,
+        }),
+      )
+      applied += applyResult.applied
+      confirmed += applyResult.confirmed
+      stillNeedsReview += applyResult.stillNeedsReview
+      skipped += applyResult.skipped
     }
-  }
 
-  return {
-    requested: transactions.length,
-    suggested,
-    applied,
-    confirmed,
-    stillNeedsReview,
-    skipped,
+    return {requested: work.transactions.length, suggested, applied, confirmed, stillNeedsReview, skipped}
+  } finally {
+    await clearAiProcessingStartedAt(input.userId, transactionIds, work.processingStartedAt)
   }
 }
 
@@ -176,17 +144,180 @@ export async function categorizeWithOpenAI(input: AiCategorizationModelInput): P
   const {object} = await generateObject({
     model: openai(AI_CATEGORIZATION_MODEL),
     schema: suggestionsSchema,
-    system: `You categorize personal finance ledger transactions. Choose exactly one categoryAccountId from the supplied categories for each transaction. Do not invent category ids. Return a confidence from 0 to 1.
+    system: `You categorize personal finance ledger transactions. For each transaction, return one suggestion with confidence 0, 1, or 2.
+
+Use only supplied category ids. Do not invent category ids.
 
 Confidence calibration:
-- 0.95-1.00: exact or near-certain merchant/category match, or a clear recurring pattern
-- 0.85-0.94: strong semantic match with only minor ambiguity
-- 0.70-0.84: plausible but ambiguous between multiple categories
-- below 0.70: weak guess that likely needs human review`,
+- 0: very low confidence; cannot categorize reliably. Use categoryAccountId null.
+- 1: plausible category but needs user review. Use a supplied categoryAccountId.
+- 2: confident category match. Use a supplied categoryAccountId.
+
+If confidence is 0, categoryAccountId must be null. If confidence is 1 or 2, categoryAccountId must be one supplied category id.`,
     prompt: JSON.stringify(input, null, 2),
   })
 
   return object.suggestions
+}
+
+async function claimAiCategorizationWork(tx: DrizzleTransaction, input: AiCategorizeLedgerTransactionsInput): Promise<ClaimedAiCategorizationWork> {
+  const transactions = input.ledgerTransactionIds?.length
+    ? await loadRequestedTransactions(tx, input.userId, input.ledgerTransactionIds)
+    : await loadNeedsReviewBatch(tx, input.userId, input.limit)
+
+  if (transactions.length === 0) {
+    throw new Error('No transactions available for AI categorization')
+  }
+
+  const now = new Date()
+  const [freshProcessingCutoff, transactionIds] = [aiProcessingFreshCutoff(now), transactions.map(transaction => transaction.id)]
+  const claimedRows = await tx
+    .update(ledgerTransactions)
+    .set({aiProcessingStartedAt: now, updatedAt: now})
+    .where(
+      and(
+        inArray(ledgerTransactions.id, transactionIds),
+        or(isNull(ledgerTransactions.aiProcessingStartedAt), lt(ledgerTransactions.aiProcessingStartedAt, freshProcessingCutoff)),
+      ),
+    )
+    .returning({id: ledgerTransactions.id})
+  const claimedIds = new Set(claimedRows.map(row => row.id))
+  const claimedTransactions = transactions.filter(transaction => claimedIds.has(transaction.id))
+
+  if (claimedTransactions.length === 0) {
+    throw new Error('No transactions available for AI categorization')
+  }
+
+  const transactionTeams = uniqueStrings(claimedTransactions.map(transaction => transaction.teamId))
+  const categories = await loadEligibleCategories(tx, input.userId, transactionTeams)
+  if (categories.length === 0) {
+    throw new Error('No categories available for AI categorization')
+  }
+
+  return {transactions: claimedTransactions, categories, processingStartedAt: now}
+}
+
+async function applyAiCategorizationSuggestions(
+  tx: DrizzleTransaction,
+  userId: string,
+  teamId: string,
+  suggestions: AiCategorizationSuggestion[],
+  context: ApplySuggestionContext,
+): Promise<Pick<AiCategorizationResult, 'applied' | 'confirmed' | 'stillNeedsReview' | 'skipped'>> {
+  let applied = 0
+  let confirmed = 0
+  let stillNeedsReview = 0
+  let skipped = 0
+
+  for (const suggestion of suggestions) {
+    const transactionTeamId = context.transactionTeamsById.get(suggestion.ledgerTransactionId)
+    const categoryTeamId = suggestion.categoryAccountId ? context.categoryTeamsById.get(suggestion.categoryAccountId) : undefined
+
+    if (transactionTeamId !== teamId || (suggestion.confidence > 0 && categoryTeamId !== teamId)) {
+      skipped += 1
+      continue
+    }
+
+    if (context.categorizedTransactionIds.has(suggestion.ledgerTransactionId)) {
+      skipped += 1
+      continue
+    }
+
+    const currentTransaction = await loadCurrentTransactionForAiApplication(tx, userId, suggestion.ledgerTransactionId)
+    if (!currentTransaction || currentTransaction.teamId !== transactionTeamId || currentTransaction.status !== 'needs_review') {
+      context.categorizedTransactionIds.add(suggestion.ledgerTransactionId)
+      skipped += 1
+      continue
+    }
+
+    if (suggestion.confidence === 0) {
+      const didRecord = await recordAiConfidenceWithoutCategory(tx, userId, suggestion.ledgerTransactionId, 0)
+      context.categorizedTransactionIds.add(suggestion.ledgerTransactionId)
+      if (!didRecord) {
+        skipped += 1
+        continue
+      }
+      stillNeedsReview += 1
+      continue
+    }
+
+    if (!suggestion.categoryAccountId) {
+      skipped += 1
+      continue
+    }
+
+    const status = suggestion.confidence === 2 ? 'confirmed' : 'needs_review'
+    const didApply = await categorizeLedgerTransaction(tx, {
+      userId,
+      ledgerTransactionId: suggestion.ledgerTransactionId,
+      accountId: suggestion.categoryAccountId,
+      status,
+      aiConfidence: suggestion.confidence,
+      requiredCurrentStatus: 'needs_review',
+    })
+
+    context.categorizedTransactionIds.add(suggestion.ledgerTransactionId)
+    if (!didApply) {
+      skipped += 1
+      continue
+    }
+
+    applied += 1
+    if (status === 'confirmed') confirmed += 1
+    else stillNeedsReview += 1
+  }
+
+  return {applied, confirmed, stillNeedsReview, skipped}
+}
+
+async function recordAiConfidenceWithoutCategory(tx: DrizzleTransaction, userId: string, ledgerTransactionId: string, aiConfidence: 0) {
+  const now = new Date()
+  const authorizedIds = await selectAuthorizedLedgerTransactionIds(tx, userId, [ledgerTransactionId], 'needs_review')
+  if (authorizedIds.length === 0) return false
+
+  const [updatedTransaction] = await tx
+    .update(ledgerTransactions)
+    .set({status: 'needs_review', aiConfidence, aiProcessingStartedAt: null, updatedAt: now})
+    .where(inArray(ledgerTransactions.id, authorizedIds))
+    .returning({id: ledgerTransactions.id})
+
+  return Boolean(updatedTransaction)
+}
+
+async function clearAiProcessingStartedAt(userId: string, ledgerTransactionIds: string[], processingStartedAt: Date) {
+  if (ledgerTransactionIds.length === 0) return
+
+  const authorizedIds = await selectAuthorizedLedgerTransactionIds(db, userId, ledgerTransactionIds)
+  if (authorizedIds.length === 0) return
+
+  await db
+    .update(ledgerTransactions)
+    .set({aiProcessingStartedAt: null, updatedAt: new Date()})
+    .where(and(inArray(ledgerTransactions.id, authorizedIds), eq(ledgerTransactions.aiProcessingStartedAt, processingStartedAt)))
+}
+
+async function selectAuthorizedLedgerTransactionIds(
+  tx: DrizzleTransaction | Database,
+  userId: string,
+  ledgerTransactionIds: string[],
+  requiredStatus?: 'needs_review',
+) {
+  if (ledgerTransactionIds.length === 0) return []
+
+  const conditions = [
+    inArray(ledgerTransactions.id, ledgerTransactionIds),
+    eq(teamMembers.teamId, ledgerTransactions.teamId),
+    eq(teamMembers.userId, userId),
+  ]
+  if (requiredStatus) conditions.push(eq(ledgerTransactions.status, requiredStatus))
+
+  const rows = await tx
+    .select({id: ledgerTransactions.id})
+    .from(ledgerTransactions)
+    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
+    .where(and(...conditions))
+
+  return rows.map(row => row.id)
 }
 
 async function loadEligibleCategories(tx: DrizzleTransaction, userId: string, teamIds: string[]): Promise<LoadedAiCategorizationCategory[]> {
@@ -245,6 +376,7 @@ async function loadTransactions(
     eq(teamMembers.userId, userId),
     eq(ledgerTransactions.source, 'bank_import'),
     eq(ledgerTransactions.status, 'needs_review'),
+    or(isNull(ledgerTransactions.aiProcessingStartedAt), lt(ledgerTransactions.aiProcessingStartedAt, aiProcessingFreshCutoff())),
   ]
 
   if (ledgerTransactionIds) {
@@ -316,8 +448,8 @@ function toModelTransaction(transaction: LoadedAiCategorizationTransaction): AiC
   }
 }
 
-function formatConfidence(confidence: number) {
-  return confidence.toFixed(4)
+function aiProcessingFreshCutoff(now = new Date()) {
+  return new Date(now.getTime() - AI_PROCESSING_STALE_AFTER_MS)
 }
 
 function uniqueStrings(values: string[]) {

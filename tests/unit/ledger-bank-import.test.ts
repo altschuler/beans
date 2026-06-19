@@ -14,7 +14,7 @@ describe('buildBankImportLedgerDraft', () => {
         description: 'Salary',
         date: '2026-06-17',
         status: 'confirmed',
-        aiConfidence: '0.95',
+        aiConfidence: 2,
       }),
     ).toMatchObject({
       transaction: {
@@ -22,7 +22,8 @@ describe('buildBankImportLedgerDraft', () => {
         bankTransactionId: 'bank-transaction-1',
         source: 'bank_import',
         status: 'confirmed',
-        aiConfidence: '0.95',
+        aiConfidence: 2,
+        aiProcessingStartedAt: null,
         date: '2026-06-17',
         description: 'Salary',
       },
@@ -48,7 +49,7 @@ describe('buildBankImportLedgerDraft', () => {
         description: 'Wolt',
         date: '2026-06-17',
         status: 'needs_review',
-        aiConfidence: '0.62',
+        aiConfidence: 1,
       }).movement,
     ).toMatchObject({
       debitAccountId: 'takeaway',

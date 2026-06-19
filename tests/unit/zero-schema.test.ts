@@ -32,6 +32,7 @@ describe('zero schema', () => {
     expect(schema.tables.ledgerAccounts.columns.linkedBankAccountId).toMatchObject({type: 'string', optional: true, serverName: 'linked_bank_account_id'})
     expect(schema.tables.ledgerTransactions.columns.bankTransactionId).toMatchObject({type: 'string', optional: true, serverName: 'bank_transaction_id'})
     expect(schema.tables.ledgerTransactions.columns.aiConfidence).toMatchObject({type: 'number', optional: true, serverName: 'ai_confidence'})
+    expect(schema.tables.ledgerTransactions.columns.aiProcessingStartedAt).toMatchObject({type: 'number', optional: true, serverName: 'ai_processing_started_at'})
     expect(schema.tables.ledgerTransactionMovements.columns.debitAccountId).toMatchObject({type: 'string', optional: false, serverName: 'debit_account_id'})
     expect(schema.tables.ledgerTransactionMovements.columns.creditAccountId).toMatchObject({type: 'string', optional: false, serverName: 'credit_account_id'})
   })

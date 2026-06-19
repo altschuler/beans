@@ -1,12 +1,8 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
 const categorizeLedgerTransaction = vi.hoisted(() => vi.fn(async () => undefined))
-const aiCategorizeLedgerTransactions = vi.hoisted(() =>
-  vi.fn(async () => ({requested: 1, suggested: 1, applied: 1, confirmed: 1, stillNeedsReview: 0, skipped: 0})),
-)
 
 vi.mock('@/ledger/categorization.server', () => ({categorizeLedgerTransaction}))
-vi.mock('@/ledger/ai-categorization.server', () => ({aiCategorizeLedgerTransactions}))
 
 describe('ledger Zero mutators', () => {
   beforeEach(() => {
@@ -69,48 +65,13 @@ describe('ledger Zero mutators', () => {
     expect(categorizeLedgerTransaction).not.toHaveBeenCalled()
   })
 
-  it('runs single-transaction AI categorization on the server transaction', async () => {
-    const {serverMutators} = await import('@/zero/mutators.server')
-    const request = serverMutators.ledger.aiCategorizeTransaction({ledgerTransactionId: 'ledger-transaction-1'})
-
-    await request.mutator.fn({
-      args: request.args,
-      ctx: {userID: 'user-1'},
-      tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never,
-    })
-
-    expect(aiCategorizeLedgerTransactions).toHaveBeenCalledWith('wrapped-tx', {
-      userId: 'user-1',
-      ledgerTransactionIds: ['ledger-transaction-1'],
-    })
-  })
-
-  it('runs capped batch AI categorization on the server transaction', async () => {
-    const {serverMutators} = await import('@/zero/mutators.server')
-    const request = serverMutators.ledger.aiCategorizeNeedsReviewBatch({limit: 100})
-
-    await request.mutator.fn({
-      args: request.args,
-      ctx: {userID: 'user-1'},
-      tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never,
-    })
-
-    expect(aiCategorizeLedgerTransactions).toHaveBeenCalledWith('wrapped-tx', {
-      userId: 'user-1',
-      limit: 100,
-    })
-  })
-
-  it('does not run AI categorization during optimistic client execution', async () => {
+  it('does not expose AI orchestration as Zero mutators', async () => {
     const {mutators} = await import('@/zero/mutators')
-    const request = mutators.ledger.aiCategorizeTransaction({ledgerTransactionId: 'ledger-transaction-1'})
+    const {serverMutators} = await import('@/zero/mutators.server')
 
-    await request.mutator.fn({
-      args: request.args,
-      ctx: {userID: 'user-1'},
-      tx: {location: 'client'} as never,
-    })
-
-    expect(aiCategorizeLedgerTransactions).not.toHaveBeenCalled()
+    expect('aiCategorizeTransaction' in mutators.ledger).toBe(false)
+    expect('aiCategorizeNeedsReviewBatch' in mutators.ledger).toBe(false)
+    expect('aiCategorizeTransaction' in serverMutators.ledger).toBe(false)
+    expect('aiCategorizeNeedsReviewBatch' in serverMutators.ledger).toBe(false)
   })
 })

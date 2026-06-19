@@ -1,16 +1,17 @@
 import {useMemo, useRef, useState} from 'react'
 import {Link} from '@tanstack/react-router'
 import {useQuery, useZero} from '@rocicorp/zero/react'
+import {GitBranch, Sparkles} from 'lucide-react'
 import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
 import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
 import {Input} from '@/components/ui/input'
-import {Label} from '@/components/ui/label'
 import {showErrorToast} from '@/lib/show-error-toast'
+import {aiCategorizeNeedsReviewBatch, aiCategorizeTransaction} from '@/ledger/ai-categorization-fns'
 import {mutators} from '@/zero/mutators'
-import {saveDashboardSplitTransaction} from './save-dashboard-split-transaction'
 import {queries} from '@/zero/queries'
 import {buildLedgerDashboardModel} from './ledger-dashboard-model'
+import {saveDashboardSplitTransaction} from './save-dashboard-split-transaction'
 
 type SplitLine = {accountId: string; amount: string}
 
@@ -32,10 +33,8 @@ export function LedgerDashboard() {
   const [splitTransactionId, setSplitTransactionId] = useState<string | null>(null)
   const [splitLines, setSplitLines] = useState<SplitLine[]>([])
   const [message, setMessage] = useState('')
-  const [isBatchAiPending, setIsBatchAiPending] = useState(false)
-  const [pendingAiTransactionIds, setPendingAiTransactionIds] = useState<Set<string>>(() => new Set())
-  const isBatchAiPendingRef = useRef(false)
-  const pendingAiTransactionIdsRef = useRef(new Set<string>())
+  const [isAiRequestPending, setIsAiRequestPending] = useState(false)
+  const isAiRequestPendingRef = useRef(false)
 
   const model = useMemo(
     () => buildLedgerDashboardModel({groups, accounts, ledgerTransactions, movements, bankTransactions, bankAccounts}),
@@ -52,40 +51,36 @@ export function LedgerDashboard() {
   }
 
   async function aiCategorizeBatch() {
-    if (isBatchAiPendingRef.current) return
+    if (isAiRequestPendingRef.current) return
 
-    isBatchAiPendingRef.current = true
-    setIsBatchAiPending(true)
+    isAiRequestPendingRef.current = true
+    setIsAiRequestPending(true)
     setMessage('AI categorizing up to 25 transactions…')
     try {
-      await zero.mutate(mutators.ledger.aiCategorizeNeedsReviewBatch({limit: 25}))
+      await aiCategorizeNeedsReviewBatch({data: {limit: 25}})
       setMessage('AI categorization finished. Review any transactions still marked needs review.')
     } catch {
       setMessage('AI categorization failed. Try again.')
     } finally {
-      isBatchAiPendingRef.current = false
-      setIsBatchAiPending(false)
+      isAiRequestPendingRef.current = false
+      setIsAiRequestPending(false)
     }
   }
 
   async function aiCategorizeOne(ledgerTransactionId: string) {
-    if (pendingAiTransactionIdsRef.current.has(ledgerTransactionId)) return
+    if (isAiRequestPendingRef.current) return
 
-    pendingAiTransactionIdsRef.current.add(ledgerTransactionId)
-    setPendingAiTransactionIds(current => new Set(current).add(ledgerTransactionId))
+    isAiRequestPendingRef.current = true
+    setIsAiRequestPending(true)
     setMessage('AI categorizing transaction…')
     try {
-      await zero.mutate(mutators.ledger.aiCategorizeTransaction({ledgerTransactionId}))
+      await aiCategorizeTransaction({data: {ledgerTransactionId}})
       setMessage('AI categorization finished. Review the transaction if it still needs review.')
     } catch {
       setMessage('AI could not categorize this transaction.')
     } finally {
-      pendingAiTransactionIdsRef.current.delete(ledgerTransactionId)
-      setPendingAiTransactionIds(current => {
-        const next = new Set(current)
-        next.delete(ledgerTransactionId)
-        return next
-      })
+      isAiRequestPendingRef.current = false
+      setIsAiRequestPending(false)
     }
   }
 
@@ -124,8 +119,13 @@ export function LedgerDashboard() {
           <div className="rounded-md border bg-background px-4 py-3 text-sm font-semibold">
             {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
           </div>
-          <Button type="button" variant="outline" disabled={model.reviewCount === 0 || isBatchAiPending} onClick={() => void aiCategorizeBatch()}>
-            {isBatchAiPending ? 'AI categorizing…' : 'AI categorize up to 25'}
+          {model.aiProcessingCount > 0 ? (
+            <div className="rounded-md border bg-background px-4 py-3 text-sm font-semibold text-muted-foreground">
+              AI running · {model.aiProcessingCount} processing
+            </div>
+          ) : null}
+          <Button type="button" variant="outline" disabled={model.reviewCount === 0 || isAiRequestPending} onClick={() => void aiCategorizeBatch()}>
+            AI categorize up to 25
           </Button>
           <SyncAllBankAccountsButton accounts={bankAccounts} onMessage={setMessage} />
         </div>
@@ -170,106 +170,150 @@ export function LedgerDashboard() {
             {model.transactionRows.length === 0 ? (
               <p className="text-sm text-muted-foreground">No imported ledger transactions yet.</p>
             ) : (
-              model.transactionRows.map(row => (
-                <div key={row.id} className="space-y-3 rounded-md border p-3">
-                  <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">{row.description}</p>
-                        {row.needsReview ? <span className="rounded-full bg-secondary px-2 py-0.5 text-xs">Needs review</span> : null}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {row.bankAccountName} · {row.date ?? 'No date'} · {row.categoryLabel}
-                      </p>
-                    </div>
-                    <p className="font-mono text-sm">
-                      {row.amount} {row.currency}
-                    </p>
-                  </div>
-
-                  <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                    <div className="space-y-1">
-                      <Label htmlFor={`category-${row.id}`}>Category</Label>
-                      <select
-                        id={`category-${row.id}`}
-                        className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                        value={row.isSplit ? '' : (row.categoryAccountId ?? '')}
-                        onChange={event => void categorizeTransaction(row.id, event.target.value)}
-                      >
-                        <option value="" disabled>
-                          {row.isSplit ? 'Split transaction' : 'Choose category'}
-                        </option>
-                        {model.categorizationAccounts.map(account => (
-                          <option key={account.id} value={account.id}>
-                            {account.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {row.needsReview ? (
-                        <Button type="button" variant="outline" disabled={pendingAiTransactionIds.has(row.id)} onClick={() => void aiCategorizeOne(row.id)}>
-                          {pendingAiTransactionIds.has(row.id) ? 'AI categorizing…' : 'AI categorize'}
-                        </Button>
-                      ) : null}
-                      <Button type="button" variant="outline" onClick={() => openSplit(row)}>
-                        Split
-                      </Button>
-                    </div>
-                  </div>
-
-                  {splitTransactionId === row.id ? (
-                    <div className="space-y-3 rounded-md bg-muted/60 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium">Split transaction</p>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setSplitLines([...splitLines, {accountId: model.categorizationAccounts[0]?.id ?? '', amount: ''}])}
-                        >
-                          Add line
-                        </Button>
-                      </div>
-                      {splitLines.map((line, index) => (
-                        <div key={index} className="grid gap-2 md:grid-cols-[1fr_10rem_auto]">
-                          <select
-                            className="h-10 rounded-md border bg-background px-3 text-sm"
-                            value={line.accountId}
-                            onChange={event =>
-                              setSplitLines(splitLines.map((existing, lineIndex) => (lineIndex === index ? {...existing, accountId: event.target.value} : existing)))
-                            }
-                          >
-                            {model.categorizationAccounts.map(account => (
-                              <option key={account.id} value={account.id}>
-                                {account.name}
-                              </option>
-                            ))}
-                          </select>
-                          <Input
-                            value={line.amount}
-                            onChange={event => setSplitLines(splitLines.map((existing, lineIndex) => (lineIndex === index ? {...existing, amount: event.target.value} : existing)))}
-                            placeholder="0.00"
-                          />
-                          <Button type="button" variant="outline" onClick={() => setSplitLines(splitLines.filter((_, lineIndex) => lineIndex !== index))}>
-                            Remove
-                          </Button>
-                        </div>
+              <>
+                <div className="overflow-x-auto rounded-md border">
+                  <table className="w-full min-w-[860px] text-sm">
+                    <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Description</th>
+                        <th className="px-3 py-2 text-left font-semibold">Date</th>
+                        <th className="px-3 py-2 text-left font-semibold">Bank account</th>
+                        <th className="px-3 py-2 text-left font-semibold">Category</th>
+                        <th className="px-3 py-2 text-center font-semibold">AI</th>
+                        <th className="px-3 py-2 text-right font-semibold">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {model.transactionRows.map(row => (
+                        <tr key={row.id} className="border-t align-middle">
+                          <td className="px-3 py-3 font-medium">{row.description}</td>
+                          <td className="px-3 py-3 text-muted-foreground">{row.date ?? 'No date'}</td>
+                          <td className="px-3 py-3 text-muted-foreground">{row.bankAccountName}</td>
+                          <td className="px-3 py-3">
+                            <div className="flex min-w-[14rem] items-center gap-2">
+                              <select
+                                id={`category-${row.id}`}
+                                aria-label={`Category for ${row.description}`}
+                                className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm"
+                                value={row.isSplit ? '' : (row.categoryAccountId ?? '')}
+                                onChange={event => void categorizeTransaction(row.id, event.target.value)}
+                              >
+                                <option value="" disabled>
+                                  {row.isSplit ? 'Split transaction' : 'Choose category'}
+                                </option>
+                                {model.categorizationAccounts.map(account => (
+                                  <option key={account.id} value={account.id}>
+                                    {account.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                title="AI categorize transaction"
+                                aria-label="AI categorize transaction"
+                                disabled={!row.needsReview || isAiRequestPending || row.aiProcessing}
+                                onClick={() => void aiCategorizeOne(row.id)}
+                              >
+                                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" title="Split transaction" aria-label="Split transaction" onClick={() => openSplit(row)}>
+                                <GitBranch className="h-4 w-4" aria-hidden="true" />
+                              </Button>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            {row.aiIndicator ? (
+                              <span
+                                title={row.aiIndicator.title}
+                                aria-label={row.aiIndicator.title}
+                                role={row.aiIndicator.kind === 'processing' ? 'status' : 'img'}
+                                className={`inline-block h-2.5 w-2.5 rounded-full ${row.aiIndicator.className}`}
+                              />
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-3 text-right font-mono">
+                            {row.amount} {row.currency}
+                          </td>
+                        </tr>
                       ))}
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" variant="outline" onClick={() => setSplitTransactionId(null)}>
-                          Cancel
-                        </Button>
-                        <Button type="button" onClick={() => void saveSplit(row)}>
-                          Save split
-                        </Button>
-                      </div>
-                    </div>
-                  ) : null}
+                    </tbody>
+                  </table>
                 </div>
-              ))
+                {splitTransactionId ? (
+                  <SplitEditor
+                    row={model.transactionRows.find(transactionRow => transactionRow.id === splitTransactionId) ?? null}
+                    splitLines={splitLines}
+                    setSplitLines={setSplitLines}
+                    categorizationAccounts={model.categorizationAccounts}
+                    onCancel={() => setSplitTransactionId(null)}
+                    onSave={row => void saveSplit(row)}
+                  />
+                ) : null}
+              </>
             )}
           </CardContent>
         </Card>
+      </div>
+    </div>
+  )
+}
+
+type CategorizationAccountOption = {id: string; name: string}
+
+type SplitEditorProps = {
+  row: DashboardRowForSplit | null
+  splitLines: SplitLine[]
+  setSplitLines: (lines: SplitLine[]) => void
+  categorizationAccounts: CategorizationAccountOption[]
+  onCancel: () => void
+  onSave: (row: DashboardRowForSplit) => void
+}
+
+function SplitEditor({row, splitLines, setSplitLines, categorizationAccounts, onCancel, onSave}: SplitEditorProps) {
+  if (!row) return null
+
+  return (
+    <div className="space-y-3 rounded-md bg-muted/60 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium">Split transaction</p>
+        <Button type="button" variant="outline" onClick={() => setSplitLines([...splitLines, {accountId: categorizationAccounts[0]?.id ?? '', amount: ''}])}>
+          Add line
+        </Button>
+      </div>
+      {splitLines.map((line, index) => (
+        <div key={index} className="grid gap-2 md:grid-cols-[1fr_10rem_auto]">
+          <select
+            aria-label={`Split line ${index + 1} category`}
+            className="h-10 rounded-md border bg-background px-3 text-sm"
+            value={line.accountId}
+            onChange={event => setSplitLines(splitLines.map((existing, lineIndex) => (lineIndex === index ? {...existing, accountId: event.target.value} : existing)))}
+          >
+            {categorizationAccounts.map(account => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+          <Input
+            aria-label={`Split line ${index + 1} amount`}
+            value={line.amount}
+            onChange={event => setSplitLines(splitLines.map((existing, lineIndex) => (lineIndex === index ? {...existing, amount: event.target.value} : existing)))}
+            placeholder="0.00"
+          />
+          <Button type="button" variant="outline" onClick={() => setSplitLines(splitLines.filter((_, lineIndex) => lineIndex !== index))}>
+            Remove
+          </Button>
+        </div>
+      ))}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="button" onClick={() => onSave(row)}>
+          Save split
+        </Button>
       </div>
     </div>
   )

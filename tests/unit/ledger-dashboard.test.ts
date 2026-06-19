@@ -5,15 +5,26 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 const queryRows = vi.hoisted(() => ({
   groups: [] as Array<{id: string; name: string; sortOrder: number}>,
   accounts: [] as Array<{id: string; groupId: string; name: string; type: string; normalBalance: string; status: string; sortOrder: number}>,
-  ledgerTransactions: [] as Array<{id: string; bankTransactionId: string | null; source: string; status: string; date: string | null; description: string}>,
+  ledgerTransactions: [] as Array<{
+    id: string
+    bankTransactionId: string | null
+    source: string
+    status: string
+    aiConfidence: number | null
+    aiProcessingStartedAt: Date | null
+    date: string | null
+    description: string
+  }>,
   movements: [] as Array<{id: string; ledgerTransactionId: string; debitAccountId: string; creditAccountId: string; amount: string; currency: string; sortOrder: number}>,
   bankTransactions: [] as Array<{id: string; bankAccountId: string; amount: string; currency: string; bookingDate: string | null; valueDate: string | null; description: string}>,
   bankAccounts: [] as Array<{id: string; name: string; syncStatus?: string}>,
 }))
 
 const zeroMutate = vi.hoisted(() => vi.fn(async () => undefined))
+const aiCategorizeTransaction = vi.hoisted(() => vi.fn(async () => ({requested: 1, suggested: 1, applied: 1, confirmed: 0, stillNeedsReview: 1, skipped: 0})))
+const aiCategorizeNeedsReviewBatch = vi.hoisted(() => vi.fn(async () => ({requested: 1, suggested: 1, applied: 1, confirmed: 0, stillNeedsReview: 1, skipped: 0})))
 const renderedButtons = vi.hoisted(
-  () => [] as Array<{children: React.ReactNode; disabled?: boolean; onClick?: () => void; type?: 'button' | 'submit' | 'reset'}>,
+  () => [] as Array<{children: React.ReactNode; disabled?: boolean; onClick?: () => void; type?: 'button' | 'submit' | 'reset'; title?: string; ariaLabel?: string}>,
 )
 
 vi.mock('@rocicorp/zero/react', () => ({
@@ -39,9 +50,23 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@/components/ui/button', async () => {
   const ReactModule = await import('react')
   return {
-    Button: ({children, disabled, onClick, type}: {children: React.ReactNode; disabled?: boolean; onClick?: () => void; type?: 'button' | 'submit' | 'reset'}) => {
-      renderedButtons.push({children, disabled, onClick, type})
-      return ReactModule.createElement('button', {disabled, onClick, type}, children)
+    Button: ({
+      children,
+      disabled,
+      onClick,
+      type,
+      title,
+      'aria-label': ariaLabel,
+    }: {
+      children: React.ReactNode
+      disabled?: boolean
+      onClick?: () => void
+      type?: 'button' | 'submit' | 'reset'
+      title?: string
+      'aria-label'?: string
+    }) => {
+      renderedButtons.push({children, disabled, onClick, type, title, ariaLabel})
+      return ReactModule.createElement('button', {disabled, onClick, type, title, 'aria-label': ariaLabel}, children)
     },
   }
 })
@@ -63,18 +88,20 @@ vi.mock('@/banking/banking-fns', () => ({
   syncAllBankAccounts: vi.fn(),
 }))
 
+vi.mock('@/ledger/ai-categorization-fns', () => ({
+  aiCategorizeTransaction,
+  aiCategorizeNeedsReviewBatch,
+}))
+
 vi.mock('@/zero/mutators', () => ({
   mutators: {
     ledger: {
       categorizeTransaction: vi.fn(input => ({type: 'categorizeTransaction', input})),
       splitTransaction: vi.fn(input => ({type: 'splitTransaction', input})),
-      aiCategorizeTransaction: vi.fn(input => ({type: 'aiCategorizeTransaction', input})),
-      aiCategorizeNeedsReviewBatch: vi.fn(input => ({type: 'aiCategorizeNeedsReviewBatch', input})),
     },
   },
 }))
 
-import {mutators} from '@/zero/mutators'
 import {LedgerDashboard} from '@/components/ledger/ledger-dashboard'
 
 describe('LedgerDashboard', () => {
@@ -89,7 +116,16 @@ describe('LedgerDashboard', () => {
       {id: 'groceries', groupId: 'group-1', name: 'Groceries', type: 'expense', normalBalance: 'credit', status: 'active', sortOrder: 2},
     ]
     queryRows.ledgerTransactions = [
-      {id: 'ledger-transaction-1', bankTransactionId: 'bank-transaction-1', source: 'bank_import', status: 'needs_review', date: '2026-06-18', description: 'Netto'},
+      {
+        id: 'ledger-transaction-1',
+        bankTransactionId: 'bank-transaction-1',
+        source: 'bank_import',
+        status: 'needs_review',
+        aiConfidence: 1,
+        aiProcessingStartedAt: null,
+        date: '2026-06-18',
+        description: 'Netto',
+      },
     ]
     queryRows.movements = [
       {id: 'movement-1', ledgerTransactionId: 'ledger-transaction-1', debitAccountId: 'uncategorized', creditAccountId: 'checking', amount: '100.00', currency: 'DKK', sortOrder: 0},
@@ -116,49 +152,80 @@ describe('LedgerDashboard', () => {
     expect(markup).toContain('href="/app/accounts/uncategorized"')
     expect(markup).toContain('href="/app/accounts/groceries"')
     expect(markup).toContain('Netto')
-    expect(markup).toContain('Split')
   })
 
-  it('renders batch and per-row AI categorization actions for transactions needing review', () => {
+  it('renders transactions as a table with bank account, category actions, and dot-only AI marker', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
-    expect(markup).toContain('AI categorize up to 25')
-    expect(findButton('AI categorize up to 25')?.disabled).toBe(false)
-    expect(findButton('AI categorize')?.disabled).toBe(false)
+    expect(markup).toContain('Description')
+    expect(markup).toContain('Date')
+    expect(markup).toContain('Bank account')
+    expect(markup).toContain('Category')
+    expect(markup).toContain('AI')
+    expect(markup).toContain('Amount')
+    expect(markup).toContain('Checking')
+    expect(markup).toContain('title="AI confidence 1: plausible; needs user review"')
+    expect(findButtonByLabel('AI categorize transaction')?.disabled).toBe(false)
+    expect(findButtonByLabel('Split transaction')?.disabled).toBeFalsy()
   })
 
-  it('does not render a per-row AI categorization action for confirmed transactions', () => {
+  it('disables row AI action for confirmed transactions', () => {
     queryRows.ledgerTransactions = [{...queryRows.ledgerTransactions[0]!, status: 'confirmed'}]
 
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 
-    expect(findButton('AI categorize up to 25')?.disabled).toBe(true)
-    expect(findButton('AI categorize')).toBeUndefined()
+    expect(findButtonByLabel('AI categorize transaction')?.disabled).toBe(true)
   })
 
-  it('runs the batch AI mutator with the server cap', async () => {
+  it('ignores rapid duplicate batch AI clicks before React re-renders', async () => {
+    renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    const button = findButton('AI categorize up to 25')
+    button?.onClick?.()
+    button?.onClick?.()
+    await flushPromises()
+
+    expect(aiCategorizeNeedsReviewBatch).toHaveBeenCalledOnce()
+  })
+
+  it('shows a global AI running indicator when any transaction is processing', () => {
+    queryRows.ledgerTransactions = [
+      {...queryRows.ledgerTransactions[0]!, aiConfidence: null, aiProcessingStartedAt: new Date()},
+    ]
+
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    expect(markup).toContain('AI running · 1 processing')
+    expect(markup).toContain('title="AI is currently categorizing this transaction"')
+  })
+
+  it('runs the batch AI server function with the server cap', async () => {
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     findButton('AI categorize up to 25')?.onClick?.()
     await flushPromises()
 
-    expect(mutators.ledger.aiCategorizeNeedsReviewBatch).toHaveBeenCalledWith({limit: 25})
-    expect(zeroMutate).toHaveBeenCalledWith({type: 'aiCategorizeNeedsReviewBatch', input: {limit: 25}})
+    expect(aiCategorizeNeedsReviewBatch).toHaveBeenCalledWith({data: {limit: 25}})
+    expect(zeroMutate).not.toHaveBeenCalledWith(expect.objectContaining({type: 'aiCategorizeNeedsReviewBatch'}))
   })
 
-  it('runs the row AI mutator with the ledger transaction id', async () => {
+  it('runs the row AI server function with the ledger transaction id', async () => {
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 
-    findButton('AI categorize')?.onClick?.()
+    findButtonByLabel('AI categorize transaction')?.onClick?.()
     await flushPromises()
 
-    expect(mutators.ledger.aiCategorizeTransaction).toHaveBeenCalledWith({ledgerTransactionId: 'ledger-transaction-1'})
-    expect(zeroMutate).toHaveBeenCalledWith({type: 'aiCategorizeTransaction', input: {ledgerTransactionId: 'ledger-transaction-1'}})
+    expect(aiCategorizeTransaction).toHaveBeenCalledWith({data: {ledgerTransactionId: 'ledger-transaction-1'}})
+    expect(zeroMutate).not.toHaveBeenCalledWith(expect.objectContaining({type: 'aiCategorizeTransaction'}))
   })
 })
 
 function findButton(text: string) {
   return renderedButtons.find(button => textFromNode(button.children) === text)
+}
+
+function findButtonByLabel(label: string) {
+  return renderedButtons.find(button => button.ariaLabel === label)
 }
 
 function textFromNode(node: React.ReactNode): string {
