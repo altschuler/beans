@@ -50,6 +50,14 @@ export function LedgerDashboard() {
     }
   }
 
+  async function confirmTransaction(ledgerTransactionId: string) {
+    try {
+      await zero.mutate(mutators.ledger.confirmTransaction({ledgerTransactionId}))
+    } catch (error) {
+      showErrorToast(error, 'Could not confirm transaction')
+    }
+  }
+
   async function aiCategorizeBatch() {
     if (isAiRequestPendingRef.current) return
 
@@ -179,7 +187,7 @@ export function LedgerDashboard() {
                         <th className="px-3 py-2 text-left font-semibold">Date</th>
                         <th className="px-3 py-2 text-left font-semibold">Bank account</th>
                         <th className="px-3 py-2 text-left font-semibold">Category</th>
-                        <th className="px-3 py-2 text-center font-semibold">AI</th>
+                        <th className="px-3 py-2 text-center font-semibold">Status</th>
                         <th className="px-3 py-2 text-right font-semibold">Amount</th>
                       </tr>
                     </thead>
@@ -224,14 +232,26 @@ export function LedgerDashboard() {
                             </div>
                           </td>
                           <td className="px-3 py-3 text-center">
-                            {row.aiIndicator ? (
+                            {row.statusIndicator.canConfirm ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                title={row.statusIndicator.title}
+                                aria-label={`Confirm category for ${row.description}. ${row.statusIndicator.ariaLabel}`}
+                                className="h-2.5 w-2.5 cursor-pointer rounded-full bg-transparent p-0 transition-[box-shadow] hover:bg-transparent hover:ring-2 hover:ring-ring/70 hover:ring-offset-2 hover:ring-offset-background"
+                                onClick={() => void confirmTransaction(row.id)}
+                              >
+                                <span className={`block h-2.5 w-2.5 rounded-full ${row.statusIndicator.className}`} aria-hidden="true" />
+                                <span className="sr-only">{row.statusIndicator.ariaLabel}</span>
+                              </Button>
+                            ) : (
                               <span
-                                title={row.aiIndicator.title}
-                                aria-label={row.aiIndicator.title}
-                                role={row.aiIndicator.kind === 'processing' ? 'status' : 'img'}
-                                className={`inline-block h-2.5 w-2.5 rounded-full ${row.aiIndicator.className}`}
+                                title={row.statusIndicator.title}
+                                aria-label={row.statusIndicator.ariaLabel}
+                                role={row.statusIndicator.kind === 'processing' ? 'status' : 'img'}
+                                className={`inline-block h-2.5 w-2.5 rounded-full ${row.statusIndicator.className}`}
                               />
-                            ) : null}
+                            )}
                           </td>
                           <td className="px-3 py-3 text-right font-mono">
                             {row.amount} {row.currency}

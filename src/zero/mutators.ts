@@ -18,9 +18,14 @@ export const splitTransactionInput = z.object({
     .min(2),
 })
 
+export const confirmTransactionInput = z.object({
+  ledgerTransactionId: z.string().min(1),
+})
+
 export const mutators = defineMutators({
   ledger: {
     categorizeTransaction: defineMutator(categorizeTransactionInput, async () => {}),
     splitTransaction: defineMutator(splitTransactionInput, async () => {}),
+    confirmTransaction: defineMutator(confirmTransactionInput, async () => {}),
   },
 })

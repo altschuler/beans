@@ -1,4 +1,5 @@
 import {deriveLedgerAccountBalances, isCategorizationAccount} from '@/ledger/categorization'
+import {SYSTEM_LEDGER_ACCOUNT_KEYS} from '@/ledger/default-chart'
 
 export type LedgerDashboardGroup = {id: string; name: string; sortOrder: number | null}
 export type LedgerDashboardAccount = {
@@ -9,6 +10,8 @@ export type LedgerDashboardAccount = {
   normalBalance: string
   status: string | null
   sortOrder: number | null
+  systemKey?: string | null
+  linkedBankAccountId?: string | null
 }
 export type LedgerDashboardTransaction = {
   id: string
@@ -17,6 +20,10 @@ export type LedgerDashboardTransaction = {
   status: string
   aiConfidence: number | null
   aiProcessingStartedAt: Date | string | number | null
+  categorizedBy?: string | null
+  userConfirmedAt?: Date | string | number | null
+  userConfirmedBy?: string | null
+  aiReasoning?: string | null
   date: string | null
   description: string
 }
@@ -39,9 +46,16 @@ export type LedgerDashboardBankTransaction = {
   description: string
 }
 export type LedgerDashboardBankAccount = {id: string; name: string}
-export type LedgerDashboardAiIndicator =
-  | {kind: 'processing'; title: string; className: string}
-  | {kind: 'confidence'; confidence: 0 | 1 | 2; title: string; className: string}
+export type LedgerDashboardStatusIndicator = {
+  kind: 'processing' | 'uncategorized' | 'confirmed' | 'ai_confident' | 'needs_review' | 'ai_failed'
+  title: string
+  ariaLabel: string
+  className: string
+  canConfirm: boolean
+}
+export type LedgerDashboardAiIndicator = LedgerDashboardStatusIndicator
+
+type NormalizedAccount = LedgerDashboardAccount & {status: string; sortOrder: number; systemKey: string | null; linkedBankAccountId: string | null}
 
 export function buildLedgerDashboardModel(input: {
   groups: ReadonlyArray<LedgerDashboardGroup>
@@ -51,7 +65,13 @@ export function buildLedgerDashboardModel(input: {
   bankTransactions: ReadonlyArray<LedgerDashboardBankTransaction>
   bankAccounts: ReadonlyArray<LedgerDashboardBankAccount>
 }) {
-  const accounts = input.accounts.map(account => ({...account, status: account.status ?? 'active', sortOrder: account.sortOrder ?? 0}))
+  const accounts: NormalizedAccount[] = input.accounts.map(account => ({
+    ...account,
+    status: account.status ?? 'active',
+    sortOrder: account.sortOrder ?? 0,
+    systemKey: account.systemKey ?? null,
+    linkedBankAccountId: account.linkedBankAccountId ?? null,
+  }))
   const movements = input.movements.map(movement => ({...movement, amount: String(movement.amount), sortOrder: movement.sortOrder ?? 0}))
   const bankTransactions = input.bankTransactions.map(transaction => ({...transaction, amount: String(transaction.amount)}))
   const balances = deriveLedgerAccountBalances(accounts, movements)
@@ -81,13 +101,16 @@ export function buildLedgerDashboardModel(input: {
     .map(transaction => {
       const bankTransaction = transaction.bankTransactionId ? bankTransactionsById.get(transaction.bankTransactionId) : undefined
       const transactionMovements = movementsByTransactionId.get(transaction.id) ?? []
-      const categoryAccountIds = new Set(
-        transactionMovements.flatMap(movement => [movement.debitAccountId, movement.creditAccountId]).filter(accountId => {
+      const categoryAccounts = uniqueAccounts(
+        transactionMovements.flatMap(movement => [movement.debitAccountId, movement.creditAccountId]).flatMap(accountId => {
           const account = accountsById.get(accountId)
-          return account ? isCategorizationAccount(account) : false
+          return account && isCategorizationAccount(account) ? [account] : []
         }),
       )
+      const categoryAccountIds = new Set(categoryAccounts.map(account => account.id))
       const categoryAccountId = categoryAccountIds.size === 1 ? [...categoryAccountIds][0] : null
+      const aiProcessing = isRecentlyProcessing(transaction.aiProcessingStartedAt, now)
+      const statusIndicator = buildStatusIndicator({transaction, categoryAccounts, aiProcessing})
 
       return {
         id: transaction.id,
@@ -99,8 +122,9 @@ export function buildLedgerDashboardModel(input: {
         status: transaction.status,
         needsReview: transaction.status === 'needs_review',
         aiConfidence: transaction.aiConfidence,
-        aiProcessing: isRecentlyProcessing(transaction.aiProcessingStartedAt, now),
-        aiIndicator: buildAiIndicator(transaction, now),
+        aiProcessing,
+        statusIndicator,
+        aiIndicator: statusIndicator,
         categoryAccountId,
         categoryLabel: categoryAccountId ? (accountsById.get(categoryAccountId)?.name ?? 'Unknown category') : 'Split',
         isSplit: transactionMovements.length > 1,
@@ -124,24 +148,94 @@ export function buildLedgerDashboardModel(input: {
 
 const AI_PROCESSING_STALE_AFTER_MS = 30 * 60 * 1000
 
-function buildAiIndicator(transaction: LedgerDashboardTransaction, now = new Date()): LedgerDashboardAiIndicator | null {
-  if (isRecentlyProcessing(transaction.aiProcessingStartedAt, now)) {
-    return {kind: 'processing', title: 'AI is currently categorizing this transaction', className: 'bg-muted-foreground'}
+function buildStatusIndicator(input: {
+  transaction: LedgerDashboardTransaction
+  categoryAccounts: NormalizedAccount[]
+  aiProcessing: boolean
+}): LedgerDashboardStatusIndicator {
+  const {transaction, categoryAccounts, aiProcessing} = input
+  const hasRealCategory = categoryAccounts.some(isRealCategorizationAccount)
+  const isUncategorized = categoryAccounts.length === 0 || categoryAccounts.some(account => account.systemKey === SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized)
+  const reasoningSuffix = transaction.aiReasoning ? ` Reason: ${transaction.aiReasoning}` : ''
+
+  if (aiProcessing) {
+    return {
+      kind: 'processing',
+      title: 'AI is currently categorizing this transaction',
+      ariaLabel: 'AI is currently categorizing this transaction',
+      className: 'bg-muted-foreground',
+      canConfirm: false,
+    }
   }
 
-  if (transaction.aiConfidence === 0) {
-    return {kind: 'confidence', confidence: 0, title: 'AI confidence 0: very low; category left unchanged', className: 'bg-destructive'}
+  if (isUncategorized) {
+    return {
+      kind: 'uncategorized',
+      title: 'Transaction is Uncategorized and needs a category',
+      ariaLabel: 'Transaction is Uncategorized and needs a category',
+      className: 'bg-destructive',
+      canConfirm: false,
+    }
   }
 
-  if (transaction.aiConfidence === 1) {
-    return {kind: 'confidence', confidence: 1, title: 'AI confidence 1: plausible; needs user review', className: 'bg-yellow-600'}
+  if (transaction.userConfirmedAt || transaction.categorizedBy === 'user') {
+    const title =
+      transaction.categorizedBy === 'ai'
+        ? `Category confirmed by you. AI originally categorized this transaction.${reasoningSuffix}`
+        : 'Category confirmed by you'
+    return {
+      kind: 'confirmed',
+      title,
+      ariaLabel: title,
+      className: 'bg-green-600',
+      canConfirm: false,
+    }
   }
 
   if (transaction.aiConfidence === 2) {
-    return {kind: 'confidence', confidence: 2, title: 'AI confidence 2: confident; transaction confirmed', className: 'bg-green-600'}
+    const title = `AI categorized with high confidence; not yet confirmed by you.${reasoningSuffix}`
+    return {
+      kind: 'ai_confident',
+      title,
+      ariaLabel: title,
+      className: 'bg-green-400',
+      canConfirm: hasRealCategory && transaction.categorizedBy === 'ai',
+    }
   }
 
-  return null
+  if (transaction.aiConfidence === 1) {
+    const title = `AI suggested a category; review recommended.${reasoningSuffix}`
+    return {
+      kind: 'needs_review',
+      title,
+      ariaLabel: title,
+      className: 'bg-yellow-600',
+      canConfirm: hasRealCategory && transaction.categorizedBy === 'ai',
+    }
+  }
+
+  if (transaction.aiConfidence === 0) {
+    const title = `AI could not categorize this transaction.${reasoningSuffix}`
+    return {
+      kind: 'ai_failed',
+      title,
+      ariaLabel: title,
+      className: 'bg-destructive',
+      canConfirm: false,
+    }
+  }
+
+  return {
+    kind: 'needs_review',
+    title: transaction.status === 'needs_review' ? 'Transaction needs review' : 'Transaction status is unknown',
+    ariaLabel: transaction.status === 'needs_review' ? 'Transaction needs review' : 'Transaction status is unknown',
+    className: transaction.status === 'needs_review' ? 'bg-destructive' : 'bg-muted-foreground',
+    canConfirm: false,
+  }
+}
+
+function isRealCategorizationAccount(account: NormalizedAccount) {
+  return account.status === 'active' && account.type !== 'bank' && account.systemKey === null && account.linkedBankAccountId === null
 }
 
 function isRecentlyProcessing(value: Date | string | number | null, now: Date) {
@@ -149,6 +243,10 @@ function isRecentlyProcessing(value: Date | string | number | null, now: Date) {
   const startedAt = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(startedAt.getTime())) return false
   return now.getTime() - startedAt.getTime() <= AI_PROCESSING_STALE_AFTER_MS
+}
+
+function uniqueAccounts(accounts: NormalizedAccount[]) {
+  return [...new Map(accounts.map(account => [account.id, account])).values()]
 }
 
 function groupBy<T>(items: T[], key: (item: T) => string) {

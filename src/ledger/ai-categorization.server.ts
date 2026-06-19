@@ -6,7 +6,7 @@ import {and, desc, eq, inArray, isNull, lt, or} from 'drizzle-orm'
 import {z} from 'zod'
 import {db, type Database} from '@/db/client'
 import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerTransactions, teamMembers} from '@/db/schema'
-import {categorizeLedgerTransaction} from './categorization.server'
+import {categorizeLedgerTransaction, normalizeAiReasoning} from './categorization.server'
 import {loadSimilarCategorizationExamples, type AiCategorizationSimilarExample} from './similar-categorization-examples.server'
 
 export const AI_CATEGORIZATION_MODEL = 'gpt-5.4-nano'
@@ -19,7 +19,7 @@ const suggestionSchema = z.object({
   ledgerTransactionId: z.string().min(1),
   categoryAccountId: z.string().min(1).nullable(),
   confidence: aiConfidenceSchema,
-  reasoning: z.string().nullable(),
+  reasoning: z.string().min(1).regex(/\S/),
 })
 
 const suggestionsSchema = z.object({
@@ -164,6 +164,8 @@ Confidence calibration:
 - 1: plausible category but needs user review. Use a supplied categoryAccountId.
 - 2: confident category match. Use a supplied categoryAccountId.
 
+Include concise user-readable reasoning for every suggestion. Mention merchant/counterparty patterns or similar confirmed examples when relevant. Do not expose private chain-of-thought; provide only a short display-safe explanation suitable for a tooltip.
+
 If confidence is 0, categoryAccountId must be null. If confidence is 1 or 2, categoryAccountId must be one supplied category id.`,
     prompt: JSON.stringify(input, null, 2),
   })
@@ -242,7 +244,7 @@ async function applyAiCategorizationSuggestions(
     }
 
     if (suggestion.confidence === 0) {
-      const didRecord = await recordAiConfidenceWithoutCategory(tx, userId, suggestion.ledgerTransactionId, 0)
+      const didRecord = await recordAiConfidenceWithoutCategory(tx, userId, suggestion.ledgerTransactionId, 0, suggestion.reasoning)
       context.categorizedTransactionIds.add(suggestion.ledgerTransactionId)
       if (!didRecord) {
         skipped += 1
@@ -264,6 +266,7 @@ async function applyAiCategorizationSuggestions(
       accountId: suggestion.categoryAccountId,
       status,
       aiConfidence: suggestion.confidence,
+      aiReasoning: suggestion.reasoning,
       categorizedBy: 'ai',
       requiredCurrentStatus: 'needs_review',
     })
@@ -282,14 +285,22 @@ async function applyAiCategorizationSuggestions(
   return {applied, confirmed, stillNeedsReview, skipped}
 }
 
-async function recordAiConfidenceWithoutCategory(tx: DrizzleTransaction, userId: string, ledgerTransactionId: string, aiConfidence: 0) {
+async function recordAiConfidenceWithoutCategory(tx: DrizzleTransaction, userId: string, ledgerTransactionId: string, aiConfidence: 0, aiReasoning: string) {
   const now = new Date()
   const authorizedIds = await selectAuthorizedLedgerTransactionIds(tx, userId, [ledgerTransactionId], 'needs_review')
   if (authorizedIds.length === 0) return false
 
   const [updatedTransaction] = await tx
     .update(ledgerTransactions)
-    .set({status: 'needs_review', aiConfidence, aiProcessingStartedAt: null, updatedAt: now})
+    .set({
+      status: 'needs_review',
+      aiConfidence,
+      aiReasoning: normalizeAiReasoning(aiReasoning),
+      aiProcessingStartedAt: null,
+      userConfirmedAt: null,
+      userConfirmedBy: null,
+      updatedAt: now,
+    })
     .where(inArray(ledgerTransactions.id, authorizedIds))
     .returning({id: ledgerTransactions.id})
 

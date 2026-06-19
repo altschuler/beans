@@ -477,6 +477,9 @@ describe('aiCategorizeLedgerTransactions', () => {
     expect(transaction?.status).toBe('confirmed')
     expect(transaction?.aiConfidence).toBe(2)
     expect(transaction?.categorizedBy).toBe('ai')
+    expect(transaction?.aiReasoning).toBe('Known supermarket')
+    expect(transaction?.userConfirmedAt).toBeNull()
+    expect(transaction?.userConfirmedBy).toBeNull()
     expect(transaction?.aiProcessingStartedAt).toBeNull()
     expect(movement).toMatchObject({debitAccountId: 'groceries', creditAccountId: 'bank-ledger-account', amount: '100.0000'})
   })
@@ -504,7 +507,7 @@ describe('aiCategorizeLedgerTransactions', () => {
     await seedSecondTeamTransaction()
     const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async input =>
-      input.transactions.map(transaction => ({ledgerTransactionId: transaction.id, categoryAccountId: input.categories[0]?.id ?? '', confidence: 2, reasoning: null})),
+      input.transactions.map(transaction => ({ledgerTransactionId: transaction.id, categoryAccountId: input.categories[0]?.id ?? '', confidence: 2, reasoning: 'Matched supplied examples.'})),
     )
 
     const result = await aiCategorizeLedgerTransactions({userId: 'user-1', limit: 25}, categorizeWithModel)
@@ -534,6 +537,9 @@ describe('aiCategorizeLedgerTransactions', () => {
     expect(transaction?.status).toBe('needs_review')
     expect(transaction?.aiConfidence).toBe(1)
     expect(transaction?.categorizedBy).toBe('ai')
+    expect(transaction?.aiReasoning).toBe('Plausible supermarket match')
+    expect(transaction?.userConfirmedAt).toBeNull()
+    expect(transaction?.userConfirmedBy).toBeNull()
     expect(transaction?.aiProcessingStartedAt).toBeNull()
   })
 
@@ -630,6 +636,7 @@ describe('aiCategorizeLedgerTransactions', () => {
     expect(transaction?.status).toBe('needs_review')
     expect(transaction?.aiConfidence).toBe(0)
     expect(transaction?.categorizedBy).toBeNull()
+    expect(transaction?.aiReasoning).toBe('Too ambiguous')
     expect(transaction?.aiProcessingStartedAt).toBeNull()
     expect(movement).toMatchObject({debitAccountId: 'uncategorized', creditAccountId: 'bank-ledger-account', amount: '100.0000'})
   })
@@ -751,6 +758,8 @@ describe('aiCategorizeLedgerTransactions', () => {
     expect(suggestionSchema.required).toEqual(Object.keys(suggestionSchema.properties))
     expect(suggestionSchema.required).toContain('reasoning')
     expect(suggestionSchema.required).toContain('categoryAccountId')
+    expect(JSON.stringify(suggestionSchema.properties.reasoning)).toContain('string')
+    expect(JSON.stringify(suggestionSchema.properties.reasoning)).not.toContain('null')
     expect(JSON.stringify(jsonSchema)).toContain('0')
     expect(JSON.stringify(jsonSchema)).toContain('1')
     expect(JSON.stringify(jsonSchema)).toContain('2')

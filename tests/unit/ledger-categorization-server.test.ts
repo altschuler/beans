@@ -186,6 +186,8 @@ describe('categorizeLedgerTransaction', () => {
 
     expect(transaction?.status).toBe('confirmed')
     expect(transaction?.categorizedBy).toBe('user')
+    expect(transaction?.userConfirmedAt).toBeInstanceOf(Date)
+    expect(transaction?.userConfirmedBy).toBe('user-1')
     expect(movements).toHaveLength(1)
     expect(movements[0]).toMatchObject({
       debitAccountId: 'groceries',
@@ -256,6 +258,7 @@ describe('categorizeLedgerTransaction', () => {
         accountId: 'groceries',
         status: 'needs_review',
         aiConfidence: 1,
+        aiReasoning: 'Plausible supermarket match',
         categorizedBy: 'ai',
       }),
     )
@@ -268,7 +271,10 @@ describe('categorizeLedgerTransaction', () => {
 
     expect(transaction?.status).toBe('needs_review')
     expect(transaction?.aiConfidence).toBe(1)
+    expect(transaction?.aiReasoning).toBe('Plausible supermarket match')
     expect(transaction?.categorizedBy).toBe('ai')
+    expect(transaction?.userConfirmedAt).toBeNull()
+    expect(transaction?.userConfirmedBy).toBeNull()
     expect(transaction?.aiProcessingStartedAt).toBeNull()
     expect(movement).toMatchObject({
       debitAccountId: 'groceries',
@@ -277,12 +283,96 @@ describe('categorizeLedgerTransaction', () => {
     })
   })
 
-  it('marks a manual recategorization of an AI-categorized transaction as user-categorized', async () => {
+  it('confirms an existing AI category while preserving who categorized it', async () => {
+    const {confirmLedgerTransaction} = await import('@/ledger/categorization.server')
+
+    await db
+      .update(ledgerTransactions)
+      .set({status: 'confirmed', categorizedBy: 'ai', aiConfidence: 2, aiReasoning: 'Matched supermarket history.'})
+      .where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    await db.delete(ledgerTransactionMovements).where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+    await db.insert(ledgerTransactionMovements).values({
+      id: 'movement-groceries',
+      ledgerTransactionId: 'ledger-transaction-1',
+      debitAccountId: 'groceries',
+      creditAccountId: 'bank-ledger-account',
+      amount: '100.00',
+      currency: 'DKK',
+      sortOrder: 0,
+      createdAt: new Date('2026-06-18T10:00:00.000Z'),
+      updatedAt: new Date('2026-06-18T10:00:00.000Z'),
+    })
+
+    await db.transaction(tx =>
+      confirmLedgerTransaction(tx, {
+        userId: 'user-1',
+        ledgerTransactionId: 'ledger-transaction-1',
+      }),
+    )
+
+    const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+
+    expect(transaction?.status).toBe('confirmed')
+    expect(transaction?.categorizedBy).toBe('ai')
+    expect(transaction?.userConfirmedAt).toBeInstanceOf(Date)
+    expect(transaction?.userConfirmedBy).toBe('user-1')
+    expect(transaction?.aiProcessingStartedAt).toBeNull()
+    expect(transaction?.aiReasoning).toBe('Matched supermarket history.')
+  })
+
+  it('rejects confirming an Uncategorized transaction', async () => {
+    const {confirmLedgerTransaction} = await import('@/ledger/categorization.server')
+
+    await expect(
+      db.transaction(tx =>
+        confirmLedgerTransaction(tx, {
+          userId: 'user-1',
+          ledgerTransactionId: 'ledger-transaction-1',
+        }),
+      ),
+    ).rejects.toThrow('Uncategorized transactions cannot be confirmed')
+  })
+
+  it('rejects confirming while AI processing is fresh and leaves user confirmation empty', async () => {
+    const {confirmLedgerTransaction} = await import('@/ledger/categorization.server')
+
+    await db
+      .update(ledgerTransactions)
+      .set({status: 'needs_review', categorizedBy: 'ai', aiConfidence: 1, aiProcessingStartedAt: new Date()})
+      .where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    await db.delete(ledgerTransactionMovements).where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+    await db.insert(ledgerTransactionMovements).values({
+      id: 'movement-groceries-processing',
+      ledgerTransactionId: 'ledger-transaction-1',
+      debitAccountId: 'groceries',
+      creditAccountId: 'bank-ledger-account',
+      amount: '100.00',
+      currency: 'DKK',
+      sortOrder: 0,
+      createdAt: new Date('2026-06-18T10:00:00.000Z'),
+      updatedAt: new Date('2026-06-18T10:00:00.000Z'),
+    })
+
+    await expect(
+      db.transaction(tx =>
+        confirmLedgerTransaction(tx, {
+          userId: 'user-1',
+          ledgerTransactionId: 'ledger-transaction-1',
+        }),
+      ),
+    ).rejects.toThrow('Transaction is currently being categorized by AI')
+
+    const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    expect(transaction?.userConfirmedAt).toBeNull()
+    expect(transaction?.userConfirmedBy).toBeNull()
+  })
+
+  it('marks a manual recategorization of an AI-categorized transaction as user-categorized and clears stale AI details', async () => {
     const {categorizeLedgerTransaction} = await import('@/ledger/categorization.server')
 
     await db
       .update(ledgerTransactions)
-      .set({status: 'confirmed', categorizedBy: 'ai', aiConfidence: 1})
+      .set({status: 'confirmed', categorizedBy: 'ai', aiConfidence: 1, aiReasoning: 'Old AI explanation', userConfirmedAt: null, userConfirmedBy: null})
       .where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
 
     await db.transaction(tx =>
@@ -301,7 +391,10 @@ describe('categorizeLedgerTransaction', () => {
 
     expect(transaction?.status).toBe('confirmed')
     expect(transaction?.aiConfidence).toBeNull()
+    expect(transaction?.aiReasoning).toBeNull()
     expect(transaction?.categorizedBy).toBe('user')
+    expect(transaction?.userConfirmedAt).toBeInstanceOf(Date)
+    expect(transaction?.userConfirmedBy).toBe('user-1')
     expect(movement).toMatchObject({debitAccountId: 'household', creditAccountId: 'bank-ledger-account', amount: '100.0000'})
   })
 

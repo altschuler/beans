@@ -1,51 +1,63 @@
 import {describe, expect, it} from 'vitest'
 import {buildLedgerDashboardModel} from '@/components/ledger/ledger-dashboard-model'
 
+const baseGroups = [{id: 'group-1', name: 'Everyday spending', sortOrder: 0}]
+const baseAccounts = [
+  {id: 'checking', groupId: 'group-1', name: 'Checking', type: 'bank', normalBalance: 'debit', status: 'active', sortOrder: 0, systemKey: null},
+  {id: 'uncategorized', groupId: 'group-1', name: 'Uncategorized', type: 'adjustment', normalBalance: 'credit', status: 'active', sortOrder: 1, systemKey: 'uncategorized'},
+  {id: 'groceries', groupId: 'group-1', name: 'Groceries', type: 'expense', normalBalance: 'credit', status: 'active', sortOrder: 2, systemKey: null},
+]
+
+function buildModelForTransaction(overrides: Record<string, unknown> = {}, movementAccountId = 'groceries') {
+  return buildLedgerDashboardModel({
+    groups: baseGroups,
+    accounts: baseAccounts,
+    ledgerTransactions: [
+      {
+        id: 'ledger-transaction-1',
+        bankTransactionId: 'bank-transaction-1',
+        source: 'bank_import',
+        status: 'needs_review',
+        aiConfidence: null,
+        aiProcessingStartedAt: null,
+        categorizedBy: null,
+        userConfirmedAt: null,
+        userConfirmedBy: null,
+        aiReasoning: null,
+        date: '2026-06-18',
+        description: 'Netto',
+        ...overrides,
+      },
+    ],
+    movements: [
+      {
+        id: 'movement-1',
+        ledgerTransactionId: 'ledger-transaction-1',
+        debitAccountId: movementAccountId,
+        creditAccountId: 'checking',
+        amount: '100.00',
+        currency: 'DKK',
+        sortOrder: 0,
+      },
+    ],
+    bankTransactions: [
+      {
+        id: 'bank-transaction-1',
+        bankAccountId: 'bank-account-1',
+        amount: '-100.00',
+        currency: 'DKK',
+        bookingDate: '2026-06-18',
+        valueDate: null,
+        description: 'Netto',
+      },
+    ],
+    bankAccounts: [{id: 'bank-account-1', name: 'Checking'}],
+  })
+}
+
 describe('buildLedgerDashboardModel', () => {
   it('groups balances and creates transaction rows with category state', () => {
-    const model = buildLedgerDashboardModel({
-      groups: [{id: 'group-1', name: 'Everyday spending', sortOrder: 0}],
-      accounts: [
-        {id: 'checking', groupId: 'group-1', name: 'Checking', type: 'bank', normalBalance: 'debit', status: 'active', sortOrder: 0},
-        {id: 'uncategorized', groupId: 'group-1', name: 'Uncategorized', type: 'adjustment', normalBalance: 'credit', status: 'active', sortOrder: 1},
-        {id: 'groceries', groupId: 'group-1', name: 'Groceries', type: 'expense', normalBalance: 'credit', status: 'active', sortOrder: 2},
-      ],
-      ledgerTransactions: [
-        {
-          id: 'ledger-transaction-1',
-          bankTransactionId: 'bank-transaction-1',
-          source: 'bank_import',
-          status: 'needs_review',
-          aiConfidence: 1,
-          aiProcessingStartedAt: new Date(),
-          date: '2026-06-18',
-          description: 'Netto',
-        },
-      ],
-      movements: [
-        {
-          id: 'movement-1',
-          ledgerTransactionId: 'ledger-transaction-1',
-          debitAccountId: 'uncategorized',
-          creditAccountId: 'checking',
-          amount: '100.00',
-          currency: 'DKK',
-          sortOrder: 0,
-        },
-      ],
-      bankTransactions: [
-        {
-          id: 'bank-transaction-1',
-          bankAccountId: 'bank-account-1',
-          amount: '-100.00',
-          currency: 'DKK',
-          bookingDate: '2026-06-18',
-          valueDate: null,
-          description: 'Netto',
-        },
-      ],
-      bankAccounts: [{id: 'bank-account-1', name: 'Checking'}],
-    })
+    const model = buildModelForTransaction({aiConfidence: 1, aiProcessingStartedAt: new Date()}, 'uncategorized')
 
     expect(model.reviewCount).toBe(1)
     expect(model.aiProcessingCount).toBe(1)
@@ -64,6 +76,78 @@ describe('buildLedgerDashboardModel', () => {
       aiConfidence: 1,
       aiProcessing: true,
       aiIndicator: {kind: 'processing', title: 'AI is currently categorizing this transaction'},
+    })
+  })
+
+  it('shows manual rows with a bright green status dot', () => {
+    const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'user', aiConfidence: null, userConfirmedAt: new Date('2026-06-19T10:00:00.000Z')})
+
+    expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
+      kind: 'confirmed',
+      title: 'Category confirmed by you',
+      className: 'bg-green-600',
+      canConfirm: false,
+    })
+  })
+
+  it('shows user-confirmed AI rows with a bright green status dot that preserves AI reasoning', () => {
+    const model = buildModelForTransaction({
+      status: 'confirmed',
+      categorizedBy: 'ai',
+      aiConfidence: 2,
+      userConfirmedAt: new Date('2026-06-19T10:00:00.000Z'),
+      aiReasoning: 'Matched past Netto grocery transactions.',
+    })
+
+    expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
+      kind: 'confirmed',
+      title: 'Category confirmed by you. AI originally categorized this transaction. Reason: Matched past Netto grocery transactions.',
+      className: 'bg-green-600',
+      canConfirm: false,
+    })
+  })
+
+  it('shows high-confidence AI rows with a softer green confirmable status dot and reasoning', () => {
+    const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'ai', aiConfidence: 2, aiReasoning: 'Matched past Netto grocery transactions.'})
+
+    expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
+      kind: 'ai_confident',
+      title: 'AI categorized with high confidence; not yet confirmed by you. Reason: Matched past Netto grocery transactions.',
+      className: 'bg-green-400',
+      canConfirm: true,
+    })
+  })
+
+  it('shows medium-confidence AI rows as yellow and confirmable', () => {
+    const model = buildModelForTransaction({categorizedBy: 'ai', aiConfidence: 1, aiReasoning: 'Merchant looks like groceries.'})
+
+    expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
+      kind: 'needs_review',
+      title: 'AI suggested a category; review recommended. Reason: Merchant looks like groceries.',
+      className: 'bg-yellow-600',
+      canConfirm: true,
+    })
+  })
+
+  it('shows any effectively Uncategorized row as red even when AI confidence is high', () => {
+    const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'ai', aiConfidence: 2}, 'uncategorized')
+
+    expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
+      kind: 'uncategorized',
+      title: 'Transaction is Uncategorized and needs a category',
+      className: 'bg-destructive',
+      canConfirm: false,
+    })
+  })
+
+  it('shows processing rows as gray before other status states', () => {
+    const model = buildModelForTransaction({aiProcessingStartedAt: new Date(), userConfirmedAt: new Date('2026-06-19T10:00:00.000Z')})
+
+    expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
+      kind: 'processing',
+      title: 'AI is currently categorizing this transaction',
+      className: 'bg-muted-foreground',
+      canConfirm: false,
     })
   })
 })

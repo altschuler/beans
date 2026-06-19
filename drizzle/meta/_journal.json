@@ -57,6 +57,13 @@
       "when": 1781860593612,
       "tag": "0007_gigantic_thunderbolt_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781871922372,
+      "tag": "0008_natural_doomsday",
+      "breakpoints": true
     }
   ]
 }

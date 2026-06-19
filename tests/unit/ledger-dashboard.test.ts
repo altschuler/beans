@@ -4,7 +4,17 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 
 const queryRows = vi.hoisted(() => ({
   groups: [] as Array<{id: string; name: string; sortOrder: number}>,
-  accounts: [] as Array<{id: string; groupId: string; name: string; type: string; normalBalance: string; status: string; sortOrder: number}>,
+  accounts: [] as Array<{
+    id: string
+    groupId: string
+    name: string
+    type: string
+    normalBalance: string
+    status: string
+    sortOrder: number
+    systemKey: string | null
+    linkedBankAccountId: string | null
+  }>,
   ledgerTransactions: [] as Array<{
     id: string
     bankTransactionId: string | null
@@ -12,6 +22,10 @@ const queryRows = vi.hoisted(() => ({
     status: string
     aiConfidence: number | null
     aiProcessingStartedAt: Date | null
+    categorizedBy: string | null
+    userConfirmedAt: Date | null
+    userConfirmedBy: string | null
+    aiReasoning: string | null
     date: string | null
     description: string
   }>,
@@ -24,7 +38,16 @@ const zeroMutate = vi.hoisted(() => vi.fn(async () => undefined))
 const aiCategorizeTransaction = vi.hoisted(() => vi.fn(async () => ({requested: 1, suggested: 1, applied: 1, confirmed: 0, stillNeedsReview: 1, skipped: 0})))
 const aiCategorizeNeedsReviewBatch = vi.hoisted(() => vi.fn(async () => ({requested: 1, suggested: 1, applied: 1, confirmed: 0, stillNeedsReview: 1, skipped: 0})))
 const renderedButtons = vi.hoisted(
-  () => [] as Array<{children: React.ReactNode; disabled?: boolean; onClick?: () => void; type?: 'button' | 'submit' | 'reset'; title?: string; ariaLabel?: string}>,
+  () =>
+    [] as Array<{
+      children: React.ReactNode
+      className?: string
+      disabled?: boolean
+      onClick?: () => void
+      type?: 'button' | 'submit' | 'reset'
+      title?: string
+      ariaLabel?: string
+    }>,
 )
 
 vi.mock('@rocicorp/zero/react', () => ({
@@ -56,17 +79,19 @@ vi.mock('@/components/ui/button', async () => {
       onClick,
       type,
       title,
+      className,
       'aria-label': ariaLabel,
     }: {
       children: React.ReactNode
+      className?: string
       disabled?: boolean
       onClick?: () => void
       type?: 'button' | 'submit' | 'reset'
       title?: string
       'aria-label'?: string
     }) => {
-      renderedButtons.push({children, disabled, onClick, type, title, ariaLabel})
-      return ReactModule.createElement('button', {disabled, onClick, type, title, 'aria-label': ariaLabel}, children)
+      renderedButtons.push({children, className, disabled, onClick, type, title, ariaLabel})
+      return ReactModule.createElement('button', {className, disabled, onClick, type, title, 'aria-label': ariaLabel}, children)
     },
   }
 })
@@ -98,6 +123,7 @@ vi.mock('@/zero/mutators', () => ({
     ledger: {
       categorizeTransaction: vi.fn(input => ({type: 'categorizeTransaction', input})),
       splitTransaction: vi.fn(input => ({type: 'splitTransaction', input})),
+      confirmTransaction: vi.fn(input => ({type: 'confirmTransaction', input})),
     },
   },
 }))
@@ -111,9 +137,39 @@ describe('LedgerDashboard', () => {
     renderedButtons.length = 0
     queryRows.groups = [{id: 'group-1', name: 'Everyday spending', sortOrder: 0}]
     queryRows.accounts = [
-      {id: 'checking', groupId: 'group-1', name: 'Checking', type: 'bank', normalBalance: 'debit', status: 'active', sortOrder: 0},
-      {id: 'uncategorized', groupId: 'group-1', name: 'Uncategorized', type: 'adjustment', normalBalance: 'credit', status: 'active', sortOrder: 1},
-      {id: 'groceries', groupId: 'group-1', name: 'Groceries', type: 'expense', normalBalance: 'credit', status: 'active', sortOrder: 2},
+      {
+        id: 'checking',
+        groupId: 'group-1',
+        name: 'Checking',
+        type: 'bank',
+        normalBalance: 'debit',
+        status: 'active',
+        sortOrder: 0,
+        systemKey: null,
+        linkedBankAccountId: 'bank-account-1',
+      },
+      {
+        id: 'uncategorized',
+        groupId: 'group-1',
+        name: 'Uncategorized',
+        type: 'adjustment',
+        normalBalance: 'credit',
+        status: 'active',
+        sortOrder: 1,
+        systemKey: 'uncategorized',
+        linkedBankAccountId: null,
+      },
+      {
+        id: 'groceries',
+        groupId: 'group-1',
+        name: 'Groceries',
+        type: 'expense',
+        normalBalance: 'credit',
+        status: 'active',
+        sortOrder: 2,
+        systemKey: null,
+        linkedBankAccountId: null,
+      },
     ]
     queryRows.ledgerTransactions = [
       {
@@ -123,12 +179,16 @@ describe('LedgerDashboard', () => {
         status: 'needs_review',
         aiConfidence: 1,
         aiProcessingStartedAt: null,
+        categorizedBy: 'ai',
+        userConfirmedAt: null,
+        userConfirmedBy: null,
+        aiReasoning: 'Looks like a supermarket purchase.',
         date: '2026-06-18',
         description: 'Netto',
       },
     ]
     queryRows.movements = [
-      {id: 'movement-1', ledgerTransactionId: 'ledger-transaction-1', debitAccountId: 'uncategorized', creditAccountId: 'checking', amount: '100.00', currency: 'DKK', sortOrder: 0},
+      {id: 'movement-1', ledgerTransactionId: 'ledger-transaction-1', debitAccountId: 'groceries', creditAccountId: 'checking', amount: '100.00', currency: 'DKK', sortOrder: 0},
     ]
     queryRows.bankTransactions = [
       {id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: '-100.00', currency: 'DKK', bookingDate: '2026-06-18', valueDate: null, description: 'Netto'},
@@ -154,17 +214,22 @@ describe('LedgerDashboard', () => {
     expect(markup).toContain('Netto')
   })
 
-  it('renders transactions as a table with bank account, category actions, and dot-only AI marker', () => {
+  it('renders transactions as a table with bank account, category actions, and dot-only status marker', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     expect(markup).toContain('Description')
     expect(markup).toContain('Date')
     expect(markup).toContain('Bank account')
     expect(markup).toContain('Category')
-    expect(markup).toContain('AI')
+    expect(markup).toContain('Status')
     expect(markup).toContain('Amount')
     expect(markup).toContain('Checking')
-    expect(markup).toContain('title="AI confidence 1: plausible; needs user review"')
+    expect(markup).toContain('title="AI suggested a category; review recommended. Reason: Looks like a supermarket purchase."')
+    const confirmDot = findButtonByLabelPrefix('Confirm category for Netto.')
+    expect(confirmDot?.disabled).toBeFalsy()
+    expect(confirmDot?.className).toContain('cursor-pointer')
+    expect(confirmDot?.className).toContain('hover:bg-transparent')
+    expect(confirmDot?.className).toContain('hover:ring-2')
     expect(findButtonByLabel('AI categorize transaction')?.disabled).toBe(false)
     expect(findButtonByLabel('Split transaction')?.disabled).toBeFalsy()
   })
@@ -197,6 +262,7 @@ describe('LedgerDashboard', () => {
 
     expect(markup).toContain('AI running · 1 processing')
     expect(markup).toContain('title="AI is currently categorizing this transaction"')
+    expect(findButtonByLabelPrefix('Confirm category for Netto.')).toBeUndefined()
   })
 
   it('runs the batch AI server function with the server cap', async () => {
@@ -218,6 +284,15 @@ describe('LedgerDashboard', () => {
     expect(aiCategorizeTransaction).toHaveBeenCalledWith({data: {ledgerTransactionId: 'ledger-transaction-1'}})
     expect(zeroMutate).not.toHaveBeenCalledWith(expect.objectContaining({type: 'aiCategorizeTransaction'}))
   })
+
+  it('confirms the current transaction category through a narrow Zero mutator', async () => {
+    renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    findButtonByLabelPrefix('Confirm category for Netto.')?.onClick?.()
+    await flushPromises()
+
+    expect(zeroMutate).toHaveBeenCalledWith({type: 'confirmTransaction', input: {ledgerTransactionId: 'ledger-transaction-1'}})
+  })
 })
 
 function findButton(text: string) {
@@ -226,6 +301,10 @@ function findButton(text: string) {
 
 function findButtonByLabel(label: string) {
   return renderedButtons.find(button => button.ariaLabel === label)
+}
+
+function findButtonByLabelPrefix(labelPrefix: string) {
+  return renderedButtons.find(button => button.ariaLabel?.startsWith(labelPrefix))
 }
 
 function textFromNode(node: React.ReactNode): string {
