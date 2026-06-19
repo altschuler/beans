@@ -243,6 +243,7 @@ export const ledgerTransactions = pgTable(
     status: text('status').notNull(),
     aiConfidence: integer('ai_confidence'),
     aiProcessingStartedAt: timestamp('ai_processing_started_at', {mode: 'date'}),
+    categorizedBy: text('categorized_by'),
     date: text('date'),
     description: text('description').notNull(),
     createdAt: timestamp('created_at', {mode: 'date'}).notNull(),

@@ -7,6 +7,7 @@ import {z} from 'zod'
 import {db, type Database} from '@/db/client'
 import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerTransactions, teamMembers} from '@/db/schema'
 import {categorizeLedgerTransaction} from './categorization.server'
+import {loadSimilarCategorizationExamples, type AiCategorizationSimilarExample} from './similar-categorization-examples.server'
 
 export const AI_CATEGORIZATION_MODEL = 'gpt-5.4-nano'
 export const MAX_AI_CATEGORIZATION_BATCH_SIZE = 25
@@ -41,6 +42,7 @@ export type AiCategorizationTransaction = {
   currency: string
   bankAccountName: string
   counterpartyName: string | null
+  similarConfirmedExamples: AiCategorizationSimilarExample[]
 }
 
 export type AiCategorizationModelInput = {
@@ -71,7 +73,7 @@ type AiCategorizeLedgerTransactionsInput = {
 type CategorizeWithModel = (input: AiCategorizationModelInput) => Promise<AiCategorizationSuggestion[]>
 
 type LoadedAiCategorizationCategory = AiCategorizationCategory & {teamId: string}
-type LoadedAiCategorizationTransaction = AiCategorizationTransaction & {teamId: string}
+type LoadedAiCategorizationTransaction = Omit<AiCategorizationTransaction, 'similarConfirmedExamples'> & {teamId: string}
 
 type ClaimedAiCategorizationWork = {
   transactions: LoadedAiCategorizationTransaction[]
@@ -93,6 +95,13 @@ export async function aiCategorizeLedgerTransactions(
   const transactionIds = work.transactions.map(transaction => transaction.id)
 
   try {
+    const similarExamplesByTransactionId = await db.transaction(tx =>
+      loadSimilarCategorizationExamples(tx, {
+        userId: input.userId,
+        transactions: work.transactions,
+      }),
+    )
+
     let suggested = 0
     let applied = 0
     let confirmed = 0
@@ -113,7 +122,7 @@ export async function aiCategorizeLedgerTransactions(
 
       const teamSuggestions = await categorizeWithModel({
         categories: teamCategories.map(toModelCategory),
-        transactions: teamTransactions.map(toModelTransaction),
+        transactions: teamTransactions.map(transaction => toModelTransaction(transaction, similarExamplesByTransactionId.get(transaction.id) ?? [])),
       })
       suggested += teamSuggestions.length
 
@@ -147,6 +156,8 @@ export async function categorizeWithOpenAI(input: AiCategorizationModelInput): P
     system: `You categorize personal finance ledger transactions. For each transaction, return one suggestion with confidence 0, 1, or 2.
 
 Use only supplied category ids. Do not invent category ids.
+
+Each transaction may include similarConfirmedExamples from already-categorized same-team transactions. User-confirmed similar examples are strong evidence. Near-identical merchant or counterparty examples should usually use the same category. AI-confirmed examples are useful but weaker than user-confirmed examples. Do not blindly copy an example if amount direction, currency, merchant context, or description indicates a different category. If similar user-confirmed examples disagree, lower confidence.
 
 Confidence calibration:
 - 0: very low confidence; cannot categorize reliably. Use categoryAccountId null.
@@ -253,6 +264,7 @@ async function applyAiCategorizationSuggestions(
       accountId: suggestion.categoryAccountId,
       status,
       aiConfidence: suggestion.confidence,
+      categorizedBy: 'ai',
       requiredCurrentStatus: 'needs_review',
     })
 
@@ -436,7 +448,7 @@ function toModelCategory(category: LoadedAiCategorizationCategory): AiCategoriza
   }
 }
 
-function toModelTransaction(transaction: LoadedAiCategorizationTransaction): AiCategorizationTransaction {
+function toModelTransaction(transaction: LoadedAiCategorizationTransaction, similarConfirmedExamples: AiCategorizationSimilarExample[]): AiCategorizationTransaction {
   return {
     id: transaction.id,
     date: transaction.date,
@@ -445,6 +457,7 @@ function toModelTransaction(transaction: LoadedAiCategorizationTransaction): AiC
     currency: transaction.currency,
     bankAccountName: transaction.bankAccountName,
     counterpartyName: transaction.counterpartyName,
+    similarConfirmedExamples,
   }
 }
 

@@ -18,12 +18,14 @@ type DrizzleTransaction = DatabaseTransaction | ZeroDrizzleTransaction<Database>
 
 type LedgerTransactionFinalStatus = 'confirmed' | 'needs_review'
 type LedgerTransactionAiConfidence = 0 | 1 | 2
+type LedgerTransactionCategorizedBy = 'user' | 'ai'
 
 type CategorizeLedgerTransactionInput = {
   userId: string
   ledgerTransactionId: string
   status?: LedgerTransactionFinalStatus
   aiConfidence?: LedgerTransactionAiConfidence | null
+  categorizedBy?: LedgerTransactionCategorizedBy | null
   requiredCurrentStatus?: LedgerTransactionFinalStatus
 } & ({accountId: string; lines?: never} | {accountId?: never; lines: CategorizationLineInput[]})
 
@@ -102,6 +104,7 @@ export async function categorizeLedgerTransaction(tx: DrizzleTransaction, input:
     status: input.status ?? 'confirmed',
     aiConfidence: input.aiConfidence ?? null,
     aiProcessingStartedAt: null,
+    categorizedBy: input.categorizedBy ?? 'user',
     updatedAt: new Date(),
   }
 

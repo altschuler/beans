@@ -185,6 +185,7 @@ describe('categorizeLedgerTransaction', () => {
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
 
     expect(transaction?.status).toBe('confirmed')
+    expect(transaction?.categorizedBy).toBe('user')
     expect(movements).toHaveLength(1)
     expect(movements[0]).toMatchObject({
       debitAccountId: 'groceries',
@@ -255,6 +256,7 @@ describe('categorizeLedgerTransaction', () => {
         accountId: 'groceries',
         status: 'needs_review',
         aiConfidence: 1,
+        categorizedBy: 'ai',
       }),
     )
 
@@ -266,12 +268,41 @@ describe('categorizeLedgerTransaction', () => {
 
     expect(transaction?.status).toBe('needs_review')
     expect(transaction?.aiConfidence).toBe(1)
+    expect(transaction?.categorizedBy).toBe('ai')
     expect(transaction?.aiProcessingStartedAt).toBeNull()
     expect(movement).toMatchObject({
       debitAccountId: 'groceries',
       creditAccountId: 'bank-ledger-account',
       amount: '100.0000',
     })
+  })
+
+  it('marks a manual recategorization of an AI-categorized transaction as user-categorized', async () => {
+    const {categorizeLedgerTransaction} = await import('@/ledger/categorization.server')
+
+    await db
+      .update(ledgerTransactions)
+      .set({status: 'confirmed', categorizedBy: 'ai', aiConfidence: 1})
+      .where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+
+    await db.transaction(tx =>
+      categorizeLedgerTransaction(tx, {
+        userId: 'user-1',
+        ledgerTransactionId: 'ledger-transaction-1',
+        accountId: 'household',
+      }),
+    )
+
+    const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    const [movement] = await db
+      .select()
+      .from(ledgerTransactionMovements)
+      .where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+
+    expect(transaction?.status).toBe('confirmed')
+    expect(transaction?.aiConfidence).toBeNull()
+    expect(transaction?.categorizedBy).toBe('user')
+    expect(movement).toMatchObject({debitAccountId: 'household', creditAccountId: 'bank-ledger-account', amount: '100.0000'})
   })
 
   it('skips writing movements when the required current status no longer matches', async () => {

@@ -154,6 +154,7 @@ export async function ensureGeneratedLedgerTransactionForBankTransaction(
     date: string | null
     status?: LedgerTransactionStatus
     aiConfidence?: 0 | 1 | 2 | null
+    categorizedBy?: 'user' | 'ai' | null
   },
 ) {
   const [existing] = await tx
@@ -177,6 +178,7 @@ export async function ensureGeneratedLedgerTransactionForBankTransaction(
     date: input.date,
     status: input.status ?? 'needs_review',
     aiConfidence: input.aiConfidence ?? null,
+    categorizedBy: input.categorizedBy ?? null,
   })
 
   await tx.insert(ledgerTransactions).values(draft.transaction)

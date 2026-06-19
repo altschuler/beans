@@ -18,7 +18,7 @@ import type {AiCategorizationModelInput, AiCategorizationSuggestion} from '@/led
 
 type CategorizeWithModel = (input: AiCategorizationModelInput) => Promise<AiCategorizationSuggestion[]>
 
-const generateObject = vi.hoisted(() => vi.fn(async (options: {schema: unknown}) => {
+const generateObject = vi.hoisted(() => vi.fn(async (options: {schema: unknown; system?: string}) => {
   void options
   return {object: {suggestions: []}}
 }))
@@ -325,6 +325,50 @@ async function seedAdditionalNeedsReviewTransactions(count: number) {
   )
 }
 
+async function seedConfirmedUserExampleForNetto() {
+  const now = new Date('2026-06-18T13:00:00.000Z')
+  await db.insert(bankTransactions).values({
+    id: 'confirmed-netto-bank-transaction',
+    bankAccountId: 'bank-account-1',
+    providerTransactionId: 'confirmed-netto-provider-transaction',
+    status: 'booked',
+    bookingDate: '2026-06-10',
+    valueDate: null,
+    amount: '-99.95',
+    currency: 'DKK',
+    description: 'Netto supermarket Copenhagen',
+    counterpartyName: 'Netto',
+    raw: {},
+    createdAt: now,
+    updatedAt: now,
+  })
+  await db.insert(ledgerTransactions).values({
+    id: 'confirmed-netto-ledger-transaction',
+    teamId: 'team-1',
+    bankTransactionId: 'confirmed-netto-bank-transaction',
+    source: 'bank_import',
+    status: 'confirmed',
+    aiConfidence: null,
+    aiProcessingStartedAt: null,
+    categorizedBy: 'user',
+    date: '2026-06-10',
+    description: 'Netto supermarket Copenhagen',
+    createdAt: now,
+    updatedAt: now,
+  })
+  await db.insert(ledgerTransactionMovements).values({
+    id: 'confirmed-netto-movement',
+    ledgerTransactionId: 'confirmed-netto-ledger-transaction',
+    debitAccountId: 'groceries',
+    creditAccountId: 'bank-ledger-account',
+    amount: '99.95',
+    currency: 'DKK',
+    sortOrder: 0,
+    createdAt: now,
+    updatedAt: now,
+  })
+}
+
 async function seedSecondTeamTransaction() {
   const now = new Date('2026-06-18T12:00:00.000Z')
   await db.insert(bankAccounts).values({
@@ -432,8 +476,28 @@ describe('aiCategorizeLedgerTransactions', () => {
 
     expect(transaction?.status).toBe('confirmed')
     expect(transaction?.aiConfidence).toBe(2)
+    expect(transaction?.categorizedBy).toBe('ai')
     expect(transaction?.aiProcessingStartedAt).toBeNull()
     expect(movement).toMatchObject({debitAccountId: 'groceries', creditAccountId: 'bank-ledger-account', amount: '100.0000'})
+  })
+
+  it('includes similar confirmed examples in each model transaction', async () => {
+    await seedConfirmedUserExampleForNetto()
+    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => [])
+
+    await aiCategorizeLedgerTransactions({userId: 'user-1', ledgerTransactionIds: ['ledger-transaction-1']}, categorizeWithModel)
+
+    const modelTransaction = categorizeWithModel.mock.calls[0]?.[0].transactions[0]
+    expect(modelTransaction?.similarConfirmedExamples).toEqual([
+      expect.objectContaining({
+        ledgerTransactionId: 'confirmed-netto-ledger-transaction',
+        categoryAccountId: 'groceries',
+        categoryName: 'Groceries',
+        categoryGroupName: 'Everyday spending',
+        categorizedBy: 'user',
+      }),
+    ])
   })
 
   it('groups multi-team batches and sends only matching team categories with each transaction set', async () => {
@@ -469,6 +533,7 @@ describe('aiCategorizeLedgerTransactions', () => {
     expect(result).toEqual({requested: 1, suggested: 1, applied: 1, confirmed: 0, stillNeedsReview: 1, skipped: 0})
     expect(transaction?.status).toBe('needs_review')
     expect(transaction?.aiConfidence).toBe(1)
+    expect(transaction?.categorizedBy).toBe('ai')
     expect(transaction?.aiProcessingStartedAt).toBeNull()
   })
 
@@ -564,6 +629,7 @@ describe('aiCategorizeLedgerTransactions', () => {
     expect(result).toEqual({requested: 1, suggested: 1, applied: 0, confirmed: 0, stillNeedsReview: 1, skipped: 0})
     expect(transaction?.status).toBe('needs_review')
     expect(transaction?.aiConfidence).toBe(0)
+    expect(transaction?.categorizedBy).toBeNull()
     expect(transaction?.aiProcessingStartedAt).toBeNull()
     expect(movement).toMatchObject({debitAccountId: 'uncategorized', creditAccountId: 'bank-ledger-account', amount: '100.0000'})
   })
@@ -688,6 +754,8 @@ describe('aiCategorizeLedgerTransactions', () => {
     expect(JSON.stringify(jsonSchema)).toContain('0')
     expect(JSON.stringify(jsonSchema)).toContain('1')
     expect(JSON.stringify(jsonSchema)).toContain('2')
+    expect(generateObjectCall?.[0].system).toContain('User-confirmed similar examples are strong evidence')
+    expect(generateObjectCall?.[0].system).toContain('AI-confirmed examples are useful but weaker')
   })
 
   it('rejects users outside the transaction team', async () => {

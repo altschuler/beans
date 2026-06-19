@@ -50,6 +50,13 @@
       "when": 1781856831860,
       "tag": "0006_serious_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781860593612,
+      "tag": "0007_gigantic_thunderbolt_ross",
+      "breakpoints": true
     }
   ]
 }

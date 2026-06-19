@@ -40,6 +40,7 @@ describe('banking schema exports', () => {
     expect(ledgerTransactions.bankTransactionId).toBeDefined()
     expect(ledgerTransactions.aiConfidence).toBeDefined()
     expect(ledgerTransactions.aiProcessingStartedAt).toBeDefined()
+    expect(ledgerTransactions.categorizedBy).toBeDefined()
     expect(ledgerTransactionMovements.debitAccountId).toBeDefined()
     expect(ledgerTransactionMovements.creditAccountId).toBeDefined()
   })

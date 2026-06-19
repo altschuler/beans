@@ -24,6 +24,7 @@ describe('buildBankImportLedgerDraft', () => {
         status: 'confirmed',
         aiConfidence: 2,
         aiProcessingStartedAt: null,
+        categorizedBy: null,
         date: '2026-06-17',
         description: 'Salary',
       },
