@@ -37,6 +37,9 @@ const queryRows = vi.hoisted(() => ({
 const zeroMutate = vi.hoisted(() => vi.fn(async () => undefined))
 const aiCategorizeTransaction = vi.hoisted(() => vi.fn(async () => ({requested: 1, suggested: 1, applied: 1, confirmed: 0, stillNeedsReview: 1, skipped: 0})))
 const aiCategorizeNeedsReviewBatch = vi.hoisted(() => vi.fn(async () => ({requested: 1, suggested: 1, applied: 1, confirmed: 0, stillNeedsReview: 1, skipped: 0})))
+const toastSuccess = vi.hoisted(() => vi.fn())
+const toastError = vi.hoisted(() => vi.fn())
+const syncAllBankAccounts = vi.hoisted(() => vi.fn(async () => ({total: 1, synced: 1, failed: 0, skipped: 0, fetched: 2, upserted: 2})))
 const renderedButtons = vi.hoisted(
   () =>
     [] as Array<{
@@ -49,6 +52,13 @@ const renderedButtons = vi.hoisted(
       ariaLabel?: string
     }>,
 )
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: toastSuccess,
+    error: toastError,
+  },
+}))
 
 vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string}) => {
@@ -125,7 +135,7 @@ vi.mock('@/zero/queries', () => ({
 }))
 
 vi.mock('@/banking/banking-fns', () => ({
-  syncAllBankAccounts: vi.fn(),
+  syncAllBankAccounts,
 }))
 
 vi.mock('@/ledger/ai-categorization-fns', () => ({
@@ -150,6 +160,9 @@ describe('LedgerDashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     zeroMutate.mockResolvedValue(undefined)
+    toastSuccess.mockClear()
+    toastError.mockClear()
+    syncAllBankAccounts.mockResolvedValue({total: 1, synced: 1, failed: 0, skipped: 0, fetched: 2, upserted: 2})
     renderedButtons.length = 0
     queryRows.groups = [{id: 'group-1', name: 'Everyday spending', sortOrder: 0}]
     queryRows.accounts = [
@@ -216,6 +229,16 @@ describe('LedgerDashboard', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     expect(markup).toContain('Sync all accounts')
+  })
+
+  it('shows a toast when syncing all accounts from the ledger dashboard succeeds', async () => {
+    renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    findButton('Sync all accounts')?.onClick?.()
+    await flushPromises()
+
+    expect(syncAllBankAccounts).toHaveBeenCalledOnce()
+    expect(toastSuccess).toHaveBeenCalledWith('Synced 1 account; fetched 2 transactions and upserted 2.')
   })
 
   it('renders grouped balances and review count', () => {
@@ -289,6 +312,7 @@ describe('LedgerDashboard', () => {
 
     expect(aiCategorizeNeedsReviewBatch).toHaveBeenCalledWith({data: {limit: 25}})
     expect(zeroMutate).not.toHaveBeenCalledWith(expect.objectContaining({type: 'aiCategorizeNeedsReviewBatch'}))
+    expect(toastSuccess).toHaveBeenCalledWith('AI categorization finished. Review any transactions still marked needs review.')
   })
 
   it('runs the row AI server function with the ledger transaction id', async () => {
@@ -299,6 +323,7 @@ describe('LedgerDashboard', () => {
 
     expect(aiCategorizeTransaction).toHaveBeenCalledWith({data: {ledgerTransactionId: 'ledger-transaction-1'}})
     expect(zeroMutate).not.toHaveBeenCalledWith(expect.objectContaining({type: 'aiCategorizeTransaction'}))
+    expect(toastSuccess).toHaveBeenCalledWith('AI categorization finished. Review the transaction if it still needs review.')
   })
 
   it('confirms the current transaction category through a narrow Zero mutator', async () => {
@@ -321,6 +346,7 @@ describe('LedgerDashboard', () => {
     await flushPromises()
 
     expect(zeroMutate).toHaveBeenCalledWith({type: 'clearCategorizations', input: {}})
+    expect(toastSuccess).toHaveBeenCalledWith('Cleared ledger categorizations. Imported bank transactions were kept.')
   })
 })
 
