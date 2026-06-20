@@ -1,4 +1,5 @@
 import {createFileRoute, Outlet, useRouterState} from '@tanstack/react-router'
+import {PageLayout} from '@/components/page-layout'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
 
 export const Route = createFileRoute('/_protected/app')({
@@ -6,7 +7,9 @@ export const Route = createFileRoute('/_protected/app')({
 })
 
 function AppRoute() {
-  const pathname = useRouterState({select: state => state.location.pathname})
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
 
   if (pathname === '/app' || pathname === '/app/') {
     return <HomePage />
@@ -17,20 +20,18 @@ function AppRoute() {
 
 function HomePage() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Home</h1>
-        <p className="text-muted-foreground">Nothing here yet.</p>
+    <PageLayout breadcrumbs={[{title: 'Home'}]} contentClassName="p-4 md:p-6 lg:p-8">
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Welcome to Penge</CardTitle>
+            <CardDescription>This page is intentionally empty for now.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Use the sidebar to open Transactions, Categories, or a bank account.</p>
+          </CardContent>
+        </Card>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Welcome to Penge</CardTitle>
-          <CardDescription>This page is intentionally empty for now.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">Use the sidebar to open Transactions, Categories, or a bank account.</p>
-        </CardContent>
-      </Card>
-    </div>
+    </PageLayout>
   )
 }

@@ -16,6 +16,15 @@ const queryRows = vi.hoisted(() => ({
   }>,
 }))
 
+const renderedPageLayouts = vi.hoisted(
+  () =>
+    [] as Array<{
+      breadcrumbs: Array<{title: string; to?: string}>
+      actions?: React.ReactNode
+      contentClassName?: string
+    }>,
+)
+
 vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string}) => {
     if (query.name === 'bankAccounts') return [queryRows.accounts]
@@ -40,24 +49,57 @@ vi.mock('@/banking/banking-fns', () => ({
   syncAllBankAccounts: vi.fn(),
 }))
 
+vi.mock('@/components/page-layout', async () => {
+  const ReactModule = await import('react')
+  return {
+    PageLayout: ({
+      breadcrumbs,
+      actions,
+      contentClassName,
+      children,
+    }: {
+      breadcrumbs: Array<{title: string; to?: string}>
+      actions?: React.ReactNode
+      contentClassName?: string
+      children: React.ReactNode
+    }) => {
+      renderedPageLayouts.push({breadcrumbs, actions, contentClassName})
+      return ReactModule.createElement(
+        'section',
+        {
+          'data-testid': 'page-layout',
+          'data-breadcrumbs': breadcrumbs.map((crumb) => crumb.title).join(' / '),
+        },
+        ReactModule.createElement('header', {'data-testid': 'page-layout-actions'}, actions),
+        ReactModule.createElement('main', {className: contentClassName}, children),
+      )
+    },
+  }
+})
+
 import {BankingDashboard} from '@/components/banking/banking-dashboard'
 
 describe('BankingDashboard', () => {
   beforeEach(() => {
+    renderedPageLayouts.length = 0
     queryRows.accounts = [{id: 'account-1', name: 'Checking'}]
     queryRows.transactions = []
   })
 
-  it('describes the dedicated bank linking page', () => {
+  it('uses page-owned breadcrumbs for the dedicated bank linking page', () => {
     const markup = renderToStaticMarkup(React.createElement(BankingDashboard))
 
-    expect(markup).toContain('Bank connections')
+    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Manage bank connections'}])
+    expect(renderedPageLayouts[0]?.contentClassName).toBe('p-4 md:p-6 lg:p-8')
+    expect(markup).toContain('Connect bank')
     expect(markup).toContain('Link accounts and sync imported bank transactions')
+    expect(markup).not.toContain('<h2')
   })
 
-  it('shows a sync all accounts action', () => {
+  it('shows a sync all accounts action in the page header', () => {
     const markup = renderToStaticMarkup(React.createElement(BankingDashboard))
 
+    expect(markup).toContain('data-testid="page-layout-actions"')
     expect(markup).toContain('Sync all accounts')
   })
 

@@ -28,17 +28,60 @@ const queryRows = vi.hoisted(() => ({
     date: string | null
     description: string
   }>,
-  postings: [] as Array<{id: string; ledgerTransactionId: string; accountId: string; amount: string; currency: string; bankTransactionId: string | null; sortOrder: number}>,
-  bankTransactions: [] as Array<{id: string; bankAccountId: string; amount: string; currency: string; bookingDate: string | null; valueDate: string | null; description: string}>,
+  postings: [] as Array<{
+    id: string
+    ledgerTransactionId: string
+    accountId: string
+    amount: string
+    currency: string
+    bankTransactionId: string | null
+    sortOrder: number
+  }>,
+  bankTransactions: [] as Array<{
+    id: string
+    bankAccountId: string
+    amount: string
+    currency: string
+    bookingDate: string | null
+    valueDate: string | null
+    description: string
+  }>,
   bankAccounts: [] as Array<{id: string; name: string; syncStatus?: string}>,
 }))
 
 const zeroMutate = vi.hoisted(() => vi.fn(async () => undefined))
-const aiCategorizeTransaction = vi.hoisted(() => vi.fn(async () => ({requested: 1, suggested: 1, applied: 1, confirmed: 0, stillNeedsReview: 1, skipped: 0})))
-const aiCategorizeNeedsReviewBatch = vi.hoisted(() => vi.fn(async () => ({requested: 1, suggested: 1, applied: 1, confirmed: 0, stillNeedsReview: 1, skipped: 0})))
+const aiCategorizeTransaction = vi.hoisted(() =>
+  vi.fn(async () => ({
+    requested: 1,
+    suggested: 1,
+    applied: 1,
+    confirmed: 0,
+    stillNeedsReview: 1,
+    skipped: 0,
+  })),
+)
+const aiCategorizeNeedsReviewBatch = vi.hoisted(() =>
+  vi.fn(async () => ({
+    requested: 1,
+    suggested: 1,
+    applied: 1,
+    confirmed: 0,
+    stillNeedsReview: 1,
+    skipped: 0,
+  })),
+)
 const toastSuccess = vi.hoisted(() => vi.fn())
 const toastError = vi.hoisted(() => vi.fn())
-const syncAllBankAccounts = vi.hoisted(() => vi.fn(async () => ({total: 1, synced: 1, failed: 0, skipped: 0, fetched: 2, upserted: 2})))
+const syncAllBankAccounts = vi.hoisted(() =>
+  vi.fn(async () => ({
+    total: 1,
+    synced: 1,
+    failed: 0,
+    skipped: 0,
+    fetched: 2,
+    upserted: 2,
+  })),
+)
 const renderedButtons = vi.hoisted(
   () =>
     [] as Array<{
@@ -50,6 +93,14 @@ const renderedButtons = vi.hoisted(
       title?: string
       ariaLabel?: string
       variant?: string
+    }>,
+)
+const renderedPageLayouts = vi.hoisted(
+  () =>
+    [] as Array<{
+      breadcrumbs: Array<{title: string; to?: string}>
+      actions?: React.ReactNode
+      contentClassName?: string
     }>,
 )
 
@@ -102,8 +153,29 @@ vi.mock('@/components/ui/button', async () => {
       'aria-label'?: string
       variant?: string
     }) => {
-      renderedButtons.push({children, className, disabled, onClick, type, title, ariaLabel, variant})
-      return ReactModule.createElement('button', {className, disabled, onClick, type, title, 'aria-label': ariaLabel, 'data-variant': variant}, children)
+      renderedButtons.push({
+        children,
+        className,
+        disabled,
+        onClick,
+        type,
+        title,
+        ariaLabel,
+        variant,
+      })
+      return ReactModule.createElement(
+        'button',
+        {
+          className,
+          disabled,
+          onClick,
+          type,
+          title,
+          'aria-label': ariaLabel,
+          'data-variant': variant,
+        },
+        children,
+      )
     },
   }
 })
@@ -129,8 +201,37 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
   return {
     DropdownMenu: passthrough,
     DropdownMenuContent: passthrough,
-    DropdownMenuItem: ({children, onSelect}: {children: React.ReactNode; onSelect?: () => void}) => ReactModule.createElement('button', {type: 'button', onClick: onSelect}, children),
+    DropdownMenuItem: ({children, onSelect}: {children: React.ReactNode; onSelect?: () => void}) =>
+      ReactModule.createElement('button', {type: 'button', onClick: onSelect}, children),
     DropdownMenuTrigger: ({children}: {children: React.ReactNode}) => ReactModule.createElement(ReactModule.Fragment, null, children),
+  }
+})
+
+vi.mock('@/components/page-layout', async () => {
+  const ReactModule = await import('react')
+  return {
+    PageLayout: ({
+      breadcrumbs,
+      actions,
+      contentClassName,
+      children,
+    }: {
+      breadcrumbs: Array<{title: string; to?: string}>
+      actions?: React.ReactNode
+      contentClassName?: string
+      children: React.ReactNode
+    }) => {
+      renderedPageLayouts.push({breadcrumbs, actions, contentClassName})
+      return ReactModule.createElement(
+        'section',
+        {
+          'data-testid': 'page-layout',
+          'data-breadcrumbs': breadcrumbs.map((crumb) => crumb.title).join(' / '),
+        },
+        ReactModule.createElement('header', {'data-testid': 'page-layout-actions'}, actions),
+        ReactModule.createElement('main', {className: contentClassName}, children),
+      )
+    },
   }
 })
 
@@ -159,10 +260,19 @@ vi.mock('@/ledger/ai-categorization-fns', () => ({
 vi.mock('@/zero/mutators', () => ({
   mutators: {
     ledger: {
-      categorizeTransaction: vi.fn(input => ({type: 'categorizeTransaction', input})),
-      splitTransaction: vi.fn(input => ({type: 'splitTransaction', input})),
-      confirmTransaction: vi.fn(input => ({type: 'confirmTransaction', input})),
-      clearCategorizations: vi.fn(input => ({type: 'clearCategorizations', input})),
+      categorizeTransaction: vi.fn((input) => ({
+        type: 'categorizeTransaction',
+        input,
+      })),
+      splitTransaction: vi.fn((input) => ({type: 'splitTransaction', input})),
+      confirmTransaction: vi.fn((input) => ({
+        type: 'confirmTransaction',
+        input,
+      })),
+      clearCategorizations: vi.fn((input) => ({
+        type: 'clearCategorizations',
+        input,
+      })),
     },
   },
 }))
@@ -175,8 +285,16 @@ describe('LedgerDashboard', () => {
     zeroMutate.mockResolvedValue(undefined)
     toastSuccess.mockClear()
     toastError.mockClear()
-    syncAllBankAccounts.mockResolvedValue({total: 1, synced: 1, failed: 0, skipped: 0, fetched: 2, upserted: 2})
+    syncAllBankAccounts.mockResolvedValue({
+      total: 1,
+      synced: 1,
+      failed: 0,
+      skipped: 0,
+      fetched: 2,
+      upserted: 2,
+    })
     renderedButtons.length = 0
+    renderedPageLayouts.length = 0
     queryRows.groups = [{id: 'group-1', name: 'Everyday spending', sortOrder: 0}]
     queryRows.accounts = [
       {
@@ -229,11 +347,35 @@ describe('LedgerDashboard', () => {
       },
     ]
     queryRows.postings = [
-      {id: 'bank-posting-1', ledgerTransactionId: 'ledger-transaction-1', accountId: 'checking', amount: '-100.0000', currency: 'DKK', bankTransactionId: 'bank-transaction-1', sortOrder: 0},
-      {id: 'category-posting-1', ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries', amount: '100.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
+      {
+        id: 'bank-posting-1',
+        ledgerTransactionId: 'ledger-transaction-1',
+        accountId: 'checking',
+        amount: '-100.0000',
+        currency: 'DKK',
+        bankTransactionId: 'bank-transaction-1',
+        sortOrder: 0,
+      },
+      {
+        id: 'category-posting-1',
+        ledgerTransactionId: 'ledger-transaction-1',
+        accountId: 'groceries',
+        amount: '100.0000',
+        currency: 'DKK',
+        bankTransactionId: null,
+        sortOrder: 1,
+      },
     ]
     queryRows.bankTransactions = [
-      {id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: '-100.00', currency: 'DKK', bookingDate: '2026-06-18', valueDate: null, description: 'Netto'},
+      {
+        id: 'bank-transaction-1',
+        bankAccountId: 'bank-account-1',
+        amount: '-100.00',
+        currency: 'DKK',
+        bookingDate: '2026-06-18',
+        valueDate: null,
+        description: 'Netto',
+      },
     ]
     queryRows.bankAccounts = [{id: 'bank-account-1', name: 'Checking'}]
   })
@@ -254,13 +396,16 @@ describe('LedgerDashboard', () => {
     expect(toastSuccess).toHaveBeenCalledWith('Synced 1 account; fetched 2 transactions and upserted 2.')
   })
 
-  it('renders the transactions view as an unboxed table with a compact action bar', () => {
+  it('renders the transactions view in a page layout with global actions in the fixed header', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
+    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Transactions'}])
+    expect(renderedPageLayouts[0]?.contentClassName).toBe('p-0')
+    expect(markup).toContain('data-testid="page-layout-actions"')
     expect(markup).toContain('flex h-full min-h-0 flex-col')
-    expect(markup).toContain('px-3 pt-3 pb-3')
-    expect(markup).toContain('shrink-0')
     expect(markup).toContain('flex min-h-0 flex-1')
+    expect(markup).toContain('h-full min-h-0 flex-1 overflow-auto')
+    expect(markup).not.toContain('border-b px-3 pt-3 pb-3')
     expect(markup).not.toContain('px-4 pt-4 md:px-6 lg:px-8')
     expect(markup).toContain('1 needs review')
     expect(markup).toContain('Auto-categorize')
@@ -279,6 +424,8 @@ describe('LedgerDashboard', () => {
   it('renders categories as a simple unboxed list with a compact count bar', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard, {view: 'categories'}))
 
+    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Categories'}])
+    expect(renderedPageLayouts[0]?.contentClassName).toBe('p-0')
     expect(markup).toContain('flex h-full min-h-0 flex-col')
     expect(markup).toContain('border-b px-3 pt-3 pb-3')
     expect(markup).toContain('3 categories')
@@ -314,18 +461,48 @@ describe('LedgerDashboard', () => {
     ]
     queryRows.postings = [
       ...queryRows.postings,
-      {id: 'bank-posting-2', ledgerTransactionId: 'ledger-transaction-2', accountId: 'checking', amount: '-50.0000', currency: 'DKK', bankTransactionId: 'bank-transaction-2', sortOrder: 0},
-      {id: 'category-posting-2', ledgerTransactionId: 'ledger-transaction-2', accountId: 'groceries', amount: '50.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
+      {
+        id: 'bank-posting-2',
+        ledgerTransactionId: 'ledger-transaction-2',
+        accountId: 'checking',
+        amount: '-50.0000',
+        currency: 'DKK',
+        bankTransactionId: 'bank-transaction-2',
+        sortOrder: 0,
+      },
+      {
+        id: 'category-posting-2',
+        ledgerTransactionId: 'ledger-transaction-2',
+        accountId: 'groceries',
+        amount: '50.0000',
+        currency: 'DKK',
+        bankTransactionId: null,
+        sortOrder: 1,
+      },
     ]
     queryRows.bankTransactions = [
       ...queryRows.bankTransactions,
-      {id: 'bank-transaction-2', bankAccountId: 'bank-account-2', amount: '-50.00', currency: 'DKK', bookingDate: '2026-06-19', valueDate: null, description: 'Other Shop'},
+      {
+        id: 'bank-transaction-2',
+        bankAccountId: 'bank-account-2',
+        amount: '-50.00',
+        currency: 'DKK',
+        bookingDate: '2026-06-19',
+        valueDate: null,
+        description: 'Other Shop',
+      },
     ]
     queryRows.bankAccounts = [...queryRows.bankAccounts, {id: 'bank-account-2', name: 'Savings'}]
 
-    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard, {view: 'bankAccountTransactions', bankAccountId: 'bank-account-1'}))
+    const markup = renderToStaticMarkup(
+      React.createElement(LedgerDashboard, {
+        view: 'bankAccountTransactions',
+        bankAccountId: 'bank-account-1',
+      }),
+    )
 
-    expect(markup).toContain('Review imported transactions for this bank account.')
+    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Checking'}])
+    expect(markup).not.toContain('Review imported transactions for this bank account.')
     expect(markup).toContain('Netto')
     expect(markup).toContain('Category')
     expect(markup).not.toContain('Other Shop')
@@ -339,8 +516,14 @@ describe('LedgerDashboard', () => {
   it('shows bank account not found when the bank account list is empty on a bank account route', () => {
     queryRows.bankAccounts = []
 
-    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard, {view: 'bankAccountTransactions', bankAccountId: 'missing-bank-account'}))
+    const markup = renderToStaticMarkup(
+      React.createElement(LedgerDashboard, {
+        view: 'bankAccountTransactions',
+        bankAccountId: 'missing-bank-account',
+      }),
+    )
 
+    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Bank account'}])
     expect(markup).toContain('Bank account not found.')
     expect(markup).not.toContain('No imported ledger transactions yet.')
   })
@@ -386,7 +569,11 @@ describe('LedgerDashboard', () => {
 
   it('shows a global AI running indicator when any transaction is processing', () => {
     queryRows.ledgerTransactions = [
-      {...queryRows.ledgerTransactions[0]!, aiConfidence: null, aiProcessingStartedAt: new Date()},
+      {
+        ...queryRows.ledgerTransactions[0]!,
+        aiConfidence: null,
+        aiProcessingStartedAt: new Date(),
+      },
     ]
 
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
@@ -402,7 +589,9 @@ describe('LedgerDashboard', () => {
     findButton('Auto-categorize')?.onClick?.()
     await flushPromises()
 
-    expect(aiCategorizeNeedsReviewBatch).toHaveBeenCalledWith({data: {limit: 25}})
+    expect(aiCategorizeNeedsReviewBatch).toHaveBeenCalledWith({
+      data: {limit: 25},
+    })
     expect(zeroMutate).not.toHaveBeenCalledWith(expect.objectContaining({type: 'aiCategorizeNeedsReviewBatch'}))
     expect(toastSuccess).toHaveBeenCalledWith('AI categorization finished. Review any transactions still marked needs review.')
   })
@@ -413,7 +602,9 @@ describe('LedgerDashboard', () => {
     findButtonByLabel('AI categorize transaction')?.onClick?.()
     await flushPromises()
 
-    expect(aiCategorizeTransaction).toHaveBeenCalledWith({data: {ledgerTransactionId: 'ledger-transaction-1'}})
+    expect(aiCategorizeTransaction).toHaveBeenCalledWith({
+      data: {ledgerTransactionId: 'ledger-transaction-1'},
+    })
     expect(zeroMutate).not.toHaveBeenCalledWith(expect.objectContaining({type: 'aiCategorizeTransaction'}))
     expect(toastSuccess).toHaveBeenCalledWith('AI categorization finished. Review the transaction if it still needs review.')
   })
@@ -424,7 +615,10 @@ describe('LedgerDashboard', () => {
     findButtonByLabelPrefix('Confirm category for Netto.')?.onClick?.()
     await flushPromises()
 
-    expect(zeroMutate).toHaveBeenCalledWith({type: 'confirmTransaction', input: {ledgerTransactionId: 'ledger-transaction-1'}})
+    expect(zeroMutate).toHaveBeenCalledWith({
+      type: 'confirmTransaction',
+      input: {ledgerTransactionId: 'ledger-transaction-1'},
+    })
   })
 
   it('clears all categorizations only after dialog confirmation', async () => {
@@ -437,21 +631,24 @@ describe('LedgerDashboard', () => {
     findButton('Clear all categorizations')?.onClick?.()
     await flushPromises()
 
-    expect(zeroMutate).toHaveBeenCalledWith({type: 'clearCategorizations', input: {}})
+    expect(zeroMutate).toHaveBeenCalledWith({
+      type: 'clearCategorizations',
+      input: {},
+    })
     expect(toastSuccess).toHaveBeenCalledWith('Cleared ledger categorizations. Imported bank transactions were kept.')
   })
 })
 
 function findButton(text: string) {
-  return renderedButtons.find(button => textFromNode(button.children) === text)
+  return renderedButtons.find((button) => textFromNode(button.children) === text)
 }
 
 function findButtonByLabel(label: string) {
-  return renderedButtons.find(button => button.ariaLabel === label)
+  return renderedButtons.find((button) => button.ariaLabel === label)
 }
 
 function findButtonByLabelPrefix(labelPrefix: string) {
-  return renderedButtons.find(button => button.ariaLabel?.startsWith(labelPrefix))
+  return renderedButtons.find((button) => button.ariaLabel?.startsWith(labelPrefix))
 }
 
 function textFromNode(node: React.ReactNode): string {

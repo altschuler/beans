@@ -5,7 +5,6 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 const shellTestState = vi.hoisted(() => ({
   pathname: '/app',
   bankAccounts: [{id: 'bank-account-1', name: 'Checking'}],
-  ledgerAccounts: [{id: 'takeaway', name: 'Take-away'}],
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -18,7 +17,6 @@ vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string}) => {
     if (query.name === 'teams') return [[{id: 'team-1', name: 'Personal team'}]]
     if (query.name === 'bankAccounts') return [shellTestState.bankAccounts]
-    if (query.name === 'ledgerAccounts') return [shellTestState.ledgerAccounts]
     throw new Error(`Unexpected query: ${query.name}`)
   }),
 }))
@@ -28,7 +26,6 @@ vi.mock('@/zero/queries', () => ({
     domain: {
       teams: () => ({name: 'teams'}),
       bankAccounts: () => ({name: 'bankAccounts'}),
-      ledgerAccounts: () => ({name: 'ledgerAccounts'}),
     },
   },
 }))
@@ -37,230 +34,50 @@ vi.mock('@/auth/client', () => ({authClient: {signOut: vi.fn()}}))
 
 import {Shell} from '@/components/layout/shell'
 
-function breadcrumbMarkup(markup: string) {
-  return markup.match(/<nav aria-label="breadcrumb"[\s\S]*?<\/nav>/)?.[0] ?? ''
-}
-
 describe('Shell', () => {
   beforeEach(() => {
     shellTestState.pathname = '/app'
     shellTestState.bankAccounts = [{id: 'bank-account-1', name: 'Checking'}]
-    shellTestState.ledgerAccounts = [{id: 'takeaway', name: 'Take-away'}]
   })
 
-  it('shows sidebar navigation, team, current user, and product title', () => {
-    const markup = renderToStaticMarkup(
-      React.createElement(Shell, {
-        userEmail: 'test@example.com',
-        userName: 'Test User',
-        children: React.createElement('p', null, 'Content'),
-      }),
-    )
+  it('shows sidebar navigation, team, current user, and product title without rendering page breadcrumbs', () => {
+    const markup = renderShell()
 
     expect(markup).toContain('Penge')
     expect(markup).toContain('Personal team')
     expect(markup).toContain('Home')
     expect(markup).toContain('Transactions')
     expect(markup).toContain('Categories')
-    expect(markup).toContain('Ledger')
-    expect(markup).toContain('href="/ledger"')
     expect(markup).toContain('Checking')
     expect(markup).toContain('Manage bank connections')
     expect(markup).toContain('test@example.com')
     expect(markup).toContain('Sign out')
+    expect(markup).toContain('Content')
+    expect(markup).not.toContain('aria-label="breadcrumb"')
     expect(markup).not.toContain('Budgeting boilerplate')
   })
 
-  it('renders breadcrumbs for the protected ledger route', () => {
-    shellTestState.pathname = '/ledger'
-
-    const markup = renderToStaticMarkup(
-      React.createElement(Shell, {
-        userEmail: 'test@example.com',
-        userName: 'Test User',
-        children: React.createElement('p', null, 'Content'),
-      }),
-    )
-    const breadcrumb = breadcrumbMarkup(markup)
-
-    expect(breadcrumb).toContain('Ledger')
-    expect(breadcrumb).not.toContain('Home')
-  })
-
-  it('renders breadcrumbs for the current top-level app route without a home ancestor', () => {
+  it('keeps a route-agnostic full-height inset for page-owned layouts', () => {
     shellTestState.pathname = '/app/transactions'
 
-    const markup = renderToStaticMarkup(
-      React.createElement(Shell, {
-        userEmail: 'test@example.com',
-        userName: 'Test User',
-        children: React.createElement('p', null, 'Content'),
-      }),
-    )
-    const breadcrumb = breadcrumbMarkup(markup)
-
-    expect(breadcrumb).toContain('aria-label="breadcrumb"')
-    expect(breadcrumb).not.toContain('href="/app"')
-    expect(breadcrumb).not.toContain('Home')
-    expect(breadcrumb).toContain('Transactions')
-    expect(breadcrumb).toContain('aria-current="page"')
-  })
-
-  it('removes content padding on the transactions page so its action bar is flush', () => {
-    shellTestState.pathname = '/app/transactions'
-
-    const markup = renderToStaticMarkup(
-      React.createElement(Shell, {
-        userEmail: 'test@example.com',
-        userName: 'Test User',
-        children: React.createElement('p', null, 'Content'),
-      }),
-    )
+    const markup = renderShell()
 
     expect(markup).toMatch(/data-slot="sidebar-wrapper"[\s\S]*class="[^"]*h-svh[^"]*min-h-0[^"]*overflow-hidden/)
     expect(markup).toMatch(/data-slot="sidebar-inset"[\s\S]*class="[^"]*min-h-0[^"]*overflow-hidden/)
-    expect(markup).toContain('class="flex-1 min-h-0 overflow-hidden p-0"')
+    expect(markup).not.toContain('class="flex-1 min-h-0 overflow-hidden p-0"')
+    expect(markup).not.toContain('class="flex-1 p-0"')
     expect(markup).not.toContain('class="flex-1 p-4 md:p-6 lg:p-8"')
-  })
-
-  it('removes content padding on the categories page so its count bar is flush', () => {
-    shellTestState.pathname = '/app/categories'
-
-    const markup = renderToStaticMarkup(
-      React.createElement(Shell, {
-        userEmail: 'test@example.com',
-        userName: 'Test User',
-        children: React.createElement('p', null, 'Content'),
-      }),
-    )
-
-    expect(markup).toContain('class="flex-1 p-0"')
-    expect(markup).not.toContain('class="flex-1 p-4 md:p-6 lg:p-8"')
-  })
-
-  it('renders the selected bank account name in breadcrumbs', () => {
-    shellTestState.pathname = '/app/bank-accounts/bank-account-1'
-
-    const markup = renderToStaticMarkup(
-      React.createElement(Shell, {
-        userEmail: 'test@example.com',
-        userName: 'Test User',
-        children: React.createElement('p', null, 'Content'),
-      }),
-    )
-
-    const breadcrumb = breadcrumbMarkup(markup)
-
-    expect(breadcrumb).not.toContain('Home')
-    expect(breadcrumb).toContain('Checking')
-    expect(breadcrumb).not.toContain('bank-account-1')
-  })
-
-  it('uses the bank account breadcrumb fallback for malformed encoded bank account route ids', () => {
-    shellTestState.pathname = '/app/bank-accounts/%'
-
-    let markup = ''
-    expect(() => {
-      markup = renderToStaticMarkup(
-        React.createElement(Shell, {
-          userEmail: 'test@example.com',
-          userName: 'Test User',
-          children: React.createElement('p', null, 'Content'),
-        }),
-      )
-    }).not.toThrow()
-
-    const breadcrumb = breadcrumbMarkup(markup)
-
-    expect(breadcrumb).not.toContain('Home')
-    expect(breadcrumb).toContain('Bank account')
-    expect(breadcrumb).not.toContain('%')
-  })
-
-  it('renders categories as the parent breadcrumb for account detail pages', () => {
-    shellTestState.pathname = '/app/accounts/takeaway'
-
-    const markup = renderToStaticMarkup(
-      React.createElement(Shell, {
-        userEmail: 'test@example.com',
-        userName: 'Test User',
-        children: React.createElement('p', null, 'Content'),
-      }),
-    )
-
-    const breadcrumb = breadcrumbMarkup(markup)
-
-    expect(breadcrumb).toContain('href="/app/categories"')
-    expect(breadcrumb).toContain('Categories')
-    expect(breadcrumb).toContain('Take-away')
-    expect(breadcrumb).not.toContain('takeaway')
-    expect(breadcrumb).toContain('aria-current="page"')
-  })
-
-  it('uses an account breadcrumb fallback when the account id is missing from synced data', () => {
-    shellTestState.pathname = '/app/accounts/missing-account'
-    shellTestState.ledgerAccounts = []
-
-    const markup = renderToStaticMarkup(
-      React.createElement(Shell, {
-        userEmail: 'test@example.com',
-        userName: 'Test User',
-        children: React.createElement('p', null, 'Content'),
-      }),
-    )
-
-    const breadcrumb = breadcrumbMarkup(markup)
-
-    expect(breadcrumb).toContain('href="/app/categories"')
-    expect(breadcrumb).toContain('Categories')
-    expect(breadcrumb).toContain('Account')
-    expect(breadcrumb).not.toContain('missing-account')
-  })
-
-  it('uses the account breadcrumb fallback for malformed encoded account route ids', () => {
-    shellTestState.pathname = '/app/accounts/%'
-    shellTestState.ledgerAccounts = []
-
-    let markup = ''
-    expect(() => {
-      markup = renderToStaticMarkup(
-        React.createElement(Shell, {
-          userEmail: 'test@example.com',
-          userName: 'Test User',
-          children: React.createElement('p', null, 'Content'),
-        }),
-      )
-    }).not.toThrow()
-
-    const breadcrumb = breadcrumbMarkup(markup)
-
-    expect(breadcrumb).toContain('href="/app/categories"')
-    expect(breadcrumb).toContain('Categories')
-    expect(breadcrumb).toContain('Account')
-    expect(breadcrumb).not.toContain('%')
   })
 
   it('renders a single main landmark from the sidebar inset', () => {
-    const markup = renderToStaticMarkup(
-      React.createElement(Shell, {
-        userEmail: 'test@example.com',
-        userName: 'Test User',
-        children: React.createElement('p', null, 'Content'),
-      }),
-    )
+    const markup = renderShell()
 
     expect(markup.match(/<main\b/g)).toHaveLength(1)
     expect(markup).toContain('data-slot="sidebar-inset"')
   })
 
   it('renders the user identity row without wrapping it in a focusable button', () => {
-    const markup = renderToStaticMarkup(
-      React.createElement(Shell, {
-        userEmail: 'test@example.com',
-        userName: 'Test User',
-        children: React.createElement('p', null, 'Content'),
-      }),
-    )
+    const markup = renderShell()
     const emailIndex = markup.indexOf('data-testid="session-email"')
     const previousButtonOpenIndex = markup.lastIndexOf('<button', emailIndex)
     const previousButtonCloseIndex = markup.lastIndexOf('</button>', emailIndex)
@@ -305,8 +122,13 @@ describe('Shell', () => {
 
     const {AppSidebar} = await import('@/components/layout/app-sidebar')
 
-    renderToStaticMarkup(React.createElement(AppSidebar, {userEmail: 'test@example.com', userName: 'Test User'}))
-    linkClicks.find(link => link.to === '/app/transactions')?.onClick?.()
+    renderToStaticMarkup(
+      React.createElement(AppSidebar, {
+        userEmail: 'test@example.com',
+        userName: 'Test User',
+      }),
+    )
+    linkClicks.find((link) => link.to === '/app/transactions')?.onClick?.()
 
     expect(setOpenMobile).toHaveBeenCalledWith(false)
 
@@ -314,9 +136,24 @@ describe('Shell', () => {
     setOpenMobile.mockClear()
     linkClicks.length = 0
 
-    renderToStaticMarkup(React.createElement(AppSidebar, {userEmail: 'test@example.com', userName: 'Test User'}))
-    linkClicks.find(link => link.to === '/app/transactions')?.onClick?.()
+    renderToStaticMarkup(
+      React.createElement(AppSidebar, {
+        userEmail: 'test@example.com',
+        userName: 'Test User',
+      }),
+    )
+    linkClicks.find((link) => link.to === '/app/transactions')?.onClick?.()
 
     expect(setOpenMobile).not.toHaveBeenCalled()
   })
 })
+
+function renderShell() {
+  return renderToStaticMarkup(
+    React.createElement(Shell, {
+      userEmail: 'test@example.com',
+      userName: 'Test User',
+      children: React.createElement('p', null, 'Content'),
+    }),
+  )
+}

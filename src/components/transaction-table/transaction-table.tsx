@@ -25,7 +25,7 @@ export function TransactionTable({
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto rounded-md border">
+    <div className="h-full min-h-0 flex-1 overflow-auto rounded-md border">
       <table className="w-full min-w-[860px] text-sm">
         <thead className="sticky top-0 z-10 bg-muted text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -38,7 +38,7 @@ export function TransactionTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map(row => (
+          {rows.map((row) => (
             <TransactionRow
               key={row.id}
               row={row}
