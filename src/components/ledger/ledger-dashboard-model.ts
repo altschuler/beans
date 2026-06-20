@@ -64,6 +64,7 @@ export function buildLedgerDashboardModel(input: {
   movements: ReadonlyArray<LedgerDashboardMovement>
   bankTransactions: ReadonlyArray<LedgerDashboardBankTransaction>
   bankAccounts: ReadonlyArray<LedgerDashboardBankAccount>
+  bankAccountIdFilter?: string | null
 }) {
   const accounts: NormalizedAccount[] = input.accounts.map(account => ({
     ...account,
@@ -114,6 +115,7 @@ export function buildLedgerDashboardModel(input: {
 
       return {
         id: transaction.id,
+        bankAccountId: bankTransaction?.bankAccountId ?? null,
         description: bankTransaction?.description ?? transaction.description,
         date: bankTransaction?.bookingDate ?? bankTransaction?.valueDate ?? transaction.date,
         bankAccountName: bankTransaction ? (bankAccountNamesById.get(bankTransaction.bankAccountId) ?? 'Unknown account') : 'Unknown account',
@@ -135,6 +137,7 @@ export function buildLedgerDashboardModel(input: {
         }),
       }
     })
+    .filter(row => !input.bankAccountIdFilter || row.bankAccountId === input.bankAccountIdFilter)
     .sort((left, right) => (right.date ?? '').localeCompare(left.date ?? ''))
 
   return {

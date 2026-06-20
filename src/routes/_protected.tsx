@@ -27,7 +27,7 @@ function ProtectedLayout() {
 
   return (
     <AppZeroProvider userID={user.id}>
-      <Shell userEmail={user.email}>
+      <Shell userEmail={user.email} userName={user.name}>
         <Outlet />
       </Shell>
     </AppZeroProvider>

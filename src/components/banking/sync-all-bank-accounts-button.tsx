@@ -1,4 +1,4 @@
-import {useState} from 'react'
+import {type ComponentProps, useState} from 'react'
 import {toast} from 'sonner'
 import {syncAllBankAccounts} from '@/banking/banking-fns'
 import {Button} from '@/components/ui/button'
@@ -11,9 +11,11 @@ type BankAccountSyncState = {
 export function SyncAllBankAccountsButton({
   accounts,
   onMessage,
+  variant,
 }: {
   accounts: BankAccountSyncState[]
   onMessage?: (message: string) => void
+  variant?: ComponentProps<typeof Button>['variant']
 }) {
   const [isSyncingAll, setIsSyncingAll] = useState(false)
   const hasAccounts = accounts.length > 0
@@ -46,7 +48,7 @@ export function SyncAllBankAccountsButton({
   }
 
   return (
-    <Button data-testid="sync-all-bank-accounts" type="button" onClick={syncAll} disabled={disabled}>
+    <Button data-testid="sync-all-bank-accounts" type="button" variant={variant} onClick={syncAll} disabled={disabled}>
       {isSyncingAll || hasAccountSyncing ? 'Syncing accounts…' : 'Sync all accounts'}
     </Button>
   )

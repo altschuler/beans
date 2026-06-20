@@ -35,6 +35,7 @@
     "drizzle-orm": "0.45.2",
     "lucide-react": "1.18.0",
     "postgres": "3.4.9",
+    "radix-ui": "^1.6.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "sonner": "2.0.7",

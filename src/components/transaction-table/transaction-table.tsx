@@ -25,9 +25,9 @@ export function TransactionTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-md border">
+    <div className="min-h-0 flex-1 overflow-auto rounded-md border">
       <table className="w-full min-w-[860px] text-sm">
-        <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+        <thead className="sticky top-0 z-10 bg-muted text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-3 py-2 text-left font-semibold">Description</th>
             <th className="px-3 py-2 text-left font-semibold">Date</th>

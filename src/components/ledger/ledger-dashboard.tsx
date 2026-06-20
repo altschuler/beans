@@ -1,11 +1,13 @@
 import {useMemo, useRef, useState} from 'react'
 import {Link} from '@tanstack/react-router'
 import {useQuery, useZero} from '@rocicorp/zero/react'
+import {MoreHorizontal} from 'lucide-react'
 import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
 import {TransactionTable, type SplitLine, type TransactionTableRow} from '@/components/transaction-table'
 import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
-import {Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger} from '@/components/ui/dialog'
+import {Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from '@/components/ui/dialog'
+import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from '@/components/ui/dropdown-menu'
 import {toast} from 'sonner'
 import {showErrorToast} from '@/lib/show-error-toast'
 import {aiCategorizeNeedsReviewBatch, aiCategorizeTransaction} from '@/ledger/ai-categorization-fns'
@@ -14,7 +16,14 @@ import {queries} from '@/zero/queries'
 import {buildLedgerDashboardModel} from './ledger-dashboard-model'
 import {saveDashboardSplitTransaction} from './save-dashboard-split-transaction'
 
-export function LedgerDashboard() {
+type LedgerDashboardView = 'transactions' | 'categories' | 'bankAccountTransactions'
+
+type LedgerDashboardProps = {
+  view?: LedgerDashboardView
+  bankAccountId?: string
+}
+
+export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDashboardProps) {
   const zero = useZero()
   const [groups] = useQuery(queries.domain.ledgerAccountGroups())
   const [accounts] = useQuery(queries.domain.ledgerAccounts())
@@ -28,9 +37,35 @@ export function LedgerDashboard() {
   const isAiRequestPendingRef = useRef(false)
 
   const model = useMemo(
-    () => buildLedgerDashboardModel({groups, accounts, ledgerTransactions, movements, bankTransactions, bankAccounts}),
-    [groups, accounts, ledgerTransactions, movements, bankTransactions, bankAccounts],
+    () =>
+      buildLedgerDashboardModel({
+        groups,
+        accounts,
+        ledgerTransactions,
+        movements,
+        bankTransactions,
+        bankAccounts,
+        bankAccountIdFilter: view === 'bankAccountTransactions' ? bankAccountId : null,
+      }),
+    [groups, accounts, ledgerTransactions, movements, bankTransactions, bankAccounts, view, bankAccountId],
   )
+
+  const selectedBankAccount = view === 'bankAccountTransactions' ? bankAccounts.find(account => account.id === bankAccountId) : undefined
+  const showCategories = view === 'categories'
+  const showTransactions = view === 'transactions' || view === 'bankAccountTransactions'
+  const showGlobalTransactionActions = view === 'transactions'
+  const pageTitle =
+    view === 'categories'
+      ? 'Categories'
+      : view === 'bankAccountTransactions'
+        ? (selectedBankAccount?.name ?? 'Bank account transactions')
+        : 'Transactions'
+  const pageDescription =
+    view === 'categories'
+      ? 'Review category and account balances derived from ledger movements.'
+      : view === 'bankAccountTransactions'
+        ? 'Review imported transactions for this bank account.'
+        : 'Review imported transactions and keep your envelope ledger categorized.'
 
   async function categorizeTransaction(ledgerTransactionId: string, accountId: string) {
     if (!accountId) return
@@ -114,89 +149,102 @@ export function LedgerDashboard() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+    <div className={view === 'transactions' ? 'flex h-full min-h-0 flex-col' : 'space-y-6'}>
+      {view !== 'transactions' ? (
         <div>
           <p className="text-sm font-medium text-muted-foreground">Penge</p>
-          <h2 className="text-3xl font-bold tracking-tight">Ledger dashboard</h2>
-          <p className="text-muted-foreground">Review imported transactions and keep your envelope ledger categorized.</p>
+          <h1 className="text-3xl font-bold tracking-tight">{pageTitle}</h1>
+          <p className="text-muted-foreground">{pageDescription}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="rounded-md border bg-background px-4 py-3 text-sm font-semibold">
+      ) : null}
+
+      {showGlobalTransactionActions ? (
+        <div className="flex shrink-0 flex-col gap-3 border-b px-3 pt-3 pb-3 md:flex-row md:items-center md:justify-between">
+          <div className="text-sm font-semibold">
             {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
           </div>
-          {model.aiProcessingCount > 0 ? (
-            <div className="rounded-md border bg-background px-4 py-3 text-sm font-semibold text-muted-foreground">
-              AI running · {model.aiProcessingCount} processing
-            </div>
-          ) : null}
-          <Button type="button" variant="outline" disabled={model.reviewCount === 0 || isAiRequestPending} onClick={() => void aiCategorizeBatch()}>
-            AI categorize up to 25
-          </Button>
-          <Dialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
-            <DialogTrigger asChild>
-              <Button type="button" variant="outline" disabled={model.transactionRows.length === 0 || isClearPending}>
-                Clear categorizations
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Clear all ledger categorizations?</DialogTitle>
-                <DialogDescription>
-                  Imported bank transactions will be kept. This clears categories, splits, confirmations, and AI metadata for all imported ledger transactions, then moves them back to
-                  Uncategorized.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button type="button" variant="outline">
-                    Cancel
+          <div className="flex flex-wrap items-center gap-3">
+            {model.aiProcessingCount > 0 ? <div className="text-sm font-semibold text-muted-foreground">AI running · {model.aiProcessingCount} processing</div> : null}
+            <Button type="button" variant="outline" disabled={model.reviewCount === 0 || isAiRequestPending} onClick={() => void aiCategorizeBatch()}>
+              Auto-categorize
+            </Button>
+            <SyncAllBankAccountsButton accounts={bankAccounts} variant="outline" />
+            <Dialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="icon" aria-label="More transaction actions" title="More transaction actions">
+                    <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
                   </Button>
-                </DialogClose>
-                <Button type="button" variant="destructive" disabled={isClearPending} onClick={() => void clearCategorizations()}>
-                  Clear all categorizations
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          <SyncAllBankAccountsButton accounts={bankAccounts} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    variant="destructive"
+                    disabled={model.transactionRows.length === 0 || isClearPending}
+                    onSelect={event => {
+                      event.preventDefault()
+                      setIsClearDialogOpen(true)
+                    }}
+                  >
+                    Clear categorizations
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Clear all ledger categorizations?</DialogTitle>
+                  <DialogDescription>
+                    Imported bank transactions will be kept. This clears categories, splits, confirmations, and AI metadata for all imported ledger transactions, then moves them back to
+                    Uncategorized.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline">
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button type="button" variant="destructive" disabled={isClearPending} onClick={() => void clearCategorizations()}>
+                    Clear all categorizations
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Accounts</CardTitle>
-            <CardDescription>Balances are derived from ledger movements.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {model.accountGroups.map(group => (
-              <section key={group.id} className="space-y-2">
-                <h3 className="text-sm font-semibold text-muted-foreground">{group.name}</h3>
-                <div className="space-y-2">
-                  {group.accounts.map(account => (
-                    <Link
-                      key={account.id}
-                      to="/app/accounts/$accountId"
-                      params={{accountId: account.id}}
-                      className="flex items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted"
-                    >
-                      <span>{account.name}</span>
-                      <span className="font-mono">{account.balance}</span>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </CardContent>
-        </Card>
+      <div className={view === 'transactions' ? 'flex min-h-0 flex-1' : showCategories && showTransactions ? 'grid gap-4 lg:grid-cols-[0.8fr_1.2fr]' : 'grid gap-4'}>
+        {showCategories ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Categories</CardTitle>
+              <CardDescription>Balances are derived from ledger movements.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {model.accountGroups.map(group => (
+                <section key={group.id} className="space-y-2">
+                  <h2 className="text-sm font-semibold text-muted-foreground">{group.name}</h2>
+                  <div className="space-y-2">
+                    {group.accounts.map(account => (
+                      <Link
+                        key={account.id}
+                        to="/app/accounts/$accountId"
+                        params={{accountId: account.id}}
+                        className="flex items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted"
+                      >
+                        <span>{account.name}</span>
+                        <span className="font-mono">{account.balance}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent transactions</CardTitle>
-            <CardDescription>Choose a category inline. Use Split only for the rare transaction that spans categories.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        {showTransactions ? (
+          view === 'transactions' ? (
             <TransactionTable
               rows={model.transactionRows}
               categorizationAccounts={model.categorizationAccounts}
@@ -206,8 +254,30 @@ export function LedgerDashboard() {
               onAiCategorizeOne={ledgerTransactionId => void aiCategorizeOne(ledgerTransactionId)}
               onSaveSplit={saveSplit}
             />
-          </CardContent>
-        </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Transactions</CardTitle>
+                <CardDescription>Choose a category inline. Use Split only for the rare transaction that spans categories.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {!selectedBankAccount ? (
+                  <p className="text-sm text-muted-foreground">Bank account not found.</p>
+                ) : (
+                  <TransactionTable
+                    rows={model.transactionRows}
+                    categorizationAccounts={model.categorizationAccounts}
+                    isAiRequestPending={isAiRequestPending}
+                    onCategorizeTransaction={(ledgerTransactionId, accountId) => void categorizeTransaction(ledgerTransactionId, accountId)}
+                    onConfirmTransaction={ledgerTransactionId => void confirmTransaction(ledgerTransactionId)}
+                    onAiCategorizeOne={ledgerTransactionId => void aiCategorizeOne(ledgerTransactionId)}
+                    onSaveSplit={saveSplit}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          )
+        ) : null}
       </div>
     </div>
   )

@@ -43,3 +43,6 @@ Use `docs/INBOX.md` proactively during implementation — not just at the end. W
 - Missing docs or knowledge gaps
 - Friction you hit that others will hit too
 
+## Comments
+
+Add comments for complex and non-obvious pieces of code, keep it succint and only when it's needed. Do not remove comments unless they no longer provide value (or are inaccurate in which case you should consider whether they should be updated instead).

@@ -50,6 +50,7 @@ const renderedButtons = vi.hoisted(
       type?: 'button' | 'submit' | 'reset'
       title?: string
       ariaLabel?: string
+      variant?: string
     }>,
 )
 
@@ -91,6 +92,7 @@ vi.mock('@/components/ui/button', async () => {
       title,
       className,
       'aria-label': ariaLabel,
+      variant,
     }: {
       children: React.ReactNode
       className?: string
@@ -99,9 +101,10 @@ vi.mock('@/components/ui/button', async () => {
       type?: 'button' | 'submit' | 'reset'
       title?: string
       'aria-label'?: string
+      variant?: string
     }) => {
-      renderedButtons.push({children, className, disabled, onClick, type, title, ariaLabel})
-      return ReactModule.createElement('button', {className, disabled, onClick, type, title, 'aria-label': ariaLabel}, children)
+      renderedButtons.push({children, className, disabled, onClick, type, title, ariaLabel, variant})
+      return ReactModule.createElement('button', {className, disabled, onClick, type, title, 'aria-label': ariaLabel, 'data-variant': variant}, children)
     },
   }
 })
@@ -118,6 +121,17 @@ vi.mock('@/components/ui/dialog', async () => {
     DialogHeader: passthrough,
     DialogTitle: passthrough,
     DialogTrigger: ({children}: {children: React.ReactNode}) => ReactModule.createElement(ReactModule.Fragment, null, children),
+  }
+})
+
+vi.mock('@/components/ui/dropdown-menu', async () => {
+  const ReactModule = await import('react')
+  const passthrough = ({children}: {children: React.ReactNode}) => ReactModule.createElement(ReactModule.Fragment, null, children)
+  return {
+    DropdownMenu: passthrough,
+    DropdownMenuContent: passthrough,
+    DropdownMenuItem: ({children, onSelect}: {children: React.ReactNode; onSelect?: () => void}) => ReactModule.createElement('button', {type: 'button', onClick: onSelect}, children),
+    DropdownMenuTrigger: ({children}: {children: React.ReactNode}) => ReactModule.createElement(ReactModule.Fragment, null, children),
   }
 })
 
@@ -241,16 +255,88 @@ describe('LedgerDashboard', () => {
     expect(toastSuccess).toHaveBeenCalledWith('Synced 1 account; fetched 2 transactions and upserted 2.')
   })
 
-  it('renders grouped balances and review count', () => {
+  it('renders the transactions view as an unboxed table with a compact action bar', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
-    expect(markup).toContain('Ledger dashboard')
+    expect(markup).toContain('flex h-full min-h-0 flex-col')
+    expect(markup).toContain('px-3 pt-3 pb-3')
+    expect(markup).toContain('shrink-0')
+    expect(markup).toContain('flex min-h-0 flex-1')
+    expect(markup).not.toContain('px-4 pt-4 md:px-6 lg:px-8')
     expect(markup).toContain('1 needs review')
+    expect(markup).toContain('Auto-categorize')
+    expect(markup).not.toContain('AI categorize up to 25')
+    expect(markup).toContain('Sync all accounts')
+    expect(findButton('Sync all accounts')?.variant).toBe('outline')
+    expect(markup).toContain('aria-label="More transaction actions"')
+    expect(markup).toContain('Netto')
+    expect(markup).not.toContain('<h1')
+    expect(markup).not.toContain('Review imported transactions and keep your envelope ledger categorized.')
+    expect(markup).not.toContain('Recent transactions')
+    expect(markup).not.toContain('Choose a category inline. Use Split only for the rare transaction that spans categories.')
+    expect(markup).not.toContain('Everyday spending')
+  })
+
+  it('renders grouped balances in the categories view without transaction actions', () => {
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard, {view: 'categories'}))
+
+    expect(markup).toContain('Categories')
     expect(markup).toContain('Everyday spending')
     expect(markup).toContain('Uncategorized')
     expect(markup).toContain('href="/app/accounts/uncategorized"')
     expect(markup).toContain('href="/app/accounts/groceries"')
+    expect(markup).not.toContain('Auto-categorize')
+    expect(markup).not.toContain('Sync all accounts')
+  })
+
+  it('renders bank account transactions without global actions while keeping filtered row actions', () => {
+    queryRows.ledgerTransactions = [
+      ...queryRows.ledgerTransactions,
+      {
+        id: 'ledger-transaction-2',
+        bankTransactionId: 'bank-transaction-2',
+        source: 'bank_import',
+        status: 'needs_review',
+        aiConfidence: null,
+        aiProcessingStartedAt: null,
+        categorizedBy: null,
+        userConfirmedAt: null,
+        userConfirmedBy: null,
+        aiReasoning: null,
+        date: '2026-06-19',
+        description: 'Other account transaction',
+      },
+    ]
+    queryRows.movements = [
+      ...queryRows.movements,
+      {id: 'movement-2', ledgerTransactionId: 'ledger-transaction-2', debitAccountId: 'groceries', creditAccountId: 'checking', amount: '50.00', currency: 'DKK', sortOrder: 0},
+    ]
+    queryRows.bankTransactions = [
+      ...queryRows.bankTransactions,
+      {id: 'bank-transaction-2', bankAccountId: 'bank-account-2', amount: '-50.00', currency: 'DKK', bookingDate: '2026-06-19', valueDate: null, description: 'Other Shop'},
+    ]
+    queryRows.bankAccounts = [...queryRows.bankAccounts, {id: 'bank-account-2', name: 'Savings'}]
+
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard, {view: 'bankAccountTransactions', bankAccountId: 'bank-account-1'}))
+
+    expect(markup).toContain('Review imported transactions for this bank account.')
     expect(markup).toContain('Netto')
+    expect(markup).toContain('Category')
+    expect(markup).not.toContain('Other Shop')
+    expect(markup).not.toContain('Auto-categorize')
+    expect(markup).not.toContain('Clear categorizations')
+    expect(markup).not.toContain('Sync all accounts')
+    expect(findButtonByLabel('AI categorize transaction')?.disabled).toBe(false)
+    expect(findButtonByLabel('Split transaction')?.disabled).toBeFalsy()
+  })
+
+  it('shows bank account not found when the bank account list is empty on a bank account route', () => {
+    queryRows.bankAccounts = []
+
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard, {view: 'bankAccountTransactions', bankAccountId: 'missing-bank-account'}))
+
+    expect(markup).toContain('Bank account not found.')
+    expect(markup).not.toContain('No imported ledger transactions yet.')
   })
 
   it('renders transactions as a table with bank account, category actions, and dot-only status marker', () => {
@@ -284,7 +370,7 @@ describe('LedgerDashboard', () => {
   it('ignores rapid duplicate batch AI clicks before React re-renders', async () => {
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 
-    const button = findButton('AI categorize up to 25')
+    const button = findButton('Auto-categorize')
     button?.onClick?.()
     button?.onClick?.()
     await flushPromises()
@@ -307,7 +393,7 @@ describe('LedgerDashboard', () => {
   it('runs the batch AI server function with the server cap', async () => {
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 
-    findButton('AI categorize up to 25')?.onClick?.()
+    findButton('Auto-categorize')?.onClick?.()
     await flushPromises()
 
     expect(aiCategorizeNeedsReviewBatch).toHaveBeenCalledWith({data: {limit: 25}})

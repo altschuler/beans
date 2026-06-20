@@ -12,6 +12,7 @@ export type TransactionTableStatusIndicator = {
 
 export type TransactionTableRow = {
   id: string
+  bankAccountId: string | null
   description: string
   date: string | null
   bankAccountName: string
