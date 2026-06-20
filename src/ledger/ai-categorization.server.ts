@@ -2,10 +2,10 @@ import '@tanstack/react-start/server-only'
 
 import {openai} from '@ai-sdk/openai'
 import {generateObject} from 'ai'
-import {and, desc, eq, inArray, isNull, lt, or} from 'drizzle-orm'
+import {and, desc, eq, inArray, isNotNull, isNull, lt, or} from 'drizzle-orm'
 import {z} from 'zod'
 import {db, type Database} from '@/db/client'
-import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerTransactions, teamMembers} from '@/db/schema'
+import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from '@/db/schema'
 import {categorizeLedgerTransaction, normalizeAiReasoning} from './categorization.server'
 import {loadSimilarCategorizationExamples, type AiCategorizationSimilarExample} from './similar-categorization-examples.server'
 
@@ -400,6 +400,7 @@ async function loadTransactions(
     eq(ledgerTransactions.source, 'bank_import'),
     eq(ledgerTransactions.status, 'needs_review'),
     or(isNull(ledgerTransactions.aiProcessingStartedAt), lt(ledgerTransactions.aiProcessingStartedAt, aiProcessingFreshCutoff())),
+    eq(bankAccounts.teamId, ledgerTransactions.teamId),
   ]
 
   if (ledgerTransactionIds) {
@@ -420,7 +421,8 @@ async function loadTransactions(
     })
     .from(ledgerTransactions)
     .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
-    .innerJoin(bankTransactions, eq(bankTransactions.id, ledgerTransactions.bankTransactionId))
+    .innerJoin(ledgerPostings, and(eq(ledgerPostings.ledgerTransactionId, ledgerTransactions.id), isNotNull(ledgerPostings.bankTransactionId)))
+    .innerJoin(bankTransactions, eq(bankTransactions.id, ledgerPostings.bankTransactionId))
     .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
     .where(and(...baseConditions))
     .orderBy(desc(ledgerTransactions.date), desc(ledgerTransactions.createdAt))

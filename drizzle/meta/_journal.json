@@ -64,6 +64,13 @@
       "when": 1781871922372,
       "tag": "0008_natural_doomsday",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781964784258,
+      "tag": "0009_outstanding_roughhouse",
+      "breakpoints": true
     }
   ]
 }

@@ -6,7 +6,7 @@ import {
   bankTransactions,
   ledgerAccountGroups,
   ledgerAccounts,
-  ledgerTransactionMovements,
+  ledgerPostings,
   ledgerTransactions,
   teamMembers,
   teams,
@@ -92,16 +92,16 @@ async function seedFixture() {
     {id: 'team-2-bank', bankAccountId: 'team-2-bank-account', providerTransactionId: 'team-2-bank', status: 'booked', bookingDate: '2026-06-12', valueDate: null, amount: '-100.00', currency: 'DKK', description: 'Netto other team', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
   ])
   await db.insert(ledgerTransactions).values([
-    {id: 'target-ledger', teamId: 'team-1', bankTransactionId: 'target-bank', source: 'bank_import', status: 'needs_review', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: null, date: '2026-06-19', description: 'NETTO SUPERMARKET 1234', createdAt: now, updatedAt: now},
-    {id: 'user-exact-ledger', teamId: 'team-1', bankTransactionId: 'user-exact-bank', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-12', description: 'Netto supermarket Copenhagen', createdAt: now, updatedAt: now},
-    {id: 'ai-exact-ledger', teamId: 'team-1', bankTransactionId: 'ai-exact-bank', source: 'bank_import', status: 'confirmed', aiConfidence: 2, aiProcessingStartedAt: null, categorizedBy: 'ai', date: '2026-06-11', description: 'Netto supermarket Copenhagen', createdAt: now, updatedAt: now},
-    {id: 'weak-user-ledger', teamId: 'team-1', bankTransactionId: 'weak-user-bank', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-10', description: 'IKEA home goods', createdAt: now, updatedAt: now},
-    {id: 'needs-review-ledger', teamId: 'team-1', bankTransactionId: 'needs-review-bank', source: 'bank_import', status: 'needs_review', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: null, date: '2026-06-09', description: 'Netto unreviewed', createdAt: now, updatedAt: now},
-    {id: 'system-category-ledger', teamId: 'team-1', bankTransactionId: 'system-category-bank', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-08', description: 'Netto uncategorized', createdAt: now, updatedAt: now},
-    {id: 'archived-category-ledger', teamId: 'team-1', bankTransactionId: 'archived-category-bank', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-07', description: 'Netto archived', createdAt: now, updatedAt: now},
-    {id: 'team-2-ledger', teamId: 'team-2', bankTransactionId: 'team-2-bank', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-12', description: 'Netto other team', createdAt: now, updatedAt: now},
+    {id: 'target-ledger', teamId: 'team-1', source: 'bank_import', status: 'needs_review', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: null, date: '2026-06-19', description: 'NETTO SUPERMARKET 1234', createdAt: now, updatedAt: now},
+    {id: 'user-exact-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-12', description: 'Netto supermarket Copenhagen', createdAt: now, updatedAt: now},
+    {id: 'ai-exact-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', aiConfidence: 2, aiProcessingStartedAt: null, categorizedBy: 'ai', date: '2026-06-11', description: 'Netto supermarket Copenhagen', createdAt: now, updatedAt: now},
+    {id: 'weak-user-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-10', description: 'IKEA home goods', createdAt: now, updatedAt: now},
+    {id: 'needs-review-ledger', teamId: 'team-1', source: 'bank_import', status: 'needs_review', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: null, date: '2026-06-09', description: 'Netto unreviewed', createdAt: now, updatedAt: now},
+    {id: 'system-category-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-08', description: 'Netto uncategorized', createdAt: now, updatedAt: now},
+    {id: 'archived-category-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-07', description: 'Netto archived', createdAt: now, updatedAt: now},
+    {id: 'team-2-ledger', teamId: 'team-2', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-12', description: 'Netto other team', createdAt: now, updatedAt: now},
   ])
-  await db.insert(ledgerTransactionMovements).values([
+  await db.insert(ledgerPostings).values(postingsFromMovements([
     {id: 'target-movement', ledgerTransactionId: 'target-ledger', debitAccountId: 'uncategorized', creditAccountId: 'bank-ledger-account', amount: '100.00', currency: 'DKK', sortOrder: 0, createdAt: now, updatedAt: now},
     {id: 'user-exact-movement', ledgerTransactionId: 'user-exact-ledger', debitAccountId: 'groceries', creditAccountId: 'bank-ledger-account', amount: '101.00', currency: 'DKK', sortOrder: 0, createdAt: now, updatedAt: now},
     {id: 'ai-exact-movement', ledgerTransactionId: 'ai-exact-ledger', debitAccountId: 'groceries', creditAccountId: 'bank-ledger-account', amount: '100.50', currency: 'DKK', sortOrder: 0, createdAt: now, updatedAt: now},
@@ -110,7 +110,47 @@ async function seedFixture() {
     {id: 'system-category-movement', ledgerTransactionId: 'system-category-ledger', debitAccountId: 'uncategorized', creditAccountId: 'bank-ledger-account', amount: '100.00', currency: 'DKK', sortOrder: 0, createdAt: now, updatedAt: now},
     {id: 'archived-category-movement', ledgerTransactionId: 'archived-category-ledger', debitAccountId: 'archived-category', creditAccountId: 'bank-ledger-account', amount: '100.00', currency: 'DKK', sortOrder: 0, createdAt: now, updatedAt: now},
     {id: 'team-2-movement', ledgerTransactionId: 'team-2-ledger', debitAccountId: 'team-2-groceries', creditAccountId: 'team-2-bank-ledger-account', amount: '100.00', currency: 'DKK', sortOrder: 0, createdAt: now, updatedAt: now},
-  ])
+  ]))
+}
+
+
+type LegacyMovement = {
+  id: string
+  ledgerTransactionId: string
+  debitAccountId: string
+  creditAccountId: string
+  amount: string
+  currency: string
+  sortOrder: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+function postingsFromMovements(input: LegacyMovement | LegacyMovement[]) {
+  const movements = Array.isArray(input) ? input : [input]
+  return movements.flatMap(movement => {
+    const bankTransactionId = bankTransactionIdForLedgerTransaction(movement.ledgerTransactionId)
+    const bankAccountId = movement.creditAccountId.includes('bank-ledger-account') ? movement.creditAccountId : movement.debitAccountId
+    const categoryAccountId = bankAccountId === movement.creditAccountId ? movement.debitAccountId : movement.creditAccountId
+    const amount = formatFourDecimals(movement.amount)
+    const bankAmount = bankAccountId === movement.creditAccountId ? `-${amount}` : amount
+    const categoryAmount = bankAmount.startsWith('-') ? amount : `-${amount}`
+    return [
+      {id: `${movement.id}-bank-posting`, ledgerTransactionId: movement.ledgerTransactionId, accountId: bankAccountId, amount: bankAmount, currency: movement.currency, bankTransactionId, sortOrder: 0, createdAt: movement.createdAt, updatedAt: movement.updatedAt},
+      {id: `${movement.id}-category-posting`, ledgerTransactionId: movement.ledgerTransactionId, accountId: categoryAccountId, amount: categoryAmount, currency: movement.currency, bankTransactionId: null, sortOrder: movement.sortOrder + 1, createdAt: movement.createdAt, updatedAt: movement.updatedAt},
+    ]
+  })
+}
+
+function bankTransactionIdForLedgerTransaction(ledgerTransactionId: string) {
+  if (ledgerTransactionId.endsWith('-ledger')) return ledgerTransactionId.replace(/-ledger$/, '-bank')
+  if (ledgerTransactionId.startsWith('noisy-team-1-ledger-')) return ledgerTransactionId.replace('noisy-team-1-ledger-', 'noisy-team-1-bank-')
+  throw new Error(`No bank transaction mapping for ${ledgerTransactionId}`)
+}
+
+function formatFourDecimals(amount: string) {
+  const [whole, fractional = ''] = amount.split('.')
+  return `${whole}.${fractional.padEnd(4, '0').slice(0, 4)}`
 }
 
 describe('loadSimilarCategorizationExamples', () => {
@@ -189,7 +229,49 @@ describe('loadSimilarCategorizationExamples', () => {
   it('ignores candidate categories that belong to a different team', async () => {
     const {loadSimilarCategorizationExamples} = await import('@/ledger/similar-categorization-examples.server')
 
-    await db.update(ledgerTransactionMovements).set({debitAccountId: 'team-2-groceries'}).where(eq(ledgerTransactionMovements.id, 'user-exact-movement'))
+    await db.update(ledgerPostings).set({accountId: 'team-2-groceries'}).where(eq(ledgerPostings.id, 'user-exact-movement-category-posting'))
+
+    const examplesByTransactionId = await db.transaction(tx =>
+      loadSimilarCategorizationExamples(tx, {
+        userId: 'user-1',
+        transactions: [
+          {
+            id: 'target-ledger',
+            teamId: 'team-1',
+            date: '2026-06-19',
+            description: 'NETTO SUPERMARKET 1234',
+            amount: '-100.00',
+            currency: 'DKK',
+            bankAccountName: 'Checking',
+            counterpartyName: 'Netto',
+          },
+        ],
+      }),
+    )
+
+    expect(examplesByTransactionId.get('target-ledger')?.map(example => example.ledgerTransactionId)).not.toContain('user-exact-ledger')
+  })
+
+  it('ignores candidate examples whose reconciled bank posting points to another team bank account', async () => {
+    const {loadSimilarCategorizationExamples} = await import('@/ledger/similar-categorization-examples.server')
+
+    const now = new Date('2026-06-19T11:30:00.000Z')
+    await db.insert(bankTransactions).values({
+      id: 'cross-team-bank',
+      bankAccountId: 'team-2-bank-account',
+      providerTransactionId: 'cross-team-bank',
+      status: 'booked',
+      bookingDate: '2026-06-12',
+      valueDate: null,
+      amount: '-101.00',
+      currency: 'DKK',
+      description: 'Netto supermarket Copenhagen',
+      counterpartyName: 'Netto',
+      raw: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+    await db.update(ledgerPostings).set({bankTransactionId: 'cross-team-bank'}).where(eq(ledgerPostings.id, 'user-exact-movement-bank-posting'))
 
     const examplesByTransactionId = await db.transaction(tx =>
       loadSimilarCategorizationExamples(tx, {
@@ -236,7 +318,6 @@ describe('loadSimilarCategorizationExamples', () => {
       Array.from({length: noisyCount}, (_, index) => ({
         id: `noisy-team-1-ledger-${index}`,
         teamId: 'team-1',
-        bankTransactionId: `noisy-team-1-bank-${index}`,
         source: 'bank_import',
         status: 'confirmed',
         aiConfidence: null,
@@ -248,7 +329,7 @@ describe('loadSimilarCategorizationExamples', () => {
         updatedAt: now,
       })),
     )
-    await db.insert(ledgerTransactionMovements).values(
+    await db.insert(ledgerPostings).values(postingsFromMovements(
       Array.from({length: noisyCount}, (_, index) => ({
         id: `noisy-team-1-movement-${index}`,
         ledgerTransactionId: `noisy-team-1-ledger-${index}`,
@@ -260,7 +341,7 @@ describe('loadSimilarCategorizationExamples', () => {
         createdAt: now,
         updatedAt: now,
       })),
-    )
+    ))
 
     const {loadSimilarCategorizationExamples} = await import('@/ledger/similar-categorization-examples.server')
 
@@ -296,10 +377,46 @@ describe('loadSimilarCategorizationExamples', () => {
     expect(examplesByTransactionId.get('team-2-target-ledger')?.map(example => example.ledgerTransactionId)).toEqual(['team-2-ledger'])
   })
 
+  it('excludes split examples with more than one eligible category account', async () => {
+    const {loadSimilarCategorizationExamples} = await import('@/ledger/similar-categorization-examples.server')
+    const now = new Date('2026-06-19T12:00:00.000Z')
+    await db.insert(ledgerPostings).values({
+      id: 'user-exact-household-split-posting',
+      ledgerTransactionId: 'user-exact-ledger',
+      accountId: 'household',
+      amount: '1.0000',
+      currency: 'DKK',
+      bankTransactionId: null,
+      sortOrder: 2,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const examplesByTransactionId = await db.transaction(tx =>
+      loadSimilarCategorizationExamples(tx, {
+        userId: 'user-1',
+        transactions: [
+          {
+            id: 'target-ledger',
+            teamId: 'team-1',
+            date: '2026-06-19',
+            description: 'NETTO SUPERMARKET 1234',
+            amount: '-100.00',
+            currency: 'DKK',
+            bankAccountName: 'Checking',
+            counterpartyName: 'Netto',
+          },
+        ],
+      }),
+    )
+
+    expect(examplesByTransactionId.get('target-ledger')?.map(example => example.ledgerTransactionId)).not.toContain('user-exact-ledger')
+  })
+
   it('returns an empty list when no same-team candidate resolves to an eligible category', async () => {
     const {loadSimilarCategorizationExamples} = await import('@/ledger/similar-categorization-examples.server')
 
-    await db.delete(ledgerTransactionMovements)
+    await db.delete(ledgerPostings)
 
     const examplesByTransactionId = await db.transaction(tx =>
       loadSimilarCategorizationExamples(tx, {

@@ -94,7 +94,6 @@ export default drizzleZeroConfig(drizzleSchema, {
     ledgerTransactions: {
       id: true,
       teamId: true,
-      bankTransactionId: true,
       source: true,
       status: true,
       aiConfidence: true,
@@ -108,13 +107,13 @@ export default drizzleZeroConfig(drizzleSchema, {
       createdAt: true,
       updatedAt: true,
     },
-    ledgerTransactionMovements: {
+    ledgerPostings: {
       id: true,
       ledgerTransactionId: true,
-      debitAccountId: true,
-      creditAccountId: true,
+      accountId: true,
       amount: true,
       currency: true,
+      bankTransactionId: true,
       sortOrder: true,
       createdAt: true,
       updatedAt: true,

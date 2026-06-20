@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ProtectedRouteImport } from './routes/_protected'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ProtectedLedgerRouteImport } from './routes/_protected/ledger'
 import { Route as ProtectedAppRouteImport } from './routes/_protected/app'
 import { Route as ApiZeroQueryRouteImport } from './routes/api/zero/query'
 import { Route as ApiZeroMutateRouteImport } from './routes/api/zero/mutate'
@@ -36,6 +37,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ProtectedLedgerRoute = ProtectedLedgerRouteImport.update({
+  id: '/ledger',
+  path: '/ledger',
+  getParentRoute: () => ProtectedRoute,
 } as any)
 const ProtectedAppRoute = ProtectedAppRouteImport.update({
   id: '/app',
@@ -95,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/app': typeof ProtectedAppRouteWithChildren
+  '/ledger': typeof ProtectedLedgerRoute
   '/app/banks': typeof ProtectedAppBanksRoute
   '/app/categories': typeof ProtectedAppCategoriesRoute
   '/app/transactions': typeof ProtectedAppTransactionsRoute
@@ -109,6 +116,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/app': typeof ProtectedAppRouteWithChildren
+  '/ledger': typeof ProtectedLedgerRoute
   '/app/banks': typeof ProtectedAppBanksRoute
   '/app/categories': typeof ProtectedAppCategoriesRoute
   '/app/transactions': typeof ProtectedAppTransactionsRoute
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/_protected': typeof ProtectedRouteWithChildren
   '/login': typeof LoginRoute
   '/_protected/app': typeof ProtectedAppRouteWithChildren
+  '/_protected/ledger': typeof ProtectedLedgerRoute
   '/_protected/app/banks': typeof ProtectedAppBanksRoute
   '/_protected/app/categories': typeof ProtectedAppCategoriesRoute
   '/_protected/app/transactions': typeof ProtectedAppTransactionsRoute
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/app'
+    | '/ledger'
     | '/app/banks'
     | '/app/categories'
     | '/app/transactions'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/app'
+    | '/ledger'
     | '/app/banks'
     | '/app/categories'
     | '/app/transactions'
@@ -170,6 +181,7 @@ export interface FileRouteTypes {
     | '/_protected'
     | '/login'
     | '/_protected/app'
+    | '/_protected/ledger'
     | '/_protected/app/banks'
     | '/_protected/app/categories'
     | '/_protected/app/transactions'
@@ -213,6 +225,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_protected/ledger': {
+      id: '/_protected/ledger'
+      path: '/ledger'
+      fullPath: '/ledger'
+      preLoaderRoute: typeof ProtectedLedgerRouteImport
+      parentRoute: typeof ProtectedRoute
     }
     '/_protected/app': {
       id: '/_protected/app'
@@ -310,10 +329,12 @@ const ProtectedAppRouteWithChildren = ProtectedAppRoute._addFileChildren(
 
 interface ProtectedRouteChildren {
   ProtectedAppRoute: typeof ProtectedAppRouteWithChildren
+  ProtectedLedgerRoute: typeof ProtectedLedgerRoute
 }
 
 const ProtectedRouteChildren: ProtectedRouteChildren = {
   ProtectedAppRoute: ProtectedAppRouteWithChildren,
+  ProtectedLedgerRoute: ProtectedLedgerRoute,
 }
 
 const ProtectedRouteWithChildren = ProtectedRoute._addFileChildren(

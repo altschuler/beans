@@ -62,11 +62,29 @@ describe('Shell', () => {
     expect(markup).toContain('Home')
     expect(markup).toContain('Transactions')
     expect(markup).toContain('Categories')
+    expect(markup).toContain('Ledger')
+    expect(markup).toContain('href="/ledger"')
     expect(markup).toContain('Checking')
     expect(markup).toContain('Manage bank connections')
     expect(markup).toContain('test@example.com')
     expect(markup).toContain('Sign out')
     expect(markup).not.toContain('Budgeting boilerplate')
+  })
+
+  it('renders breadcrumbs for the protected ledger route', () => {
+    shellTestState.pathname = '/ledger'
+
+    const markup = renderToStaticMarkup(
+      React.createElement(Shell, {
+        userEmail: 'test@example.com',
+        userName: 'Test User',
+        children: React.createElement('p', null, 'Content'),
+      }),
+    )
+    const breadcrumb = breadcrumbMarkup(markup)
+
+    expect(breadcrumb).toContain('Ledger')
+    expect(breadcrumb).not.toContain('Home')
   })
 
   it('renders breadcrumbs for the current top-level app route without a home ancestor', () => {

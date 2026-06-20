@@ -1,6 +1,6 @@
 import {Link, useRouter, useRouterState} from '@tanstack/react-router'
 import {useQuery} from '@rocicorp/zero/react'
-import {Banknote, CreditCard, Home, Landmark, LogOut, ReceiptText, Tags} from 'lucide-react'
+import {Banknote, CreditCard, Home, Landmark, LogOut, ReceiptText, ScrollText, Tags} from 'lucide-react'
 import {authClient} from '@/auth/client'
 import {
   Sidebar,
@@ -27,6 +27,7 @@ const primaryNavItems = [
   {title: 'Home', to: '/app' as const, icon: Home},
   {title: 'Transactions', to: '/app/transactions' as const, icon: ReceiptText},
   {title: 'Categories', to: '/app/categories' as const, icon: Tags},
+  {title: 'Ledger', to: '/ledger' as const, icon: ScrollText},
 ]
 
 export function AppSidebar({userEmail, userName}: AppSidebarProps) {

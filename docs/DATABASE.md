@@ -22,6 +22,12 @@ Current Zero-synced app/domain tables:
 - `bank_connections`
 - `bank_accounts`
 - `bank_transactions`
+- `ledger_account_groups`
+- `ledger_accounts`
+- `ledger_transactions`
+- `ledger_postings`
+
+Imported bank transactions reconcile through `ledger_postings.bank_transaction_id`, not through `ledger_transactions`.
 
 When adding a new app/domain table, it is not complete until it is represented in both Drizzle and Zero generation config, and the generated Zero schema has been updated.
 

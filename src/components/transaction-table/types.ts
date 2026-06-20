@@ -12,6 +12,7 @@ export type TransactionTableStatusIndicator = {
 
 export type TransactionTableRow = {
   id: string
+  ledgerTransactionId: string
   bankAccountId: string | null
   description: string
   date: string | null
@@ -22,6 +23,7 @@ export type TransactionTableRow = {
   needsReview: boolean
   aiConfidence: number | null
   aiProcessing: boolean
+  canCategorize: boolean
   statusIndicator: TransactionTableStatusIndicator
   aiIndicator: TransactionTableStatusIndicator
   categoryAccountId: string | null

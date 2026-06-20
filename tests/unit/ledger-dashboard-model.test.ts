@@ -3,19 +3,18 @@ import {buildLedgerDashboardModel} from '@/components/ledger/ledger-dashboard-mo
 
 const baseGroups = [{id: 'group-1', name: 'Everyday spending', sortOrder: 0}]
 const baseAccounts = [
-  {id: 'checking', groupId: 'group-1', name: 'Checking', type: 'bank', normalBalance: 'debit', status: 'active', sortOrder: 0, systemKey: null},
-  {id: 'uncategorized', groupId: 'group-1', name: 'Uncategorized', type: 'adjustment', normalBalance: 'credit', status: 'active', sortOrder: 1, systemKey: 'uncategorized'},
-  {id: 'groceries', groupId: 'group-1', name: 'Groceries', type: 'expense', normalBalance: 'credit', status: 'active', sortOrder: 2, systemKey: null},
+  {id: 'checking', groupId: 'group-1', name: 'Checking', type: 'bank', normalBalance: 'debit', status: 'active', sortOrder: 0, systemKey: null, linkedBankAccountId: 'bank-account-1'},
+  {id: 'uncategorized', groupId: 'group-1', name: 'Uncategorized', type: 'adjustment', normalBalance: 'credit', status: 'active', sortOrder: 1, systemKey: 'uncategorized', linkedBankAccountId: null},
+  {id: 'groceries', groupId: 'group-1', name: 'Groceries', type: 'expense', normalBalance: 'credit', status: 'active', sortOrder: 2, systemKey: null, linkedBankAccountId: null},
 ]
 
-function buildModelForTransaction(overrides: Record<string, unknown> = {}, movementAccountId = 'groceries') {
+function buildModelForTransaction(overrides: Record<string, unknown> = {}, categoryAccountId = 'groceries') {
   return buildLedgerDashboardModel({
     groups: baseGroups,
     accounts: baseAccounts,
     ledgerTransactions: [
       {
         id: 'ledger-transaction-1',
-        bankTransactionId: 'bank-transaction-1',
         source: 'bank_import',
         status: 'needs_review',
         aiConfidence: null,
@@ -25,19 +24,28 @@ function buildModelForTransaction(overrides: Record<string, unknown> = {}, movem
         userConfirmedBy: null,
         aiReasoning: null,
         date: '2026-06-18',
-        description: 'Netto',
+        description: 'Netto ledger fallback',
         ...overrides,
       },
     ],
-    movements: [
+    postings: [
       {
-        id: 'movement-1',
+        id: 'bank-posting-1',
         ledgerTransactionId: 'ledger-transaction-1',
-        debitAccountId: movementAccountId,
-        creditAccountId: 'checking',
-        amount: '100.00',
+        accountId: 'checking',
+        amount: '-100.0000',
         currency: 'DKK',
+        bankTransactionId: 'bank-transaction-1',
         sortOrder: 0,
+      },
+      {
+        id: 'category-posting-1',
+        ledgerTransactionId: 'ledger-transaction-1',
+        accountId: categoryAccountId,
+        amount: '100.0000',
+        currency: 'DKK',
+        bankTransactionId: null,
+        sortOrder: 1,
       },
     ],
     bankTransactions: [
@@ -61,17 +69,20 @@ describe('buildLedgerDashboardModel', () => {
 
     expect(model.reviewCount).toBe(1)
     expect(model.aiProcessingCount).toBe(1)
-    expect(model.categorizationAccounts.map(account => account.name)).toEqual(['Uncategorized', 'Groceries'])
+    expect(model.categorizationAccounts.map(account => account.name)).toEqual(['Groceries'])
     expect(model.accountGroups[0]).toMatchObject({name: 'Everyday spending'})
     expect(model.accountGroups[0]?.accounts.find(account => account.id === 'uncategorized')?.balance).toBe('-100.0000')
     expect(model.transactionRows[0]).toMatchObject({
-      id: 'ledger-transaction-1',
+      id: 'ledger-transaction-1:bank-posting-1',
+      ledgerTransactionId: 'ledger-transaction-1',
       description: 'Netto',
+      date: '2026-06-18',
       bankAccountName: 'Checking',
       amount: '-100.00',
       currency: 'DKK',
-      categoryAccountId: 'uncategorized',
+      categoryAccountId: null,
       isSplit: false,
+      splitLines: [],
       needsReview: true,
       aiConfidence: 1,
       aiProcessing: true,

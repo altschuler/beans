@@ -12,7 +12,8 @@ vi.mock('@/components/ui/button', async () => {
 })
 
 const row: TransactionTableRow = {
-  id: 'ledger-transaction-1',
+  id: 'ledger-transaction-1:bank-posting-1',
+  ledgerTransactionId: 'ledger-transaction-1',
   bankAccountId: 'bank-account-1',
   description: 'Netto',
   date: '2026-06-18',
@@ -23,6 +24,7 @@ const row: TransactionTableRow = {
   needsReview: true,
   aiConfidence: 1,
   aiProcessing: false,
+  canCategorize: true,
   statusIndicator: {
     kind: 'needs_review',
     title: 'Review recommended',

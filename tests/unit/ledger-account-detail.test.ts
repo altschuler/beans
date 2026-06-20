@@ -5,8 +5,8 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 const queryRows = vi.hoisted(() => ({
   groups: [] as Array<{id: string; name: string; sortOrder: number}>,
   accounts: [] as Array<{id: string; groupId: string; linkedBankAccountId: string | null; name: string; type: string; normalBalance: string; status: string; sortOrder: number}>,
-  ledgerTransactions: [] as Array<{id: string; bankTransactionId: string | null; source: string; status: string; date: string | null; description: string}>,
-  movements: [] as Array<{id: string; ledgerTransactionId: string; debitAccountId: string; creditAccountId: string; amount: string; currency: string; sortOrder: number}>,
+  ledgerTransactions: [] as Array<{id: string; source: string; status: string; date: string | null; description: string}>,
+  postings: [] as Array<{id: string; ledgerTransactionId: string; accountId: string; amount: string; currency: string; bankTransactionId: string | null; sortOrder: number}>,
   bankTransactions: [] as Array<{id: string; bankAccountId: string; amount: string; currency: string; bookingDate: string | null; valueDate: string | null; description: string}>,
   bankAccounts: [] as Array<{id: string; name: string}>,
 }))
@@ -16,7 +16,7 @@ vi.mock('@rocicorp/zero/react', () => ({
     if (query.name === 'ledgerAccountGroups') return [queryRows.groups]
     if (query.name === 'ledgerAccounts') return [queryRows.accounts]
     if (query.name === 'ledgerTransactions') return [queryRows.ledgerTransactions]
-    if (query.name === 'ledgerTransactionMovements') return [queryRows.movements]
+    if (query.name === 'ledgerPostings') return [queryRows.postings]
     if (query.name === 'bankTransactions') return [queryRows.bankTransactions]
     if (query.name === 'bankAccounts') return [queryRows.bankAccounts]
     throw new Error(`Unexpected query: ${query.name}`)
@@ -33,7 +33,7 @@ vi.mock('@/zero/queries', () => ({
       ledgerAccountGroups: () => ({name: 'ledgerAccountGroups'}),
       ledgerAccounts: () => ({name: 'ledgerAccounts'}),
       ledgerTransactions: () => ({name: 'ledgerTransactions'}),
-      ledgerTransactionMovements: () => ({name: 'ledgerTransactionMovements'}),
+      ledgerPostings: () => ({name: 'ledgerPostings'}),
       bankTransactions: () => ({name: 'bankTransactions'}),
       bankAccounts: () => ({name: 'bankAccounts'}),
     },
@@ -50,10 +50,11 @@ describe('LedgerAccountDetail', () => {
       {id: 'takeaway', groupId: 'group-1', linkedBankAccountId: null, name: 'Take-away', type: 'expense', normalBalance: 'credit', status: 'active', sortOrder: 1},
     ]
     queryRows.ledgerTransactions = [
-      {id: 'ledger-transaction-1', bankTransactionId: 'bank-transaction-1', source: 'bank_import', status: 'confirmed', date: '2026-03-03', description: 'Pizza'},
+      {id: 'ledger-transaction-1', source: 'bank_import', status: 'confirmed', date: '2026-03-03', description: 'Pizza'},
     ]
-    queryRows.movements = [
-      {id: 'movement-1', ledgerTransactionId: 'ledger-transaction-1', debitAccountId: 'takeaway', creditAccountId: 'checking', amount: '100.00', currency: 'DKK', sortOrder: 0},
+    queryRows.postings = [
+      {id: 'bank-posting-1', ledgerTransactionId: 'ledger-transaction-1', accountId: 'checking', amount: '-100.0000', currency: 'DKK', bankTransactionId: 'bank-transaction-1', sortOrder: 0},
+      {id: 'category-posting-1', ledgerTransactionId: 'ledger-transaction-1', accountId: 'takeaway', amount: '100.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
     ]
     queryRows.bankTransactions = [
       {id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: '-100.00', currency: 'DKK', bookingDate: '2026-03-03', valueDate: null, description: 'Pizza'},

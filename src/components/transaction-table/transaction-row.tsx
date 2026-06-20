@@ -52,7 +52,8 @@ export function TransactionRow({
               aria-label={`Category for ${row.description}`}
               className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm"
               value={row.isSplit ? '' : (row.categoryAccountId ?? '')}
-              onChange={event => onCategorizeTransaction(row.id, event.target.value)}
+              disabled={!row.canCategorize}
+              onChange={event => onCategorizeTransaction(row.ledgerTransactionId, event.target.value)}
             >
               <option value="" disabled>
                 {row.isSplit ? 'Split transaction' : 'Choose category'}
@@ -69,25 +70,25 @@ export function TransactionRow({
               size="sm"
               title="AI categorize transaction"
               aria-label="AI categorize transaction"
-              disabled={!row.needsReview || isAiRequestPending || row.aiProcessing}
-              onClick={() => onAiCategorizeOne(row.id)}
+              disabled={!row.canCategorize || !row.needsReview || isAiRequestPending || row.aiProcessing}
+              onClick={() => onAiCategorizeOne(row.ledgerTransactionId)}
             >
               <Sparkles className="h-4 w-4" aria-hidden="true" />
             </Button>
-            <Button type="button" variant="outline" size="sm" title="Split transaction" aria-label="Split transaction" onClick={openSplitEditor}>
+            <Button type="button" variant="outline" size="sm" title="Split transaction" aria-label="Split transaction" disabled={!row.canCategorize} onClick={openSplitEditor}>
               <GitBranch className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         </td>
         <td className="px-3 py-3 text-center">
-          {row.statusIndicator.canConfirm ? (
+          {row.canCategorize && row.statusIndicator.canConfirm ? (
             <Button
               type="button"
               variant="ghost"
               title={row.statusIndicator.title}
               aria-label={`Confirm category for ${row.description}. ${row.statusIndicator.ariaLabel}`}
               className="h-2.5 w-2.5 cursor-pointer rounded-full bg-transparent p-0 transition-[box-shadow] hover:bg-transparent hover:ring-2 hover:ring-ring/70 hover:ring-offset-2 hover:ring-offset-background"
-              onClick={() => onConfirmTransaction(row.id)}
+              onClick={() => onConfirmTransaction(row.ledgerTransactionId)}
             >
               <span className={`block h-2.5 w-2.5 rounded-full ${row.statusIndicator.className}`} aria-hidden="true" />
               <span className="sr-only">{row.statusIndicator.ariaLabel}</span>

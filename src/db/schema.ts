@@ -238,7 +238,6 @@ export const ledgerTransactions = pgTable(
     teamId: text('team_id')
       .notNull()
       .references(() => teams.id, {onDelete: 'cascade'}),
-    bankTransactionId: text('bank_transaction_id').references(() => bankTransactions.id, {onDelete: 'cascade'}),
     source: text('source').notNull(),
     status: text('status').notNull(),
     aiConfidence: integer('ai_confidence'),
@@ -254,43 +253,42 @@ export const ledgerTransactions = pgTable(
   },
   table => ({
     teamIdx: index('ledger_transactions_team_idx').on(table.teamId),
-    bankTransactionIdx: uniqueIndex('ledger_transactions_bank_transaction_unique').on(table.bankTransactionId),
     statusIdx: index('ledger_transactions_status_idx').on(table.teamId, table.status),
     dateIdx: index('ledger_transactions_date_idx').on(table.teamId, table.date),
   }),
 )
 
-export const ledgerTransactionMovements = pgTable(
-  'ledger_transaction_movements',
+export const ledgerPostings = pgTable(
+  'ledger_postings',
   {
     id: text('id').primaryKey(),
     ledgerTransactionId: text('ledger_transaction_id').notNull(),
-    debitAccountId: text('debit_account_id').notNull(),
-    creditAccountId: text('credit_account_id').notNull(),
+    accountId: text('account_id').notNull(),
     amount: numeric('amount', {precision: 18, scale: 4}).notNull(),
     currency: text('currency').notNull(),
+    bankTransactionId: text('bank_transaction_id'),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
     updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
   },
   table => ({
-    transactionIdx: index('ledger_transaction_movements_transaction_idx').on(table.ledgerTransactionId),
-    debitAccountIdx: index('ledger_transaction_movements_debit_account_idx').on(table.debitAccountId),
-    creditAccountIdx: index('ledger_transaction_movements_credit_account_idx').on(table.creditAccountId),
+    transactionIdx: index('ledger_postings_transaction_idx').on(table.ledgerTransactionId),
+    accountIdx: index('ledger_postings_account_idx').on(table.accountId),
+    bankTransactionIdx: uniqueIndex('ledger_postings_bank_transaction_unique').on(table.bankTransactionId),
     transactionFk: foreignKey({
-      name: 'ledger_movements_transaction_fk',
+      name: 'ledger_postings_transaction_fk',
       columns: [table.ledgerTransactionId],
       foreignColumns: [ledgerTransactions.id],
     }).onDelete('cascade'),
-    debitAccountFk: foreignKey({
-      name: 'ledger_movements_debit_account_fk',
-      columns: [table.debitAccountId],
+    accountFk: foreignKey({
+      name: 'ledger_postings_account_fk',
+      columns: [table.accountId],
       foreignColumns: [ledgerAccounts.id],
     }).onDelete('restrict'),
-    creditAccountFk: foreignKey({
-      name: 'ledger_movements_credit_account_fk',
-      columns: [table.creditAccountId],
-      foreignColumns: [ledgerAccounts.id],
+    bankTransactionFk: foreignKey({
+      name: 'ledger_postings_bank_transaction_fk',
+      columns: [table.bankTransactionId],
+      foreignColumns: [bankTransactions.id],
     }).onDelete('restrict'),
   }),
 )
@@ -378,9 +376,9 @@ export const bankTransactionsRelations = relations(bankTransactions, ({one}) => 
     fields: [bankTransactions.bankAccountId],
     references: [bankAccounts.id],
   }),
-  ledgerTransaction: one(ledgerTransactions, {
+  posting: one(ledgerPostings, {
     fields: [bankTransactions.id],
-    references: [ledgerTransactions.bankTransactionId],
+    references: [ledgerPostings.bankTransactionId],
   }),
 }))
 
@@ -405,8 +403,7 @@ export const ledgerAccountsRelations = relations(ledgerAccounts, ({one, many}) =
     fields: [ledgerAccounts.linkedBankAccountId],
     references: [bankAccounts.id],
   }),
-  debitMovements: many(ledgerTransactionMovements, {relationName: 'debitAccount'}),
-  creditMovements: many(ledgerTransactionMovements, {relationName: 'creditAccount'}),
+  postings: many(ledgerPostings),
 }))
 
 export const ledgerTransactionsRelations = relations(ledgerTransactions, ({one, many}) => ({
@@ -414,26 +411,20 @@ export const ledgerTransactionsRelations = relations(ledgerTransactions, ({one, 
     fields: [ledgerTransactions.teamId],
     references: [teams.id],
   }),
-  bankTransaction: one(bankTransactions, {
-    fields: [ledgerTransactions.bankTransactionId],
-    references: [bankTransactions.id],
-  }),
-  movements: many(ledgerTransactionMovements),
+  postings: many(ledgerPostings),
 }))
 
-export const ledgerTransactionMovementsRelations = relations(ledgerTransactionMovements, ({one}) => ({
+export const ledgerPostingsRelations = relations(ledgerPostings, ({one}) => ({
   ledgerTransaction: one(ledgerTransactions, {
-    fields: [ledgerTransactionMovements.ledgerTransactionId],
+    fields: [ledgerPostings.ledgerTransactionId],
     references: [ledgerTransactions.id],
   }),
-  debitAccount: one(ledgerAccounts, {
-    fields: [ledgerTransactionMovements.debitAccountId],
+  account: one(ledgerAccounts, {
+    fields: [ledgerPostings.accountId],
     references: [ledgerAccounts.id],
-    relationName: 'debitAccount',
   }),
-  creditAccount: one(ledgerAccounts, {
-    fields: [ledgerTransactionMovements.creditAccountId],
-    references: [ledgerAccounts.id],
-    relationName: 'creditAccount',
+  bankTransaction: one(bankTransactions, {
+    fields: [ledgerPostings.bankTransactionId],
+    references: [bankTransactions.id],
   }),
 }))

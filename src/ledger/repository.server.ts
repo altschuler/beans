@@ -5,13 +5,13 @@ import type {Database} from '@/db/client'
 import {
   ledgerAccountGroups,
   ledgerAccounts,
-  ledgerTransactionMovements,
+  ledgerPostings,
   ledgerTransactions,
 } from '@/db/schema'
 import {buildBankImportLedgerDraft, type LedgerTransactionStatus} from './bank-import'
 import {buildDefaultLedgerChartForTeam, SYSTEM_LEDGER_ACCOUNT_KEYS} from './default-chart'
 
-type DrizzleExecutor = Pick<Database, 'select' | 'insert' | 'update'>
+type DrizzleExecutor = Pick<Database, 'select' | 'insert' | 'update' | 'delete'>
 
 export async function seedDefaultLedgerChartForTeam(tx: DrizzleExecutor, teamId: string) {
   const now = new Date()
@@ -158,13 +158,13 @@ export async function ensureGeneratedLedgerTransactionForBankTransaction(
   },
 ) {
   const [existing] = await tx
-    .select({id: ledgerTransactions.id})
-    .from(ledgerTransactions)
-    .where(eq(ledgerTransactions.bankTransactionId, input.bankTransactionId))
+    .select({ledgerTransactionId: ledgerPostings.ledgerTransactionId})
+    .from(ledgerPostings)
+    .where(eq(ledgerPostings.bankTransactionId, input.bankTransactionId))
     .limit(1)
 
   if (existing) {
-    return existing.id
+    return existing.ledgerTransactionId
   }
 
   const draft = buildBankImportLedgerDraft({
@@ -182,7 +182,26 @@ export async function ensureGeneratedLedgerTransactionForBankTransaction(
   })
 
   await tx.insert(ledgerTransactions).values(draft.transaction)
-  await tx.insert(ledgerTransactionMovements).values(draft.movement)
+  const insertedPostings = await tx
+    .insert(ledgerPostings)
+    .values(draft.postings)
+    .onConflictDoNothing({target: ledgerPostings.bankTransactionId})
+    .returning({ledgerTransactionId: ledgerPostings.ledgerTransactionId, bankTransactionId: ledgerPostings.bankTransactionId})
+
+  if (!insertedPostings.some(posting => posting.bankTransactionId === input.bankTransactionId)) {
+    await tx.delete(ledgerTransactions).where(eq(ledgerTransactions.id, draft.transaction.id))
+    const [existingAfterRace] = await tx
+      .select({ledgerTransactionId: ledgerPostings.ledgerTransactionId})
+      .from(ledgerPostings)
+      .where(eq(ledgerPostings.bankTransactionId, input.bankTransactionId))
+      .limit(1)
+
+    if (existingAfterRace) {
+      return existingAfterRace.ledgerTransactionId
+    }
+
+    throw new Error('Could not create ledger transaction for bank transaction')
+  }
 
   return draft.transaction.id
 }

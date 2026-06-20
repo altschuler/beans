@@ -11,11 +11,11 @@ export function LedgerAccountDetail({accountId}: {accountId: string}) {
   const [groups] = useQuery(queries.domain.ledgerAccountGroups())
   const [accounts] = useQuery(queries.domain.ledgerAccounts())
   const [ledgerTransactions] = useQuery(queries.domain.ledgerTransactions())
-  const [movements] = useQuery(queries.domain.ledgerTransactionMovements())
+  const [postings] = useQuery(queries.domain.ledgerPostings())
   const [bankTransactions] = useQuery(queries.domain.bankTransactions())
   const [bankAccounts] = useQuery(queries.domain.bankAccounts())
 
-  const model = buildLedgerAccountDetailModel({accountId, period, groups, accounts, ledgerTransactions, movements, bankTransactions, bankAccounts})
+  const model = buildLedgerAccountDetailModel({accountId, period, groups, accounts, ledgerTransactions, postings, bankTransactions, bankAccounts})
 
   if (model.kind === 'not_found') {
     return (

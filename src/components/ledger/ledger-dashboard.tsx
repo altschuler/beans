@@ -28,7 +28,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   const [groups] = useQuery(queries.domain.ledgerAccountGroups())
   const [accounts] = useQuery(queries.domain.ledgerAccounts())
   const [ledgerTransactions] = useQuery(queries.domain.ledgerTransactions())
-  const [movements] = useQuery(queries.domain.ledgerTransactionMovements())
+  const [postings] = useQuery(queries.domain.ledgerPostings())
   const [bankTransactions] = useQuery(queries.domain.bankTransactions())
   const [bankAccounts] = useQuery(queries.domain.bankAccounts())
   const [isAiRequestPending, setIsAiRequestPending] = useState(false)
@@ -40,7 +40,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     groups,
     accounts,
     ledgerTransactions,
-    movements,
+    postings,
     bankTransactions,
     bankAccounts,
     bankAccountIdFilter: view === 'bankAccountTransactions' ? bankAccountId : null,
@@ -60,7 +60,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
         : 'Transactions'
   const pageDescription =
     view === 'categories'
-      ? 'Review category and account balances derived from ledger movements.'
+      ? 'Review category and account balances derived from ledger postings.'
       : view === 'bankAccountTransactions'
         ? 'Review imported transactions for this bank account.'
         : 'Review imported transactions and keep your envelope ledger categorized.'
@@ -133,7 +133,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     let didSave = false
 
     await saveDashboardSplitTransaction({
-      ledgerTransactionId: row.id,
+      ledgerTransactionId: row.ledgerTransactionId,
       bankAmount: row.amount,
       lines,
       mutate: mutation => zero.mutate(mutation),

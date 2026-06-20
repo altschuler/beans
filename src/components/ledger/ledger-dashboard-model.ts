@@ -1,4 +1,4 @@
-import {deriveLedgerAccountBalances, isCategorizationAccount} from '@/ledger/categorization'
+import {deriveLedgerAccountBalances, formatScaledUnits, isCategorizationAccount, parseMoneyToScaledUnits} from '@/ledger/categorization'
 import {SYSTEM_LEDGER_ACCOUNT_KEYS} from '@/ledger/default-chart'
 
 export type LedgerDashboardGroup = {id: string; name: string; sortOrder: number | null}
@@ -15,7 +15,6 @@ export type LedgerDashboardAccount = {
 }
 export type LedgerDashboardTransaction = {
   id: string
-  bankTransactionId: string | null
   source: string
   status: string
   aiConfidence: number | null
@@ -27,13 +26,13 @@ export type LedgerDashboardTransaction = {
   date: string | null
   description: string
 }
-export type LedgerDashboardMovement = {
+export type LedgerDashboardPosting = {
   id: string
   ledgerTransactionId: string
-  debitAccountId: string
-  creditAccountId: string
+  accountId: string
   amount: string | number
   currency: string
+  bankTransactionId?: string | null
   sortOrder: number | null
 }
 export type LedgerDashboardBankTransaction = {
@@ -56,12 +55,13 @@ export type LedgerDashboardStatusIndicator = {
 export type LedgerDashboardAiIndicator = LedgerDashboardStatusIndicator
 
 type NormalizedAccount = LedgerDashboardAccount & {status: string; sortOrder: number; systemKey: string | null; linkedBankAccountId: string | null}
+type NormalizedPosting = LedgerDashboardPosting & {amount: string; sortOrder: number; bankTransactionId: string | null}
 
 export function buildLedgerDashboardModel(input: {
   groups: ReadonlyArray<LedgerDashboardGroup>
   accounts: ReadonlyArray<LedgerDashboardAccount>
   ledgerTransactions: ReadonlyArray<LedgerDashboardTransaction>
-  movements: ReadonlyArray<LedgerDashboardMovement>
+  postings: ReadonlyArray<LedgerDashboardPosting>
   bankTransactions: ReadonlyArray<LedgerDashboardBankTransaction>
   bankAccounts: ReadonlyArray<LedgerDashboardBankAccount>
   bankAccountIdFilter?: string | null
@@ -73,13 +73,19 @@ export function buildLedgerDashboardModel(input: {
     systemKey: account.systemKey ?? null,
     linkedBankAccountId: account.linkedBankAccountId ?? null,
   }))
-  const movements = input.movements.map(movement => ({...movement, amount: String(movement.amount), sortOrder: movement.sortOrder ?? 0}))
+  const postings: NormalizedPosting[] = input.postings.map(posting => ({
+    ...posting,
+    amount: String(posting.amount),
+    sortOrder: posting.sortOrder ?? 0,
+    bankTransactionId: posting.bankTransactionId ?? null,
+  }))
   const bankTransactions = input.bankTransactions.map(transaction => ({...transaction, amount: String(transaction.amount)}))
-  const balances = deriveLedgerAccountBalances(accounts, movements)
+  const balances = deriveLedgerAccountBalances(accounts, postings)
   const accountsById = new Map(accounts.map(account => [account.id, account]))
+  const ledgerTransactionsById = new Map(input.ledgerTransactions.map(transaction => [transaction.id, transaction]))
   const bankTransactionsById = new Map(bankTransactions.map(transaction => [transaction.id, transaction]))
   const bankAccountNamesById = new Map(input.bankAccounts.map(account => [account.id, account.name]))
-  const movementsByTransactionId = groupBy(movements, movement => movement.ledgerTransactionId)
+  const postingsByTransactionId = groupBy(postings, posting => posting.ledgerTransactionId)
   const now = new Date()
 
   const categorizationAccounts = accounts
@@ -97,45 +103,54 @@ export function buildLedgerDashboardModel(input: {
         .map(account => ({...account, balance: balances.get(account.id) ?? '0.0000'})),
     }))
 
-  const transactionRows = input.ledgerTransactions
-    .filter(transaction => transaction.source === 'bank_import' && transaction.bankTransactionId)
-    .map(transaction => {
-      const bankTransaction = transaction.bankTransactionId ? bankTransactionsById.get(transaction.bankTransactionId) : undefined
-      const transactionMovements = movementsByTransactionId.get(transaction.id) ?? []
+  const transactionRows = postings
+    .filter(posting => posting.bankTransactionId)
+    .flatMap(bankPosting => {
+      const transaction = ledgerTransactionsById.get(bankPosting.ledgerTransactionId)
+      if (!transaction || transaction.source !== 'bank_import' || !bankPosting.bankTransactionId) return []
+      const bankTransaction = bankTransactionsById.get(bankPosting.bankTransactionId)
+      if (!bankTransaction) return []
+      const transactionPostings = postingsByTransactionId.get(transaction.id) ?? []
+      const canCategorize = transactionPostings.filter(posting => posting.bankTransactionId).length === 1
+      const explanatoryPostings = transactionPostings.filter(posting => !posting.bankTransactionId)
       const categoryAccounts = uniqueAccounts(
-        transactionMovements.flatMap(movement => [movement.debitAccountId, movement.creditAccountId]).flatMap(accountId => {
-          const account = accountsById.get(accountId)
+        explanatoryPostings.flatMap(posting => {
+          const account = accountsById.get(posting.accountId)
           return account && isCategorizationAccount(account) ? [account] : []
         }),
       )
+      const categoryPostings = explanatoryPostings.filter(posting => {
+        const account = accountsById.get(posting.accountId)
+        return account ? isCategorizationAccount(account) : false
+      })
       const categoryAccountIds = new Set(categoryAccounts.map(account => account.id))
       const categoryAccountId = categoryAccountIds.size === 1 ? [...categoryAccountIds][0] : null
       const aiProcessing = isRecentlyProcessing(transaction.aiProcessingStartedAt, now)
       const statusIndicator = buildStatusIndicator({transaction, categoryAccounts, aiProcessing})
 
-      return {
-        id: transaction.id,
-        bankAccountId: bankTransaction?.bankAccountId ?? null,
-        description: bankTransaction?.description ?? transaction.description,
-        date: bankTransaction?.bookingDate ?? bankTransaction?.valueDate ?? transaction.date,
-        bankAccountName: bankTransaction ? (bankAccountNamesById.get(bankTransaction.bankAccountId) ?? 'Unknown account') : 'Unknown account',
-        amount: bankTransaction?.amount ?? '0.0000',
-        currency: bankTransaction?.currency ?? '',
-        status: transaction.status,
-        needsReview: transaction.status === 'needs_review',
-        aiConfidence: transaction.aiConfidence,
-        aiProcessing,
-        statusIndicator,
-        aiIndicator: statusIndicator,
-        categoryAccountId,
-        categoryLabel: categoryAccountId ? (accountsById.get(categoryAccountId)?.name ?? 'Unknown category') : 'Split',
-        isSplit: transactionMovements.length > 1,
-        splitLines: transactionMovements.map(movement => {
-          const debitAccount = accountsById.get(movement.debitAccountId)
-          const categoryAccountIdForMovement = debitAccount && isCategorizationAccount(debitAccount) ? movement.debitAccountId : movement.creditAccountId
-          return {accountId: categoryAccountIdForMovement, amount: movement.amount}
-        }),
-      }
+      return [
+        {
+          id: `${transaction.id}:${bankPosting.id}`,
+          ledgerTransactionId: transaction.id,
+          bankAccountId: bankTransaction.bankAccountId,
+          description: bankTransaction.description ?? transaction.description,
+          date: bankTransaction.bookingDate ?? bankTransaction.valueDate ?? transaction.date,
+          bankAccountName: bankAccountNamesById.get(bankTransaction.bankAccountId) ?? 'Unknown account',
+          amount: bankTransaction.amount,
+          currency: bankTransaction.currency,
+          status: transaction.status,
+          needsReview: transaction.status === 'needs_review',
+          aiConfidence: transaction.aiConfidence,
+          aiProcessing,
+          canCategorize,
+          statusIndicator,
+          aiIndicator: statusIndicator,
+          categoryAccountId,
+          categoryLabel: categoryAccountId ? (accountsById.get(categoryAccountId)?.name ?? 'Unknown category') : 'Split',
+          isSplit: categoryPostings.length > 1,
+          splitLines: categoryPostings.map(posting => ({accountId: posting.accountId, amount: absoluteMoneyString(posting.amount)})),
+        },
+      ]
     })
     .filter(row => !input.bankAccountIdFilter || row.bankAccountId === input.bankAccountIdFilter)
     .sort((left, right) => (right.date ?? '').localeCompare(left.date ?? ''))
@@ -238,7 +253,7 @@ function buildStatusIndicator(input: {
 }
 
 function isRealCategorizationAccount(account: NormalizedAccount) {
-  return account.status === 'active' && account.type !== 'bank' && account.systemKey === null && account.linkedBankAccountId === null
+  return isCategorizationAccount(account)
 }
 
 function isRecentlyProcessing(value: Date | string | number | null, now: Date) {
@@ -259,4 +274,12 @@ function groupBy<T>(items: T[], key: (item: T) => string) {
     groups.set(groupKey, [...(groups.get(groupKey) ?? []), item])
   }
   return groups
+}
+
+function absoluteMoneyString(value: string) {
+  return formatScaledUnits(absBigInt(parseMoneyToScaledUnits(value)))
+}
+
+function absBigInt(value: bigint) {
+  return value < 0n ? -value : value
 }

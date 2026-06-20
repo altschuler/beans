@@ -2,7 +2,8 @@ import '@tanstack/react-start/server-only'
 
 import {and, desc, eq, isNotNull, ne} from 'drizzle-orm'
 import {db} from '@/db/client'
-import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, teamMembers} from '@/db/schema'
+import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, ledgerPostings, teamMembers} from '@/db/schema'
+import {parseMoneyToScaledUnits} from '@/ledger/categorization'
 import {
   ensureGeneratedLedgerTransactionForBankTransaction,
   ensureLedgerAccountForBankAccount,
@@ -226,6 +227,38 @@ export async function updateBankAccountDetails(bankAccountId: string, details: G
   }
 }
 
+type BankingSyncTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+async function guardProviderFactsAfterReconciliation(
+  tx: BankingSyncTransaction,
+  bankAccount: {id: string; teamId: string; provider: string},
+  transaction: NormalizedBankTransaction,
+) {
+  // Provider transaction ids are scoped by provider/team here so a reconciled bank transaction cannot silently move across bank accounts.
+  const [existing] = await tx
+    .select({
+      id: bankTransactions.id,
+      bankAccountId: bankTransactions.bankAccountId,
+      amount: bankTransactions.amount,
+      currency: bankTransactions.currency,
+      reconciledPostingId: ledgerPostings.id,
+    })
+    .from(bankTransactions)
+    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+    .leftJoin(ledgerPostings, eq(ledgerPostings.bankTransactionId, bankTransactions.id))
+    .where(and(eq(bankAccounts.teamId, bankAccount.teamId), eq(bankAccounts.provider, bankAccount.provider), eq(bankTransactions.providerTransactionId, transaction.providerTransactionId)))
+    .limit(1)
+
+  if (!existing?.reconciledPostingId) return
+
+  const bankAccountChanged = existing.bankAccountId !== bankAccount.id
+  const amountChanged = parseMoneyToScaledUnits(existing.amount) !== parseMoneyToScaledUnits(transaction.amount)
+  const currencyChanged = existing.currency !== transaction.currency
+  if (bankAccountChanged || amountChanged || currencyChanged) {
+    throw new Error('Imported bank transaction facts changed after reconciliation')
+  }
+}
+
 export const drizzleBankingSyncRepository: BankAccountSyncRepository = {
   claimBankAccountSync,
   updateBankAccountDetails,
@@ -245,6 +278,7 @@ export const drizzleBankingSyncRepository: BankAccountSyncRepository = {
           id: bankAccounts.id,
           teamId: bankAccounts.teamId,
           name: bankAccounts.name,
+          provider: bankAccounts.provider,
           ledgerAccountId: ledgerAccounts.id,
         })
         .from(bankAccounts)
@@ -272,6 +306,8 @@ export const drizzleBankingSyncRepository: BankAccountSyncRepository = {
 
       const now = new Date()
       for (const transaction of transactions) {
+        await guardProviderFactsAfterReconciliation(tx, bankAccount, transaction)
+
         const [bankTransaction] = await tx
           .insert(bankTransactions)
           .values({

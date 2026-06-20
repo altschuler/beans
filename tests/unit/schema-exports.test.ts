@@ -5,7 +5,7 @@ import {
   bankTransactions,
   ledgerAccountGroups,
   ledgerAccounts,
-  ledgerTransactionMovements,
+  ledgerPostings,
   ledgerTransactions,
   teamMembers,
   teams,
@@ -30,21 +30,24 @@ describe('banking schema exports', () => {
     expect(ledgerAccountGroups).toBeDefined()
     expect(ledgerAccounts).toBeDefined()
     expect(ledgerTransactions).toBeDefined()
-    expect(ledgerTransactionMovements).toBeDefined()
+    expect(ledgerPostings).toBeDefined()
   })
 
-  it('exports ledger account and movement columns', () => {
+  it('exports ledger account and posting columns', () => {
     expect(ledgerAccounts.systemKey).toBeDefined()
     expect(ledgerAccounts.linkedBankAccountId).toBeDefined()
     expect(ledgerAccounts.normalBalance).toBeDefined()
-    expect(ledgerTransactions.bankTransactionId).toBeDefined()
+    expect(ledgerTransactions).not.toHaveProperty('bankTransactionId')
     expect(ledgerTransactions.aiConfidence).toBeDefined()
     expect(ledgerTransactions.aiProcessingStartedAt).toBeDefined()
     expect(ledgerTransactions.categorizedBy).toBeDefined()
     expect(ledgerTransactions.userConfirmedAt).toBeDefined()
     expect(ledgerTransactions.userConfirmedBy).toBeDefined()
     expect(ledgerTransactions.aiReasoning).toBeDefined()
-    expect(ledgerTransactionMovements.debitAccountId).toBeDefined()
-    expect(ledgerTransactionMovements.creditAccountId).toBeDefined()
+    expect(ledgerPostings.ledgerTransactionId).toBeDefined()
+    expect(ledgerPostings.accountId).toBeDefined()
+    expect(ledgerPostings.amount).toBeDefined()
+    expect(ledgerPostings.currency).toBeDefined()
+    expect(ledgerPostings.bankTransactionId).toBeDefined()
   })
 })

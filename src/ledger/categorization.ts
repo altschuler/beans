@@ -8,25 +8,36 @@ export type BankLinkedCategorizationLinesInput = {
   lines: CategorizationLineInput[]
 }
 
-export type BankLinkedCategorizationMovementInput = {
+export type LedgerPostingInput = {
+  id?: string
   ledgerTransactionId: string
-  bankLedgerAccountId: string
-  bankAmount: string
+  accountId: string
+  amount: string
   currency: string
-  lines: CategorizationLineInput[]
+  bankTransactionId?: string | null
+  sortOrder?: number
   now?: Date
 }
 
-export type BuiltLedgerMovement = {
+export type BuiltLedgerPosting = {
   id: string
   ledgerTransactionId: string
-  debitAccountId: string
-  creditAccountId: string
+  accountId: string
   amount: string
   currency: string
+  bankTransactionId: string | null
   sortOrder: number
   createdAt: Date
   updatedAt: Date
+}
+
+export type ReconciledBankPosting = {
+  id: string
+  ledgerTransactionId: string
+  accountId: string
+  amount: string
+  currency: string
+  bankTransactionId: string
 }
 
 export type BalanceAccount = {
@@ -34,19 +45,22 @@ export type BalanceAccount = {
   normalBalance: string
 }
 
-export type BalanceMovement = {
-  debitAccountId: string
-  creditAccountId: string
+export type BalancePosting = {
+  accountId: string
   amount: string
+  currency?: string | null
 }
 
 export type CategorizationAccountCandidate = {
   type: string
   status: string
+  systemKey?: string | null
+  linkedBankAccountId?: string | null
 }
 
 const MONEY_SCALE = 4n
 const MONEY_FACTOR = 10_000n
+const REAL_CATEGORIZATION_ACCOUNT_TYPES = new Set(['income', 'expense', 'savings'])
 
 export function validateBankLinkedCategorizationLines(input: BankLinkedCategorizationLinesInput) {
   if (input.lines.length === 0) {
@@ -73,60 +87,103 @@ export function validateBankLinkedCategorizationLines(input: BankLinkedCategoriz
   return {bankAmountUnits, lineUnits}
 }
 
-export function buildBankLinkedCategorizationMovements(input: BankLinkedCategorizationMovementInput): BuiltLedgerMovement[] {
-  const {bankAmountUnits, lineUnits} = validateBankLinkedCategorizationLines(input)
-  const now = input.now ?? new Date()
-  return input.lines.map((line, sortOrder) => {
-    const amount = formatScaledUnits(lineUnits[sortOrder] ?? 0n)
-    const bankAmountIsPositive = bankAmountUnits > 0n
-
-    return {
-      id: crypto.randomUUID(),
-      ledgerTransactionId: input.ledgerTransactionId,
-      debitAccountId: bankAmountIsPositive ? input.bankLedgerAccountId : line.accountId,
-      creditAccountId: bankAmountIsPositive ? line.accountId : input.bankLedgerAccountId,
-      amount,
-      currency: input.currency,
-      sortOrder,
-      createdAt: now,
-      updatedAt: now,
-    }
+export function buildBankLinkedCategorizationPostings(input: {
+  bankPosting: ReconciledBankPosting
+  lines: CategorizationLineInput[]
+  now?: Date
+}): BuiltLedgerPosting[] {
+  const {bankAmountUnits, lineUnits} = validateBankLinkedCategorizationLines({
+    bankAmount: input.bankPosting.amount,
+    lines: input.lines,
   })
+  const now = input.now ?? new Date()
+  const explanatorySign = bankAmountUnits > 0n ? -1n : 1n
+  const bankPosting: BuiltLedgerPosting = {
+    id: input.bankPosting.id,
+    ledgerTransactionId: input.bankPosting.ledgerTransactionId,
+    accountId: input.bankPosting.accountId,
+    amount: formatScaledUnits(bankAmountUnits),
+    currency: input.bankPosting.currency,
+    bankTransactionId: input.bankPosting.bankTransactionId,
+    sortOrder: 0,
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  const explanatoryPostings = input.lines.map((line, index) => ({
+    id: crypto.randomUUID(),
+    ledgerTransactionId: input.bankPosting.ledgerTransactionId,
+    accountId: line.accountId,
+    amount: formatScaledUnits((lineUnits[index] ?? 0n) * explanatorySign),
+    currency: input.bankPosting.currency,
+    bankTransactionId: null,
+    sortOrder: index + 1,
+    createdAt: now,
+    updatedAt: now,
+  }))
+
+  const postings = [bankPosting, ...explanatoryPostings]
+  validateLedgerPostingsBalance(postings)
+  return postings
+}
+
+export function validateLedgerPostingsBalance(postings: Array<{amount: string; currency: string}>) {
+  if (postings.length < 2) {
+    throw new Error('Ledger transaction must have at least two postings')
+  }
+
+  const totalsByCurrency = new Map<string, bigint>()
+  for (const posting of postings) {
+    const amount = parseMoneyToScaledUnits(posting.amount)
+    if (amount === 0n) {
+      throw new Error('Ledger postings must be non-zero')
+    }
+    totalsByCurrency.set(posting.currency, (totalsByCurrency.get(posting.currency) ?? 0n) + amount)
+  }
+
+  if ([...totalsByCurrency.values()].some(total => total !== 0n)) {
+    throw new Error('Ledger postings must balance to zero per currency')
+  }
+}
+
+export function deriveLedgerAccountBalances(accounts: BalanceAccount[], postings: BalancePosting[]) {
+  const balancesByAccount = new Map(accounts.map(account => [account.id, new Map<string, bigint>()]))
+  const normalBalances = new Map(accounts.map(account => [account.id, account.normalBalance]))
+
+  for (const posting of postings) {
+    const normalBalance = normalBalances.get(posting.accountId)
+    const accountBalances = balancesByAccount.get(posting.accountId)
+    if (!normalBalance || !accountBalances) continue
+    const currency = posting.currency ?? ''
+    const amount = parseMoneyToScaledUnits(posting.amount)
+    const displayAmount = normalBalance === 'credit' ? -amount : amount
+    accountBalances.set(currency, (accountBalances.get(currency) ?? 0n) + displayAmount)
+  }
+
+  return new Map(
+    [...balancesByAccount.entries()].map(([accountId, balancesByCurrency]) => {
+      const nonZeroBalances = [...balancesByCurrency.values()].filter(balance => balance !== 0n)
+      if (nonZeroBalances.length === 0) return [accountId, '0.0000']
+      if (nonZeroBalances.length > 1) return [accountId, 'Multiple currencies']
+      return [accountId, formatScaledUnits(nonZeroBalances[0]!)]
+    }),
+  )
+}
+
+export function isRealCategorizationAccount(account: CategorizationAccountCandidate) {
+  return (
+    account.status === 'active' &&
+    account.systemKey == null &&
+    account.linkedBankAccountId == null &&
+    REAL_CATEGORIZATION_ACCOUNT_TYPES.has(account.type)
+  )
 }
 
 export function isCategorizationAccount(account: CategorizationAccountCandidate) {
-  return account.status === 'active' && account.type !== 'bank'
+  return isRealCategorizationAccount(account)
 }
 
-export function deriveLedgerAccountBalances(accounts: BalanceAccount[], movements: BalanceMovement[]) {
-  const balances = new Map(accounts.map(account => [account.id, 0n]))
-  const normalBalances = new Map(accounts.map(account => [account.id, account.normalBalance]))
-
-  for (const movement of movements) {
-    const amount = parseMoneyToScaledUnits(movement.amount)
-    applyMovementAmount(balances, normalBalances, movement.debitAccountId, amount, 'debit')
-    applyMovementAmount(balances, normalBalances, movement.creditAccountId, amount, 'credit')
-  }
-
-  return new Map([...balances.entries()].map(([accountId, balance]) => [accountId, formatScaledUnits(balance)]))
-}
-
-function applyMovementAmount(
-  balances: Map<string, bigint>,
-  normalBalances: Map<string, string>,
-  accountId: string,
-  amount: bigint,
-  side: 'debit' | 'credit',
-) {
-  const normalBalance = normalBalances.get(accountId)
-  if (!normalBalance) return
-
-  const current = balances.get(accountId) ?? 0n
-  const increases = normalBalance === side
-  balances.set(accountId, increases ? current + amount : current - amount)
-}
-
-function parseMoneyToScaledUnits(value: string) {
+export function parseMoneyToScaledUnits(value: string) {
   const trimmed = value.trim()
   const sign = trimmed.startsWith('-') ? -1n : 1n
   const unsigned = trimmed.replace(/^[+-]/, '')
@@ -140,7 +197,7 @@ function parseMoneyToScaledUnits(value: string) {
   return sign * (BigInt(wholePart || '0') * MONEY_FACTOR + BigInt(paddedFraction || '0'))
 }
 
-function formatScaledUnits(value: bigint) {
+export function formatScaledUnits(value: bigint) {
   const sign = value < 0n ? '-' : ''
   const absolute = absoluteBigInt(value)
   const whole = absolute / MONEY_FACTOR

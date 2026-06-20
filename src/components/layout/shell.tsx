@@ -36,6 +36,7 @@ function getBreadcrumbSegments(
   ledgerAccounts: Array<{id: string; name: string}>,
 ): BreadcrumbSegment[] {
   if (pathname === '/app') return [{title: 'Home'}]
+  if (pathname === '/ledger') return [{title: 'Ledger'}]
   if (pathname === '/app/transactions') return [{title: 'Transactions'}]
   if (pathname === '/app/categories') return [{title: 'Categories'}]
   if (pathname === '/app/banks') return [{title: 'Manage bank connections'}]

@@ -17,7 +17,6 @@ const queryRows = vi.hoisted(() => ({
   }>,
   ledgerTransactions: [] as Array<{
     id: string
-    bankTransactionId: string | null
     source: string
     status: string
     aiConfidence: number | null
@@ -29,7 +28,7 @@ const queryRows = vi.hoisted(() => ({
     date: string | null
     description: string
   }>,
-  movements: [] as Array<{id: string; ledgerTransactionId: string; debitAccountId: string; creditAccountId: string; amount: string; currency: string; sortOrder: number}>,
+  postings: [] as Array<{id: string; ledgerTransactionId: string; accountId: string; amount: string; currency: string; bankTransactionId: string | null; sortOrder: number}>,
   bankTransactions: [] as Array<{id: string; bankAccountId: string; amount: string; currency: string; bookingDate: string | null; valueDate: string | null; description: string}>,
   bankAccounts: [] as Array<{id: string; name: string; syncStatus?: string}>,
 }))
@@ -66,7 +65,7 @@ vi.mock('@rocicorp/zero/react', () => ({
     if (query.name === 'ledgerAccountGroups') return [queryRows.groups]
     if (query.name === 'ledgerAccounts') return [queryRows.accounts]
     if (query.name === 'ledgerTransactions') return [queryRows.ledgerTransactions]
-    if (query.name === 'ledgerTransactionMovements') return [queryRows.movements]
+    if (query.name === 'ledgerPostings') return [queryRows.postings]
     if (query.name === 'bankTransactions') return [queryRows.bankTransactions]
     if (query.name === 'bankAccounts') return [queryRows.bankAccounts]
     throw new Error(`Unexpected query: ${query.name}`)
@@ -141,7 +140,7 @@ vi.mock('@/zero/queries', () => ({
       ledgerAccountGroups: () => ({name: 'ledgerAccountGroups'}),
       ledgerAccounts: () => ({name: 'ledgerAccounts'}),
       ledgerTransactions: () => ({name: 'ledgerTransactions'}),
-      ledgerTransactionMovements: () => ({name: 'ledgerTransactionMovements'}),
+      ledgerPostings: () => ({name: 'ledgerPostings'}),
       bankTransactions: () => ({name: 'bankTransactions'}),
       bankAccounts: () => ({name: 'bankAccounts'}),
     },
@@ -217,7 +216,6 @@ describe('LedgerDashboard', () => {
     queryRows.ledgerTransactions = [
       {
         id: 'ledger-transaction-1',
-        bankTransactionId: 'bank-transaction-1',
         source: 'bank_import',
         status: 'needs_review',
         aiConfidence: 1,
@@ -230,8 +228,9 @@ describe('LedgerDashboard', () => {
         description: 'Netto',
       },
     ]
-    queryRows.movements = [
-      {id: 'movement-1', ledgerTransactionId: 'ledger-transaction-1', debitAccountId: 'groceries', creditAccountId: 'checking', amount: '100.00', currency: 'DKK', sortOrder: 0},
+    queryRows.postings = [
+      {id: 'bank-posting-1', ledgerTransactionId: 'ledger-transaction-1', accountId: 'checking', amount: '-100.0000', currency: 'DKK', bankTransactionId: 'bank-transaction-1', sortOrder: 0},
+      {id: 'category-posting-1', ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries', amount: '100.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
     ]
     queryRows.bankTransactions = [
       {id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: '-100.00', currency: 'DKK', bookingDate: '2026-06-18', valueDate: null, description: 'Netto'},
@@ -289,8 +288,8 @@ describe('LedgerDashboard', () => {
     expect(markup).toContain('href="/app/accounts/uncategorized"')
     expect(markup).toContain('href="/app/accounts/groceries"')
     expect(markup).not.toContain('<h1')
-    expect(markup).not.toContain('Review category and account balances derived from ledger movements.')
-    expect(markup).not.toContain('Balances are derived from ledger movements.')
+    expect(markup).not.toContain('Review category and account balances derived from ledger postings.')
+    expect(markup).not.toContain('Balances are derived from ledger postings.')
     expect(markup).not.toContain('data-slot="card"')
     expect(markup).not.toContain('Auto-categorize')
     expect(markup).not.toContain('Sync all accounts')
@@ -301,7 +300,6 @@ describe('LedgerDashboard', () => {
       ...queryRows.ledgerTransactions,
       {
         id: 'ledger-transaction-2',
-        bankTransactionId: 'bank-transaction-2',
         source: 'bank_import',
         status: 'needs_review',
         aiConfidence: null,
@@ -314,9 +312,10 @@ describe('LedgerDashboard', () => {
         description: 'Other account transaction',
       },
     ]
-    queryRows.movements = [
-      ...queryRows.movements,
-      {id: 'movement-2', ledgerTransactionId: 'ledger-transaction-2', debitAccountId: 'groceries', creditAccountId: 'checking', amount: '50.00', currency: 'DKK', sortOrder: 0},
+    queryRows.postings = [
+      ...queryRows.postings,
+      {id: 'bank-posting-2', ledgerTransactionId: 'ledger-transaction-2', accountId: 'checking', amount: '-50.0000', currency: 'DKK', bankTransactionId: 'bank-transaction-2', sortOrder: 0},
+      {id: 'category-posting-2', ledgerTransactionId: 'ledger-transaction-2', accountId: 'groceries', amount: '50.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
     ]
     queryRows.bankTransactions = [
       ...queryRows.bankTransactions,

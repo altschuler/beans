@@ -1,8 +1,8 @@
 import '@tanstack/react-start/server-only'
 
-import {and, desc, eq, inArray, isNotNull, isNull, or, sql} from 'drizzle-orm'
+import {and, desc, eq, inArray, isNotNull, isNull, sql} from 'drizzle-orm'
 import type {Database} from '@/db/client'
-import {bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerTransactionMovements, ledgerTransactions, teamMembers} from '@/db/schema'
+import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from '@/db/schema'
 
 type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 type DrizzleTransaction = DatabaseTransaction
@@ -127,14 +127,16 @@ async function loadConfirmedCandidateTransactions(
         })
         .from(ledgerTransactions)
         .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
-        .innerJoin(bankTransactions, eq(bankTransactions.id, ledgerTransactions.bankTransactionId))
+        .innerJoin(ledgerPostings, and(eq(ledgerPostings.ledgerTransactionId, ledgerTransactions.id), isNotNull(ledgerPostings.bankTransactionId)))
+        .innerJoin(bankTransactions, eq(bankTransactions.id, ledgerPostings.bankTransactionId))
+        .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
         .where(
           and(
             eq(teamMembers.userId, userId),
             eq(ledgerTransactions.teamId, teamId),
             eq(ledgerTransactions.source, 'bank_import'),
             eq(ledgerTransactions.status, 'confirmed'),
-            isNotNull(ledgerTransactions.bankTransactionId),
+            eq(bankAccounts.teamId, ledgerTransactions.teamId),
           ),
         )
         .orderBy(desc(ledgerTransactions.date), desc(ledgerTransactions.createdAt))
@@ -165,14 +167,16 @@ async function loadConfirmedCandidateTransactions(
         })
         .from(ledgerTransactions)
         .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
-        .innerJoin(bankTransactions, eq(bankTransactions.id, ledgerTransactions.bankTransactionId))
+        .innerJoin(ledgerPostings, and(eq(ledgerPostings.ledgerTransactionId, ledgerTransactions.id), isNotNull(ledgerPostings.bankTransactionId)))
+        .innerJoin(bankTransactions, eq(bankTransactions.id, ledgerPostings.bankTransactionId))
+        .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
         .where(
           and(
             eq(teamMembers.userId, userId),
             eq(ledgerTransactions.teamId, lookup.teamId),
             eq(ledgerTransactions.source, 'bank_import'),
             eq(ledgerTransactions.status, 'confirmed'),
-            isNotNull(ledgerTransactions.bankTransactionId),
+            eq(bankAccounts.teamId, ledgerTransactions.teamId),
             sql`trim(regexp_replace(lower(coalesce(${bankTransactions.counterpartyName}, '')), '[^a-z0-9]+', ' ', 'g')) = ${lookup.normalizedCounterparty}`,
           ),
         )
@@ -218,24 +222,19 @@ async function loadSingleEligibleCategoryByTransactionId(tx: DrizzleTransaction,
   const candidateIds = candidates.map(candidate => candidate.id)
   const eligibleCategoryRows = await tx
     .select({
-      ledgerTransactionId: ledgerTransactionMovements.ledgerTransactionId,
+      ledgerTransactionId: ledgerPostings.ledgerTransactionId,
       categoryAccountId: ledgerAccounts.id,
       categoryName: ledgerAccounts.name,
       categoryGroupName: ledgerAccountGroups.name,
     })
-    .from(ledgerTransactionMovements)
-    .innerJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerTransactionMovements.ledgerTransactionId))
-    .innerJoin(
-      ledgerAccounts,
-      and(
-        or(eq(ledgerAccounts.id, ledgerTransactionMovements.debitAccountId), eq(ledgerAccounts.id, ledgerTransactionMovements.creditAccountId)),
-        eq(ledgerAccounts.teamId, ledgerTransactions.teamId),
-      ),
-    )
+    .from(ledgerPostings)
+    .innerJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerPostings.ledgerTransactionId))
+    .innerJoin(ledgerAccounts, and(eq(ledgerAccounts.id, ledgerPostings.accountId), eq(ledgerAccounts.teamId, ledgerTransactions.teamId)))
     .innerJoin(ledgerAccountGroups, and(eq(ledgerAccountGroups.id, ledgerAccounts.groupId), eq(ledgerAccountGroups.teamId, ledgerTransactions.teamId)))
     .where(
       and(
-        inArray(ledgerTransactionMovements.ledgerTransactionId, candidateIds),
+        inArray(ledgerPostings.ledgerTransactionId, candidateIds),
+        isNull(ledgerPostings.bankTransactionId),
         eq(ledgerAccounts.status, 'active'),
         isNull(ledgerAccounts.systemKey),
         isNull(ledgerAccounts.linkedBankAccountId),

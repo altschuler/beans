@@ -17,19 +17,18 @@ export type LedgerAccountDetailAccount = {
 }
 export type LedgerAccountDetailTransaction = {
   id: string
-  bankTransactionId: string | null
   source: string
   status: string
   date: string | null
   description: string
 }
-export type LedgerAccountDetailMovement = {
+export type LedgerAccountDetailPosting = {
   id: string
   ledgerTransactionId: string
-  debitAccountId: string
-  creditAccountId: string
+  accountId: string
   amount: string | number
   currency: string
+  bankTransactionId?: string | null
   sortOrder: number | null
 }
 export type LedgerAccountDetailBankTransaction = {
@@ -77,7 +76,7 @@ export function buildLedgerAccountDetailModel(input: {
   groups: ReadonlyArray<LedgerAccountDetailGroup>
   accounts: ReadonlyArray<LedgerAccountDetailAccount>
   ledgerTransactions: ReadonlyArray<LedgerAccountDetailTransaction>
-  movements: ReadonlyArray<LedgerAccountDetailMovement>
+  postings: ReadonlyArray<LedgerAccountDetailPosting>
   bankTransactions: ReadonlyArray<LedgerAccountDetailBankTransaction>
   bankAccounts: ReadonlyArray<LedgerAccountDetailBankAccount>
 }): LedgerAccountDetailModel {
@@ -90,24 +89,30 @@ export function buildLedgerAccountDetailModel(input: {
   const account = accounts.find(candidate => candidate.id === input.accountId)
   if (!account) return {kind: 'not_found'}
 
-  const movements = input.movements.map(movement => ({...movement, amount: String(movement.amount), sortOrder: movement.sortOrder ?? 0}))
+  const postings: NormalizedPosting[] = input.postings.map(posting => ({
+    ...posting,
+    amount: String(posting.amount),
+    sortOrder: posting.sortOrder ?? 0,
+    bankTransactionId: posting.bankTransactionId ?? null,
+  }))
   const bankTransactions = input.bankTransactions.map(transaction => ({...transaction, amount: String(transaction.amount)}))
   const ledgerTransactionsById = new Map(input.ledgerTransactions.map(transaction => [transaction.id, transaction]))
   const bankTransactionsById = new Map(bankTransactions.map(transaction => [transaction.id, transaction]))
   const bankAccountNamesById = new Map(input.bankAccounts.map(bankAccount => [bankAccount.id, bankAccount.name]))
+  const postingsByTransactionId = groupBy(postings, posting => posting.ledgerTransactionId)
   const groupName = input.groups.find(group => group.id === account.groupId)?.name ?? 'Ungrouped'
-  const currentBalance = deriveLedgerAccountBalances(accounts, movements).get(account.id) ?? '0.0000'
+  const currentBalance = deriveLedgerAccountBalances(accounts, postings).get(account.id) ?? '0.0000'
   const mode = account.type === 'bank' && account.linkedBankAccountId ? 'linked_bank' : account.type === 'expense' ? 'spending' : 'envelope_activity'
 
   if (mode === 'linked_bank') {
-    return buildLinkedBankModel({account, groupName, currentBalance, period: input.period, bankTransactions, bankAccountNamesById})
+    return buildLinkedBankModel({account, groupName, currentBalance, period: input.period, postings, bankTransactionsById, bankAccountNamesById})
   }
 
   if (mode === 'spending') {
-    return buildSpendingModel({account, groupName, currentBalance, period: input.period, movements, ledgerTransactionsById, bankTransactionsById, bankAccountNamesById})
+    return buildSpendingModel({account, groupName, currentBalance, period: input.period, postings, ledgerTransactionsById, bankTransactionsById, bankAccountNamesById, postingsByTransactionId})
   }
 
-  return buildEnvelopeActivityModel({account, groupName, currentBalance, period: input.period, movements, ledgerTransactionsById})
+  return buildEnvelopeActivityModel({account, groupName, currentBalance, period: input.period, postings, ledgerTransactionsById})
 }
 
 function buildSpendingModel(input: {
@@ -115,26 +120,29 @@ function buildSpendingModel(input: {
   groupName: string
   currentBalance: string
   period: AccountDetailPeriod
-  movements: NormalizedMovement[]
+  postings: NormalizedPosting[]
   ledgerTransactionsById: Map<string, LedgerAccountDetailTransaction>
   bankTransactionsById: Map<string, NormalizedBankTransaction>
   bankAccountNamesById: Map<string, string>
+  postingsByTransactionId: Map<string, NormalizedPosting[]>
 }): LedgerAccountDetailModel {
-  const entries = input.movements.flatMap(movement => {
-    if (!movementInvolvesAccount(movement, input.account.id)) return []
-    const ledgerTransaction = input.ledgerTransactionsById.get(movement.ledgerTransactionId)
-    if (!ledgerTransaction || ledgerTransaction.source !== 'bank_import' || !ledgerTransaction.bankTransactionId) return []
-    const bankTransaction = input.bankTransactionsById.get(ledgerTransaction.bankTransactionId)
+  const entries = input.postings.flatMap(posting => {
+    if (posting.accountId !== input.account.id || posting.bankTransactionId) return []
+    const ledgerTransaction = input.ledgerTransactionsById.get(posting.ledgerTransactionId)
+    if (!ledgerTransaction || ledgerTransaction.source !== 'bank_import') return []
+    const reconciledPosting = input.postingsByTransactionId.get(posting.ledgerTransactionId)?.find(candidate => candidate.bankTransactionId)
+    if (!reconciledPosting?.bankTransactionId) return []
+    const bankTransaction = input.bankTransactionsById.get(reconciledPosting.bankTransactionId)
     if (!bankTransaction) return []
     const date = preferredDate(bankTransaction.bookingDate, bankTransaction.valueDate, ledgerTransaction.date)
-    const amount = spendingAmountForMovement(movement, input.account.id)
+    const amount = Number(posting.amount)
     return [
       {
-        id: movement.id,
+        id: posting.id,
         date,
         description: bankTransaction.description,
         amount,
-        currency: bankTransaction.currency,
+        currency: posting.currency,
         context: input.bankAccountNamesById.get(bankTransaction.bankAccountId) ?? 'Unknown bank account',
       },
     ]
@@ -165,20 +173,25 @@ function buildLinkedBankModel(input: {
   groupName: string
   currentBalance: string
   period: AccountDetailPeriod
-  bankTransactions: NormalizedBankTransaction[]
+  postings: NormalizedPosting[]
+  bankTransactionsById: Map<string, NormalizedBankTransaction>
   bankAccountNamesById: Map<string, string>
 }): LedgerAccountDetailModel {
-  const linkedBankAccountId = input.account.linkedBankAccountId
-  const entries = input.bankTransactions
-    .filter(transaction => transaction.bankAccountId === linkedBankAccountId)
-    .map(transaction => ({
-      id: transaction.id,
-      date: preferredDate(transaction.bookingDate, transaction.valueDate, null),
-      description: transaction.description,
-      amount: Number(transaction.amount),
-      currency: transaction.currency,
-      context: input.bankAccountNamesById.get(transaction.bankAccountId) ?? 'Unknown bank account',
-    }))
+  const entries = input.postings.flatMap(posting => {
+    if (posting.accountId !== input.account.id || !posting.bankTransactionId) return []
+    const bankTransaction = input.bankTransactionsById.get(posting.bankTransactionId)
+    if (!bankTransaction) return []
+    return [
+      {
+        id: posting.id,
+        date: preferredDate(bankTransaction.bookingDate, bankTransaction.valueDate, null),
+        description: bankTransaction.description,
+        amount: Number(posting.amount),
+        currency: posting.currency,
+        context: input.bankAccountNamesById.get(bankTransaction.bankAccountId) ?? 'Unknown bank account',
+      },
+    ]
+  })
 
   return {
     kind: 'detail',
@@ -205,20 +218,20 @@ function buildEnvelopeActivityModel(input: {
   groupName: string
   currentBalance: string
   period: AccountDetailPeriod
-  movements: NormalizedMovement[]
+  postings: NormalizedPosting[]
   ledgerTransactionsById: Map<string, LedgerAccountDetailTransaction>
 }): LedgerAccountDetailModel {
-  const entries = input.movements.flatMap(movement => {
-    if (!movementInvolvesAccount(movement, input.account.id)) return []
-    const ledgerTransaction = input.ledgerTransactionsById.get(movement.ledgerTransactionId)
-    const amount = signedBalanceChangeForMovement(movement, input.account)
+  const entries = input.postings.flatMap(posting => {
+    if (posting.accountId !== input.account.id) return []
+    const ledgerTransaction = input.ledgerTransactionsById.get(posting.ledgerTransactionId)
+    const amount = signedBalanceChangeForPosting(posting, input.account)
     return [
       {
-        id: movement.id,
+        id: posting.id,
         date: ledgerTransaction?.date ?? null,
-        description: ledgerTransaction?.description ?? 'Ledger movement',
+        description: ledgerTransaction?.description ?? 'Ledger posting',
         amount,
-        currency: movement.currency,
+        currency: posting.currency,
         context: ledgerTransaction?.source ?? 'ledger',
       },
     ]
@@ -245,27 +258,19 @@ function buildEnvelopeActivityModel(input: {
 }
 
 type NormalizedAccount = LedgerAccountDetailAccount & {linkedBankAccountId: string | null; status: string; sortOrder: number}
-type NormalizedMovement = LedgerAccountDetailMovement & {amount: string; sortOrder: number}
+type NormalizedPosting = LedgerAccountDetailPosting & {amount: string; sortOrder: number; bankTransactionId: string | null}
 type NormalizedBankTransaction = LedgerAccountDetailBankTransaction & {amount: string}
 type NumericEntry = {id: string; date: string | null; description: string; amount: number; currency: string; context: string}
 
-function movementInvolvesAccount(movement: NormalizedMovement, accountId: string) {
-  return movement.debitAccountId === accountId || movement.creditAccountId === accountId
-}
-
-function spendingAmountForMovement(movement: NormalizedMovement, accountId: string) {
-  const amount = Number(movement.amount)
-  return movement.debitAccountId === accountId ? amount : -amount
-}
-
-function signedBalanceChangeForMovement(movement: NormalizedMovement, account: NormalizedAccount) {
-  const amount = Number(movement.amount)
-  if (movement.debitAccountId === account.id) return account.normalBalance === 'debit' ? amount : -amount
-  if (movement.creditAccountId === account.id) return account.normalBalance === 'credit' ? amount : -amount
-  return 0
+function signedBalanceChangeForPosting(posting: NormalizedPosting, account: NormalizedAccount) {
+  const amount = Number(posting.amount)
+  return account.normalBalance === 'credit' ? -amount : amount
 }
 
 function aggregateEntries(entries: NumericEntry[], period: AccountDetailPeriod) {
+  const currencies = new Set(entries.map(entry => entry.currency))
+  if (currencies.size > 1) return []
+
   const buckets = new Map<string, {label: string; value: number}>()
   for (const entry of entries) {
     if (!entry.date) continue
@@ -323,4 +328,13 @@ function roundMoney(value: number) {
 
 function formatDisplayAmount(value: number) {
   return value.toFixed(2)
+}
+
+function groupBy<T>(items: T[], key: (item: T) => string) {
+  const groups = new Map<string, T[]>()
+  for (const item of items) {
+    const groupKey = key(item)
+    groups.set(groupKey, [...(groups.get(groupKey) ?? []), item])
+  }
+  return groups
 }

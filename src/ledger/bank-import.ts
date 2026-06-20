@@ -1,3 +1,5 @@
+import {formatScaledUnits, parseMoneyToScaledUnits, validateLedgerPostingsBalance} from './categorization'
+
 export type LedgerTransactionStatus = 'confirmed' | 'needs_review'
 export type LedgerTransactionSource = 'bank_import' | 'manual' | 'opening_balance' | 'budgeting'
 
@@ -16,52 +18,56 @@ export type BankImportLedgerDraftInput = {
 }
 
 export function buildBankImportLedgerDraft(input: BankImportLedgerDraftInput) {
-  const sign = moneySign(input.amount)
-  const movementAmount = absoluteMoneyString(input.amount)
+  const amountUnits = parseMoneyToScaledUnits(input.amount)
+  if (amountUnits === 0n) {
+    throw new Error('Bank transaction amount must be non-zero')
+  }
+
   const now = new Date()
   const ledgerTransactionId = crypto.randomUUID()
+  const postings = [
+    {
+      id: crypto.randomUUID(),
+      ledgerTransactionId,
+      accountId: input.bankLedgerAccountId,
+      amount: formatScaledUnits(amountUnits),
+      currency: input.currency,
+      bankTransactionId: input.bankTransactionId,
+      sortOrder: 0,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: crypto.randomUUID(),
+      ledgerTransactionId,
+      accountId: input.oppositeAccountId,
+      amount: formatScaledUnits(-amountUnits),
+      currency: input.currency,
+      bankTransactionId: null,
+      sortOrder: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ]
+  validateLedgerPostingsBalance(postings)
 
   return {
     transaction: {
       id: ledgerTransactionId,
       teamId: input.teamId,
-      bankTransactionId: input.bankTransactionId,
       source: 'bank_import' as const,
       status: input.status,
       aiConfidence: input.aiConfidence ?? null,
       aiProcessingStartedAt: null,
       categorizedBy: input.categorizedBy ?? null,
+      userConfirmedAt: null,
+      userConfirmedBy: null,
+      aiReasoning: null,
       date: input.date,
       description: input.description,
       createdAt: now,
       updatedAt: now,
     },
-    movement: {
-      id: crypto.randomUUID(),
-      ledgerTransactionId,
-      debitAccountId: sign > 0 ? input.bankLedgerAccountId : input.oppositeAccountId,
-      creditAccountId: sign > 0 ? input.oppositeAccountId : input.bankLedgerAccountId,
-      amount: movementAmount,
-      currency: input.currency,
-      sortOrder: 0,
-      createdAt: now,
-      updatedAt: now,
-    },
+    postings,
   }
-}
-
-function moneySign(amount: string) {
-  const numeric = Number(amount)
-  if (!Number.isFinite(numeric) || numeric === 0) {
-    throw new Error('Bank transaction amount must be non-zero')
-  }
-  return numeric > 0 ? 1 : -1
-}
-
-function absoluteMoneyString(amount: string) {
-  const trimmed = amount.trim()
-  if (trimmed.startsWith('-') || trimmed.startsWith('+')) {
-    return trimmed.slice(1)
-  }
-  return trimmed
 }

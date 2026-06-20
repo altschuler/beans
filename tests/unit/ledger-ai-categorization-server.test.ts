@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest'
-import {eq} from 'drizzle-orm'
+import {and, eq, isNull} from 'drizzle-orm'
 import {z} from 'zod'
 import {db} from '@/db/client'
 import {
@@ -7,7 +7,7 @@ import {
   bankTransactions,
   ledgerAccountGroups,
   ledgerAccounts,
-  ledgerTransactionMovements,
+  ledgerPostings,
   ledgerTransactions,
   teamMembers,
   teams,
@@ -226,7 +226,6 @@ async function seedAiCategorizationFixture() {
     {
       id: 'ledger-transaction-1',
       teamId: 'team-1',
-      bankTransactionId: 'bank-transaction-1',
       source: 'bank_import',
       status: 'needs_review',
       aiConfidence: null,
@@ -239,7 +238,6 @@ async function seedAiCategorizationFixture() {
     {
       id: 'ledger-transaction-2',
       teamId: 'team-1',
-      bankTransactionId: 'bank-transaction-2',
       source: 'bank_import',
       status: 'needs_review',
       aiConfidence: null,
@@ -250,7 +248,7 @@ async function seedAiCategorizationFixture() {
       updatedAt: now,
     },
   ])
-  await db.insert(ledgerTransactionMovements).values([
+  await db.insert(ledgerPostings).values(postingsFromMovements([
     {
       id: 'movement-1',
       ledgerTransactionId: 'ledger-transaction-1',
@@ -273,7 +271,7 @@ async function seedAiCategorizationFixture() {
       createdAt: now,
       updatedAt: now,
     },
-  ])
+  ]))
 }
 
 async function seedAdditionalNeedsReviewTransactions(count: number) {
@@ -299,7 +297,6 @@ async function seedAdditionalNeedsReviewTransactions(count: number) {
     Array.from({length: count}, (_, index) => ({
       id: `extra-ledger-transaction-${index}`,
       teamId: 'team-1',
-      bankTransactionId: `extra-bank-transaction-${index}`,
       source: 'bank_import',
       status: 'needs_review',
       aiConfidence: null,
@@ -310,7 +307,7 @@ async function seedAdditionalNeedsReviewTransactions(count: number) {
       updatedAt: now,
     })),
   )
-  await db.insert(ledgerTransactionMovements).values(
+  await db.insert(ledgerPostings).values(postingsFromMovements(
     Array.from({length: count}, (_, index) => ({
       id: `extra-movement-${index}`,
       ledgerTransactionId: `extra-ledger-transaction-${index}`,
@@ -322,7 +319,7 @@ async function seedAdditionalNeedsReviewTransactions(count: number) {
       createdAt: now,
       updatedAt: now,
     })),
-  )
+  ))
 }
 
 async function seedConfirmedUserExampleForNetto() {
@@ -345,7 +342,6 @@ async function seedConfirmedUserExampleForNetto() {
   await db.insert(ledgerTransactions).values({
     id: 'confirmed-netto-ledger-transaction',
     teamId: 'team-1',
-    bankTransactionId: 'confirmed-netto-bank-transaction',
     source: 'bank_import',
     status: 'confirmed',
     aiConfidence: null,
@@ -356,7 +352,7 @@ async function seedConfirmedUserExampleForNetto() {
     createdAt: now,
     updatedAt: now,
   })
-  await db.insert(ledgerTransactionMovements).values({
+  await db.insert(ledgerPostings).values(postingsFromMovements({
     id: 'confirmed-netto-movement',
     ledgerTransactionId: 'confirmed-netto-ledger-transaction',
     debitAccountId: 'groceries',
@@ -366,7 +362,7 @@ async function seedConfirmedUserExampleForNetto() {
     sortOrder: 0,
     createdAt: now,
     updatedAt: now,
-  })
+  }))
 }
 
 async function seedSecondTeamTransaction() {
@@ -423,7 +419,6 @@ async function seedSecondTeamTransaction() {
   await db.insert(ledgerTransactions).values({
     id: 'team-2-ledger-transaction',
     teamId: 'team-2',
-    bankTransactionId: 'team-2-bank-transaction',
     source: 'bank_import',
     status: 'needs_review',
     aiConfidence: null,
@@ -433,7 +428,7 @@ async function seedSecondTeamTransaction() {
     createdAt: now,
     updatedAt: now,
   })
-  await db.insert(ledgerTransactionMovements).values({
+  await db.insert(ledgerPostings).values(postingsFromMovements({
     id: 'team-2-movement',
     ledgerTransactionId: 'team-2-ledger-transaction',
     debitAccountId: 'team-2-uncategorized',
@@ -443,7 +438,69 @@ async function seedSecondTeamTransaction() {
     sortOrder: 0,
     createdAt: now,
     updatedAt: now,
+  }))
+}
+
+
+type LegacyMovement = {
+  id: string
+  ledgerTransactionId: string
+  debitAccountId: string
+  creditAccountId: string
+  amount: string
+  currency: string
+  sortOrder: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+function postingsFromMovements(input: LegacyMovement | LegacyMovement[]) {
+  const movements = Array.isArray(input) ? input : [input]
+  return movements.flatMap(movement => {
+    const bankTransactionId = bankTransactionIdForLedgerTransaction(movement.ledgerTransactionId)
+    const bankAccountId = movement.creditAccountId.includes('bank-ledger-account') ? movement.creditAccountId : movement.debitAccountId
+    const categoryAccountId = bankAccountId === movement.creditAccountId ? movement.debitAccountId : movement.creditAccountId
+    const bankAmount = bankAccountId === movement.creditAccountId ? `-${formatFourDecimals(movement.amount)}` : formatFourDecimals(movement.amount)
+    const categoryAmount = bankAmount.startsWith('-') ? formatFourDecimals(movement.amount) : `-${formatFourDecimals(movement.amount)}`
+    return [
+      {
+        id: `${movement.id}-bank-posting`,
+        ledgerTransactionId: movement.ledgerTransactionId,
+        accountId: bankAccountId,
+        amount: bankAmount,
+        currency: movement.currency,
+        bankTransactionId,
+        sortOrder: 0,
+        createdAt: movement.createdAt,
+        updatedAt: movement.updatedAt,
+      },
+      {
+        id: `${movement.id}-category-posting`,
+        ledgerTransactionId: movement.ledgerTransactionId,
+        accountId: categoryAccountId,
+        amount: categoryAmount,
+        currency: movement.currency,
+        bankTransactionId: null,
+        sortOrder: movement.sortOrder + 1,
+        createdAt: movement.createdAt,
+        updatedAt: movement.updatedAt,
+      },
+    ]
   })
+}
+
+function bankTransactionIdForLedgerTransaction(ledgerTransactionId: string) {
+  if (ledgerTransactionId === 'ledger-transaction-1') return 'bank-transaction-1'
+  if (ledgerTransactionId === 'ledger-transaction-2') return 'bank-transaction-2'
+  if (ledgerTransactionId === 'confirmed-netto-ledger-transaction') return 'confirmed-netto-bank-transaction'
+  if (ledgerTransactionId === 'team-2-ledger-transaction') return 'team-2-bank-transaction'
+  if (ledgerTransactionId.startsWith('extra-ledger-transaction-')) return ledgerTransactionId.replace('extra-ledger-transaction-', 'extra-bank-transaction-')
+  throw new Error(`No bank transaction mapping for ${ledgerTransactionId}`)
+}
+
+function formatFourDecimals(amount: string) {
+  const [whole, fractional = ''] = amount.split('.')
+  return `${whole}.${fractional.padEnd(4, '0').slice(0, 4)}`
 }
 
 describe('aiCategorizeLedgerTransactions', () => {
@@ -471,8 +528,8 @@ describe('aiCategorizeLedgerTransactions', () => {
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     const [movement] = await db
       .select()
-      .from(ledgerTransactionMovements)
-      .where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+      .from(ledgerPostings)
+      .where(and(eq(ledgerPostings.ledgerTransactionId, 'ledger-transaction-1'), isNull(ledgerPostings.bankTransactionId)))
 
     expect(transaction?.status).toBe('confirmed')
     expect(transaction?.aiConfidence).toBe(2)
@@ -481,7 +538,7 @@ describe('aiCategorizeLedgerTransactions', () => {
     expect(transaction?.userConfirmedAt).toBeNull()
     expect(transaction?.userConfirmedBy).toBeNull()
     expect(transaction?.aiProcessingStartedAt).toBeNull()
-    expect(movement).toMatchObject({debitAccountId: 'groceries', creditAccountId: 'bank-ledger-account', amount: '100.0000'})
+    expect(movement).toMatchObject({accountId: 'groceries', amount: '100.0000', bankTransactionId: null})
   })
 
   it('includes similar confirmed examples in each model transaction', async () => {
@@ -561,11 +618,11 @@ describe('aiCategorizeLedgerTransactions', () => {
 
     const [movement] = await db
       .select()
-      .from(ledgerTransactionMovements)
-      .where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+      .from(ledgerPostings)
+      .where(and(eq(ledgerPostings.ledgerTransactionId, 'ledger-transaction-1'), isNull(ledgerPostings.bankTransactionId)))
 
     expect(result).toEqual({requested: 2, suggested: 3, applied: 1, confirmed: 1, stillNeedsReview: 0, skipped: 2})
-    expect(movement).toMatchObject({debitAccountId: 'groceries', creditAccountId: 'bank-ledger-account'})
+    expect(movement).toMatchObject({accountId: 'groceries', bankTransactionId: null})
   })
 
   it('ignores suggestions with unknown transaction ids or category ids', async () => {
@@ -589,15 +646,15 @@ describe('aiCategorizeLedgerTransactions', () => {
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => {
       const now = new Date('2026-06-18T12:30:00.000Z')
       await db.update(ledgerTransactions).set({status: 'confirmed', aiConfidence: null, updatedAt: now}).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
-      await db.delete(ledgerTransactionMovements).where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
-      await db.insert(ledgerTransactionMovements).values({
-        id: 'manual-movement-1',
+      await db.delete(ledgerPostings).where(and(eq(ledgerPostings.ledgerTransactionId, 'ledger-transaction-1'), isNull(ledgerPostings.bankTransactionId)))
+      await db.insert(ledgerPostings).values({
+        id: 'manual-category-posting-1',
         ledgerTransactionId: 'ledger-transaction-1',
-        debitAccountId: 'household',
-        creditAccountId: 'bank-ledger-account',
-        amount: '100.00',
+        accountId: 'household',
+        amount: '100.0000',
         currency: 'DKK',
-        sortOrder: 0,
+        bankTransactionId: null,
+        sortOrder: 1,
         createdAt: now,
         updatedAt: now,
       })
@@ -609,13 +666,13 @@ describe('aiCategorizeLedgerTransactions', () => {
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     const [movement] = await db
       .select()
-      .from(ledgerTransactionMovements)
-      .where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+      .from(ledgerPostings)
+      .where(and(eq(ledgerPostings.ledgerTransactionId, 'ledger-transaction-1'), isNull(ledgerPostings.bankTransactionId)))
 
     expect(result).toEqual({requested: 1, suggested: 1, applied: 0, confirmed: 0, stillNeedsReview: 0, skipped: 1})
     expect(transaction?.status).toBe('confirmed')
     expect(transaction?.aiConfidence).toBeNull()
-    expect(movement).toMatchObject({debitAccountId: 'household', creditAccountId: 'bank-ledger-account', amount: '100.0000'})
+    expect(movement).toMatchObject({accountId: 'household', amount: '100.0000', bankTransactionId: null})
   })
 
   it('records confidence 0 without applying the suggested category', async () => {
@@ -629,8 +686,8 @@ describe('aiCategorizeLedgerTransactions', () => {
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     const [movement] = await db
       .select()
-      .from(ledgerTransactionMovements)
-      .where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+      .from(ledgerPostings)
+      .where(and(eq(ledgerPostings.ledgerTransactionId, 'ledger-transaction-1'), isNull(ledgerPostings.bankTransactionId)))
 
     expect(result).toEqual({requested: 1, suggested: 1, applied: 0, confirmed: 0, stillNeedsReview: 1, skipped: 0})
     expect(transaction?.status).toBe('needs_review')
@@ -638,7 +695,7 @@ describe('aiCategorizeLedgerTransactions', () => {
     expect(transaction?.categorizedBy).toBeNull()
     expect(transaction?.aiReasoning).toBe('Too ambiguous')
     expect(transaction?.aiProcessingStartedAt).toBeNull()
-    expect(movement).toMatchObject({debitAccountId: 'uncategorized', creditAccountId: 'bank-ledger-account', amount: '100.0000'})
+    expect(movement).toMatchObject({accountId: 'uncategorized', amount: '100.0000', bankTransactionId: null})
   })
 
   it('marks transactions processing before the model call and clears processing when the model fails', async () => {
@@ -656,13 +713,42 @@ describe('aiCategorizeLedgerTransactions', () => {
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     const [movement] = await db
       .select()
-      .from(ledgerTransactionMovements)
-      .where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+      .from(ledgerPostings)
+      .where(and(eq(ledgerPostings.ledgerTransactionId, 'ledger-transaction-1'), isNull(ledgerPostings.bankTransactionId)))
 
     expect(transaction?.status).toBe('needs_review')
     expect(transaction?.aiConfidence).toBeNull()
     expect(transaction?.aiProcessingStartedAt).toBeNull()
-    expect(movement).toMatchObject({debitAccountId: 'uncategorized', creditAccountId: 'bank-ledger-account', amount: '100.0000'})
+    expect(movement).toMatchObject({accountId: 'uncategorized', amount: '100.0000', bankTransactionId: null})
+  })
+
+  it('does not load a transaction whose reconciled bank posting points to another team bank account', async () => {
+    await seedSecondTeamTransaction()
+    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+
+    await db.insert(bankTransactions).values({
+      id: 'cross-team-bank-transaction',
+      bankAccountId: 'team-2-bank-account',
+      providerTransactionId: 'cross-team-provider-transaction',
+      status: 'booked',
+      bookingDate: '2026-06-18',
+      valueDate: null,
+      amount: '-100.00',
+      currency: 'DKK',
+      description: 'Cross team bank transaction',
+      counterpartyName: null,
+      raw: {},
+      createdAt: new Date('2026-06-18T12:30:00.000Z'),
+      updatedAt: new Date('2026-06-18T12:30:00.000Z'),
+    })
+    await db
+      .update(ledgerPostings)
+      .set({bankTransactionId: 'cross-team-bank-transaction'})
+      .where(and(eq(ledgerPostings.ledgerTransactionId, 'ledger-transaction-1'), eq(ledgerPostings.accountId, 'bank-ledger-account')))
+
+    await expect(aiCategorizeLedgerTransactions({userId: 'user-1', ledgerTransactionIds: ['ledger-transaction-1']})).rejects.toThrow(
+      'No transactions available for AI categorization',
+    )
   })
 
   it('caps batch categorization at 25 transactions server-side', async () => {
@@ -725,12 +811,12 @@ describe('aiCategorizeLedgerTransactions', () => {
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     const [movement] = await db
       .select()
-      .from(ledgerTransactionMovements)
-      .where(eq(ledgerTransactionMovements.ledgerTransactionId, 'ledger-transaction-1'))
+      .from(ledgerPostings)
+      .where(and(eq(ledgerPostings.ledgerTransactionId, 'ledger-transaction-1'), isNull(ledgerPostings.bankTransactionId)))
 
     expect(transaction?.status).toBe('needs_review')
     expect(transaction?.aiConfidence).toBeNull()
-    expect(movement).toMatchObject({debitAccountId: 'uncategorized', creditAccountId: 'bank-ledger-account', amount: '100.0000'})
+    expect(movement).toMatchObject({accountId: 'uncategorized', amount: '100.0000', bankTransactionId: null})
   })
 
   it('uses an OpenAI-compatible structured output schema with all suggestion properties required', async () => {

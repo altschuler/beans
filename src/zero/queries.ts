@@ -50,9 +50,9 @@ export const queries = defineQueries({
         .whereExists('team', team => team.whereExists('members', member => member.where('userId', userID)))
         .orderBy('date', 'desc')
     }),
-    ledgerTransactionMovements: defineQuery(({ctx}) => {
+    ledgerPostings: defineQuery(({ctx}) => {
       const userID = requireUserID(ctx)
-      return zql.ledgerTransactionMovements
+      return zql.ledgerPostings
         .whereExists('ledgerTransaction', transaction =>
           transaction.whereExists('team', team => team.whereExists('members', member => member.where('userId', userID))),
         )
