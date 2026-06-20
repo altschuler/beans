@@ -1,4 +1,4 @@
-import {useMemo, useRef, useState} from 'react'
+import {useRef, useState} from 'react'
 import {Link} from '@tanstack/react-router'
 import {useQuery, useZero} from '@rocicorp/zero/react'
 import {MoreHorizontal} from 'lucide-react'
@@ -36,19 +36,15 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
   const isAiRequestPendingRef = useRef(false)
 
-  const model = useMemo(
-    () =>
-      buildLedgerDashboardModel({
-        groups,
-        accounts,
-        ledgerTransactions,
-        movements,
-        bankTransactions,
-        bankAccounts,
-        bankAccountIdFilter: view === 'bankAccountTransactions' ? bankAccountId : null,
-      }),
-    [groups, accounts, ledgerTransactions, movements, bankTransactions, bankAccounts, view, bankAccountId],
-  )
+  const model = buildLedgerDashboardModel({
+    groups,
+    accounts,
+    ledgerTransactions,
+    movements,
+    bankTransactions,
+    bankAccounts,
+    bankAccountIdFilter: view === 'bankAccountTransactions' ? bankAccountId : null,
+  })
 
   const selectedBankAccount = view === 'bankAccountTransactions' ? bankAccounts.find(account => account.id === bankAccountId) : undefined
   const showCategories = view === 'categories'

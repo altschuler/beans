@@ -1,4 +1,4 @@
-import {useMemo, useState} from 'react'
+import {useState} from 'react'
 import {Link} from '@tanstack/react-router'
 import {useQuery} from '@rocicorp/zero/react'
 import {Button} from '@/components/ui/button'
@@ -16,10 +16,7 @@ export function LedgerAccountDetail({accountId}: {accountId: string}) {
   const [bankTransactions] = useQuery(queries.domain.bankTransactions())
   const [bankAccounts] = useQuery(queries.domain.bankAccounts())
 
-  const model = useMemo(
-    () => buildLedgerAccountDetailModel({accountId, period, groups, accounts, ledgerTransactions, movements, bankTransactions, bankAccounts}),
-    [accountId, period, groups, accounts, ledgerTransactions, movements, bankTransactions, bankAccounts],
-  )
+  const model = buildLedgerAccountDetailModel({accountId, period, groups, accounts, ledgerTransactions, movements, bankTransactions, bankAccounts})
 
   if (model.kind === 'not_found') {
     return (

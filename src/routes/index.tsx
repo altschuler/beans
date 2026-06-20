@@ -16,7 +16,7 @@ function HomePage() {
         </p>
         <div className="mt-8 flex justify-center gap-3">
           <Button asChild>
-            <Link to="/login">Sign in</Link>
+            <Link to="/login" search={{redirect: undefined}}>Sign in</Link>
           </Button>
           <Button asChild variant="outline">
             <Link to="/app">Open app</Link>

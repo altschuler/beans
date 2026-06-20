@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react'
+import {useEffect, useState} from 'react'
 import {useQuery} from '@rocicorp/zero/react'
 import {listDanishInstitutions, startBankLink, syncBankAccount} from '@/banking/banking-fns'
 import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
@@ -40,12 +40,9 @@ export function BankingDashboard() {
     }
   }, [])
 
-  const filteredInstitutions = useMemo(() => {
-    const query = filter.trim().toLowerCase()
-    return (query ? institutions.filter(institution => institution.name.toLowerCase().includes(query)) : institutions).slice(0, 20)
-  }, [filter, institutions])
-
-  const accountNamesById = useMemo(() => new Map(accounts.map(account => [account.id, account.name])), [accounts])
+  const query = filter.trim().toLowerCase()
+  const filteredInstitutions = (query ? institutions.filter(institution => institution.name.toLowerCase().includes(query)) : institutions).slice(0, 20)
+  const accountNamesById = new Map(accounts.map(account => [account.id, account.name]))
   const transactionCountLabel = `${transactions.length} ${transactions.length === 1 ? 'transaction' : 'transactions'}`
 
   async function connectBank() {

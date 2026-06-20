@@ -10,7 +10,7 @@ Penge uses [Better Auth](https://www.better-auth.com/) for identity, credentials
   - `tanstackStartCookies()` so TanStack Start request/response cookies work correctly,
   - `BETTER_AUTH_URL` and `BETTER_AUTH_SECRET` from the environment.
 - `src/routes/api/auth/$.ts` forwards Better Auth API requests to `auth.handler(request)`. Client calls such as sign-in, sign-up, sign-out, and session cookie management go through this route.
-- `src/auth/client.ts` creates the browser `authClient` using `VITE_PUBLIC_APP_URL` as its base URL.
+- `src/auth/client.ts` creates the browser `authClient` without an explicit base URL so Better Auth uses the current origin. This avoids absolute localhost HTTPS fetches during TanStack Start SPA shell generation.
 - `src/components/auth/auth-form.tsx` signs users up or in with `authClient.signUp.email(...)` and `authClient.signIn.email(...)`.
 - Better Auth persists auth records in the Drizzle tables `user`, `session`, `account`, and `verification` from `src/db/schema.ts`.
 - Better Auth reads the session token from request cookies and returns the current `{ user, session }` via `auth.api.getSession({ headers })`.
@@ -29,9 +29,9 @@ Modules that import the Better Auth server instance, the Drizzle adapter, Postgr
 
 Authenticated pages live under the `/_protected` route tree.
 
-`src/routes/_protected.tsx` calls `getSession()` in `beforeLoad`. If there is no session, it redirects to `/login` and includes the original location as `redirect`. When a session exists, the route ensures the user has a personal team and exposes `user` and `teamId` in route context.
+Penge runs TanStack Start in SPA mode for Zero. Protected app routes must not depend on route-level server `beforeLoad` for ordinary page rendering. `src/routes/_protected.tsx` renders `ProtectedAppGate`, which uses the Better Auth client session hook in the browser. When there is no client session it redirects to `/login` with the current route as `redirect`. When a session exists, it calls `ensureCurrentUserPersonalTeam()` as a client-triggered server function, then mounts `AppZeroProvider` and the app shell.
 
-Use this pattern for app pages that require a signed-in user. Public pages, such as `/` and `/login`, should not call `ensureSession()` just to render.
+Use this pattern for app pages that require a signed-in user. Public pages, such as `/` and `/login`, should not call `ensureSession()` just to render. Server functions, API routes, Zero query endpoints, and Zero mutator endpoints still authenticate and authorize server-side.
 
 ## Authorization model
 

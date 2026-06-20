@@ -44,7 +44,7 @@ export function AppSidebar({userEmail, userName}: AppSidebarProps) {
 
   async function signOut() {
     await authClient.signOut()
-    await router.navigate({to: '/login'})
+    await router.navigate({to: '/login', search: {redirect: undefined}})
   }
 
   return (

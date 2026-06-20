@@ -1,5 +1,7 @@
 # Inbox
 
+- 2026-06-20: Vite 8 warns that `vite-tsconfig-paths` is now redundant because `resolve.tsconfigPaths: true` is built in. Consider replacing the plugin to remove repeated build/test warnings.
+- 2026-06-20: `AGENTS.md` still points to several missing docs (`docs/FRONTEND.md`, `docs/I18N.md`, `docs/ENVIRONMENT.md`, `docs/TESTING.md`, `docs/CODESTYLE.md`, `docs/DATABASES.md`) while this checkout has only some renamed/partial equivalents. Agents changing frontend/auth/test areas need to fall back to available docs and source until the references are reconciled.
 - 2026-06-19: Database-backed unit tests must never point at the dev database. Test setup now requires `TEST_DATABASE_URL`, copies it into `DATABASE_URL`/`ZERO_UPSTREAM_DB`, and destructive helpers refuse DB names that do not look test-only. Use manual dev DB resets only when explicitly intended.
 - 2026-06-18: Ledger dashboard categorization work showed that `pnpm test`, focused tests, typecheck, and lint can all pass while `pnpm build` fails TanStack Start import protection for client-reachable dynamic imports of `*.server.*` modules. Consider adding `pnpm build` to plans/checks that introduce server-only modules used near client/shared boundaries.
 - 2026-06-18: `AGENTS.md` references `docs/DATABASES.md`, `docs/TESTING.md`, `docs/CODESTYLE.md`, and `docs/SERVER.md`, but this checkout currently has `docs/DATABASE.md` and no testing/code-style/server docs. Future agents will hit missing-doc reads unless the references or docs are reconciled.

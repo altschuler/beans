@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import {resolveTestDatabaseUrl} from '../helpers/db-safety'
 
 const testDatabaseUrl = resolveTestDatabaseUrl()

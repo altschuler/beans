@@ -5,10 +5,11 @@ import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
 import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
+import {resolveAuthRedirectTarget} from './redirect'
 
 type Mode = 'sign-in' | 'sign-up'
 
-export function AuthForm() {
+export function AuthForm({redirect}: {redirect?: string}) {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>('sign-in')
   const [name, setName] = useState('Test User')
@@ -34,7 +35,7 @@ export function AuthForm() {
       return
     }
 
-    await router.navigate({to: '/app'})
+    await router.navigate({to: resolveAuthRedirectTarget(redirect)})
   }
 
   return (
