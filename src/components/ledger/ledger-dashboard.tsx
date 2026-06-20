@@ -50,6 +50,8 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   const showCategories = view === 'categories'
   const showTransactions = view === 'transactions' || view === 'bankAccountTransactions'
   const showGlobalTransactionActions = view === 'transactions'
+  const showCategorySummary = view === 'categories'
+  const categoryCount = model.accountGroups.reduce((count, group) => count + group.accounts.length, 0)
   const pageTitle =
     view === 'categories'
       ? 'Categories'
@@ -144,9 +146,11 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     return didSave
   }
 
+  const dashboardClassName = view === 'transactions' || view === 'categories' ? 'flex h-full min-h-0 flex-col' : 'space-y-6'
+
   return (
-    <div className={view === 'transactions' ? 'flex h-full min-h-0 flex-col' : 'space-y-6'}>
-      {view !== 'transactions' ? (
+    <div className={dashboardClassName}>
+      {view === 'bankAccountTransactions' ? (
         <div>
           <p className="text-sm font-medium text-muted-foreground">Penge</p>
           <h1 className="text-3xl font-bold tracking-tight">{pageTitle}</h1>
@@ -209,34 +213,44 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
         </div>
       ) : null}
 
-      <div className={view === 'transactions' ? 'flex min-h-0 flex-1' : showCategories && showTransactions ? 'grid gap-4 lg:grid-cols-[0.8fr_1.2fr]' : 'grid gap-4'}>
+      {showCategorySummary ? (
+        <div className="flex shrink-0 items-center border-b px-3 pt-3 pb-3 text-sm font-semibold">
+          {categoryCount} {categoryCount === 1 ? 'category' : 'categories'}
+        </div>
+      ) : null}
+
+      <div
+        className={
+          view === 'transactions'
+            ? 'flex min-h-0 flex-1'
+            : view === 'categories'
+              ? 'space-y-4 p-3 md:p-4'
+              : showCategories && showTransactions
+                ? 'grid gap-4 lg:grid-cols-[0.8fr_1.2fr]'
+                : 'grid gap-4'
+        }
+      >
         {showCategories ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Categories</CardTitle>
-              <CardDescription>Balances are derived from ledger movements.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {model.accountGroups.map(group => (
-                <section key={group.id} className="space-y-2">
-                  <h2 className="text-sm font-semibold text-muted-foreground">{group.name}</h2>
-                  <div className="space-y-2">
-                    {group.accounts.map(account => (
-                      <Link
-                        key={account.id}
-                        to="/app/accounts/$accountId"
-                        params={{accountId: account.id}}
-                        className="flex items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted"
-                      >
-                        <span>{account.name}</span>
-                        <span className="font-mono">{account.balance}</span>
-                      </Link>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            {model.accountGroups.map(group => (
+              <section key={group.id} className="space-y-2">
+                <h2 className="text-sm font-semibold text-muted-foreground">{group.name}</h2>
+                <div className="space-y-2">
+                  {group.accounts.map(account => (
+                    <Link
+                      key={account.id}
+                      to="/app/accounts/$accountId"
+                      params={{accountId: account.id}}
+                      className="flex items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted"
+                    >
+                      <span>{account.name}</span>
+                      <span className="font-mono">{account.balance}</span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
         ) : null}
 
         {showTransactions ? (

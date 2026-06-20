@@ -277,14 +277,21 @@ describe('LedgerDashboard', () => {
     expect(markup).not.toContain('Everyday spending')
   })
 
-  it('renders grouped balances in the categories view without transaction actions', () => {
+  it('renders categories as a simple unboxed list with a compact count bar', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard, {view: 'categories'}))
 
-    expect(markup).toContain('Categories')
+    expect(markup).toContain('flex h-full min-h-0 flex-col')
+    expect(markup).toContain('border-b px-3 pt-3 pb-3')
+    expect(markup).toContain('3 categories')
     expect(markup).toContain('Everyday spending')
     expect(markup).toContain('Uncategorized')
+    expect(markup).toContain('Groceries')
     expect(markup).toContain('href="/app/accounts/uncategorized"')
     expect(markup).toContain('href="/app/accounts/groceries"')
+    expect(markup).not.toContain('<h1')
+    expect(markup).not.toContain('Review category and account balances derived from ledger movements.')
+    expect(markup).not.toContain('Balances are derived from ledger movements.')
+    expect(markup).not.toContain('data-slot="card"')
     expect(markup).not.toContain('Auto-categorize')
     expect(markup).not.toContain('Sync all accounts')
   })

@@ -1,5 +1,4 @@
 import {useState} from 'react'
-import {Link} from '@tanstack/react-router'
 import {useQuery} from '@rocicorp/zero/react'
 import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card'
@@ -21,9 +20,6 @@ export function LedgerAccountDetail({accountId}: {accountId: string}) {
   if (model.kind === 'not_found') {
     return (
       <div className="space-y-6">
-        <Link to="/app" className="text-sm text-muted-foreground hover:text-foreground">
-          Back to dashboard
-        </Link>
         <Card>
           <CardHeader>
             <CardTitle>Account not found</CardTitle>
@@ -38,10 +34,6 @@ export function LedgerAccountDetail({accountId}: {accountId: string}) {
 
   return (
     <div className="space-y-6">
-      <Link to="/app" className="text-sm text-muted-foreground hover:text-foreground">
-        Back to dashboard
-      </Link>
-
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-sm font-medium text-muted-foreground">{model.groupName}</p>

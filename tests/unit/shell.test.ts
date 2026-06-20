@@ -5,6 +5,7 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 const shellTestState = vi.hoisted(() => ({
   pathname: '/app',
   bankAccounts: [{id: 'bank-account-1', name: 'Checking'}],
+  ledgerAccounts: [{id: 'takeaway', name: 'Take-away'}],
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -17,6 +18,7 @@ vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string}) => {
     if (query.name === 'teams') return [[{id: 'team-1', name: 'Personal team'}]]
     if (query.name === 'bankAccounts') return [shellTestState.bankAccounts]
+    if (query.name === 'ledgerAccounts') return [shellTestState.ledgerAccounts]
     throw new Error(`Unexpected query: ${query.name}`)
   }),
 }))
@@ -26,6 +28,7 @@ vi.mock('@/zero/queries', () => ({
     domain: {
       teams: () => ({name: 'teams'}),
       bankAccounts: () => ({name: 'bankAccounts'}),
+      ledgerAccounts: () => ({name: 'ledgerAccounts'}),
     },
   },
 }))
@@ -42,6 +45,7 @@ describe('Shell', () => {
   beforeEach(() => {
     shellTestState.pathname = '/app'
     shellTestState.bankAccounts = [{id: 'bank-account-1', name: 'Checking'}]
+    shellTestState.ledgerAccounts = [{id: 'takeaway', name: 'Take-away'}]
   })
 
   it('shows sidebar navigation, team, current user, and product title', () => {
@@ -101,6 +105,21 @@ describe('Shell', () => {
     expect(markup).not.toContain('class="flex-1 p-4 md:p-6 lg:p-8"')
   })
 
+  it('removes content padding on the categories page so its count bar is flush', () => {
+    shellTestState.pathname = '/app/categories'
+
+    const markup = renderToStaticMarkup(
+      React.createElement(Shell, {
+        userEmail: 'test@example.com',
+        userName: 'Test User',
+        children: React.createElement('p', null, 'Content'),
+      }),
+    )
+
+    expect(markup).toContain('class="flex-1 p-0"')
+    expect(markup).not.toContain('class="flex-1 p-4 md:p-6 lg:p-8"')
+  })
+
   it('renders the selected bank account name in breadcrumbs', () => {
     shellTestState.pathname = '/app/bank-accounts/bank-account-1'
 
@@ -117,6 +136,90 @@ describe('Shell', () => {
     expect(breadcrumb).not.toContain('Home')
     expect(breadcrumb).toContain('Checking')
     expect(breadcrumb).not.toContain('bank-account-1')
+  })
+
+  it('uses the bank account breadcrumb fallback for malformed encoded bank account route ids', () => {
+    shellTestState.pathname = '/app/bank-accounts/%'
+
+    let markup = ''
+    expect(() => {
+      markup = renderToStaticMarkup(
+        React.createElement(Shell, {
+          userEmail: 'test@example.com',
+          userName: 'Test User',
+          children: React.createElement('p', null, 'Content'),
+        }),
+      )
+    }).not.toThrow()
+
+    const breadcrumb = breadcrumbMarkup(markup)
+
+    expect(breadcrumb).not.toContain('Home')
+    expect(breadcrumb).toContain('Bank account')
+    expect(breadcrumb).not.toContain('%')
+  })
+
+  it('renders categories as the parent breadcrumb for account detail pages', () => {
+    shellTestState.pathname = '/app/accounts/takeaway'
+
+    const markup = renderToStaticMarkup(
+      React.createElement(Shell, {
+        userEmail: 'test@example.com',
+        userName: 'Test User',
+        children: React.createElement('p', null, 'Content'),
+      }),
+    )
+
+    const breadcrumb = breadcrumbMarkup(markup)
+
+    expect(breadcrumb).toContain('href="/app/categories"')
+    expect(breadcrumb).toContain('Categories')
+    expect(breadcrumb).toContain('Take-away')
+    expect(breadcrumb).not.toContain('takeaway')
+    expect(breadcrumb).toContain('aria-current="page"')
+  })
+
+  it('uses an account breadcrumb fallback when the account id is missing from synced data', () => {
+    shellTestState.pathname = '/app/accounts/missing-account'
+    shellTestState.ledgerAccounts = []
+
+    const markup = renderToStaticMarkup(
+      React.createElement(Shell, {
+        userEmail: 'test@example.com',
+        userName: 'Test User',
+        children: React.createElement('p', null, 'Content'),
+      }),
+    )
+
+    const breadcrumb = breadcrumbMarkup(markup)
+
+    expect(breadcrumb).toContain('href="/app/categories"')
+    expect(breadcrumb).toContain('Categories')
+    expect(breadcrumb).toContain('Account')
+    expect(breadcrumb).not.toContain('missing-account')
+  })
+
+  it('uses the account breadcrumb fallback for malformed encoded account route ids', () => {
+    shellTestState.pathname = '/app/accounts/%'
+    shellTestState.ledgerAccounts = []
+
+    let markup = ''
+    expect(() => {
+      markup = renderToStaticMarkup(
+        React.createElement(Shell, {
+          userEmail: 'test@example.com',
+          userName: 'Test User',
+          children: React.createElement('p', null, 'Content'),
+        }),
+      )
+    }).not.toThrow()
+
+    const breadcrumb = breadcrumbMarkup(markup)
+
+    expect(breadcrumb).toContain('href="/app/categories"')
+    expect(breadcrumb).toContain('Categories')
+    expect(breadcrumb).toContain('Account')
+    expect(breadcrumb).not.toContain('%')
   })
 
   it('renders a single main landmark from the sidebar inset', () => {

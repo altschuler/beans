@@ -72,13 +72,16 @@ describe('LedgerAccountDetail', () => {
     expect(markup).toContain('Monthly')
     expect(markup).toContain('Spending history')
     expect(markup).toContain('Pizza')
-    expect(markup).toContain('Back to dashboard')
+    expect(markup).not.toContain('Back to dashboard')
+    expect(markup).not.toContain('href="/app"')
   })
 
-  it('renders account not found state safely', () => {
+  it('renders account not found state safely without an in-page back link', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerAccountDetail, {accountId: 'missing'}))
 
     expect(markup).toContain('Account not found')
-    expect(markup).toContain('Back to dashboard')
+    expect(markup).toContain('This ledger account is not available in the synced dashboard data.')
+    expect(markup).not.toContain('Back to dashboard')
+    expect(markup).not.toContain('href="/app"')
   })
 })
