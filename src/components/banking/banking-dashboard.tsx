@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react'
 import {useQuery} from '@rocicorp/zero/react'
 import {listDanishInstitutions, startBankLink, syncBankAccount} from '@/banking/banking-fns'
 import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
+import {Currency} from '@/components/currency'
 import {PageLayout} from '@/components/page-layout'
 import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
@@ -181,7 +182,7 @@ export function BankingDashboard() {
                     </p>
                   </div>
                   <p className="font-mono text-sm">
-                    {transaction.amount} {transaction.currency}
+                    <Currency amount={transaction.amount} currency={transaction.currency} />
                   </p>
                 </div>
               ))

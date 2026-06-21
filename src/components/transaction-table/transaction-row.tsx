@@ -1,5 +1,6 @@
 import {type CSSProperties} from 'react'
 import {LoaderCircle} from 'lucide-react'
+import {Currency} from '@/components/currency'
 import {Button} from '@/components/ui/button'
 import {CategorySelector} from './category-selector'
 import type {CategorizationAccountOption, CategorySelection, SplitLine, TransactionTableRow as TransactionTableRowData, TransferAccountOption} from './types'
@@ -77,7 +78,7 @@ export function TransactionRow({
         )}
       </td>
       <td className="px-3 py-3 text-right font-mono">
-        {row.amount} {row.currency}
+        <Currency amount={row.amount} currency={row.currency} />
       </td>
     </tr>
   )

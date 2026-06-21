@@ -1,8 +1,10 @@
 import {useState} from 'react'
 import {useQuery, useZero} from '@rocicorp/zero/react'
 import {Lock} from 'lucide-react'
+import {Currency} from '@/components/currency'
 import {PageLayout} from '@/components/page-layout'
 import {Button} from '@/components/ui/button'
+import {DEFAULT_CURRENCY} from '@/lib/money'
 import {showErrorToast} from '@/lib/show-error-toast'
 import {mutators} from '@/zero/mutators'
 import {queries} from '@/zero/queries'
@@ -108,7 +110,9 @@ export function CategoryManagementPage() {
                       {account.description ? <p className="truncate text-xs text-muted-foreground">{account.description}</p> : null}
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
-                      <span className="font-mono text-sm">{account.balance}</span>
+                      <span className="font-mono text-sm">
+                        {account.balance === 'Multiple currencies' ? account.balance : <Currency amount={account.balance} currency={account.balanceCurrency ?? DEFAULT_CURRENCY} />}
+                      </span>
                       <Button type="button" variant="outline" aria-label={`Edit category ${account.name}`} disabled={!account.canEdit} title={account.lockReason ?? undefined} onClick={() => setDialog({kind: 'edit-category', category: account})}>Edit</Button>
                     </div>
                   </div>

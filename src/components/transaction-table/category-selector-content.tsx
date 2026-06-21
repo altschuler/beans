@@ -2,7 +2,6 @@ import {useMemo, type ReactNode} from 'react'
 import {GitBranch, Sparkles} from 'lucide-react'
 import {Button} from '@/components/ui/button'
 import {Input} from '@/components/ui/input'
-import {parseMoneyToScaledUnits} from '@/ledger/categorization'
 import {SplitEditor} from './split-editor'
 import type {CategorizationAccountOption, CategorySelection, SplitLine, TransactionTableRow, TransferAccountOption} from './types'
 
@@ -43,7 +42,7 @@ export function CategorySelectorContent({
   onCancelSplit,
   onSaveSplit,
 }: CategorySelectorContentProps) {
-  const transferDirection = parseMoneyToScaledUnits(row.amount) < 0n ? 'to' : 'from'
+  const transferDirection = row.amount < 0 ? 'to' : 'from'
   const visibleTransferAccounts = useMemo(
     () => transferAccounts.filter(account => account.bankAccountId !== row.bankAccountId),
     [row.bankAccountId, transferAccounts],
@@ -61,6 +60,7 @@ export function CategorySelectorContent({
         setSplitLines={setSplitLines}
         categorizationAccounts={categorizationAccounts}
         transactionAmount={row.amount}
+        currency={row.currency}
         onBack={onBackToSelect}
         onCancel={onCancelSplit}
         onSave={onSaveSplit}

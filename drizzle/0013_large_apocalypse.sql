@@ -1,0 +1,2 @@
+ALTER TABLE "bank_transactions" ADD CONSTRAINT "bank_transactions_amount_safe_integer" CHECK ("amount" between -9007199254740991 and 9007199254740991);--> statement-breakpoint
+ALTER TABLE "ledger_postings" ADD CONSTRAINT "ledger_postings_amount_safe_integer" CHECK ("amount" between -9007199254740991 and 9007199254740991);

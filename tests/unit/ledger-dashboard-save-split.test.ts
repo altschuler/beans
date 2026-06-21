@@ -9,7 +9,7 @@ describe('saveDashboardSplitTransaction', () => {
 
     await saveDashboardSplitTransaction({
       bankTransactionId: 'bank-transaction-1',
-      bankAmount: '-100.00',
+      bankAmount: -1_000_000,
       lines: [
         {accountId: 'groceries', amount: '70.00'},
         {accountId: 'household', amount: '20.00'},
@@ -38,7 +38,7 @@ describe('saveDashboardSplitTransaction', () => {
 
     await saveDashboardSplitTransaction({
       bankTransactionId: 'bank-transaction-1',
-      bankAmount: '-100.00',
+      bankAmount: -1_000_000,
       lines: [
         {accountId: 'groceries', amount: '70.00'},
         {accountId: 'household', amount: '30.00'},

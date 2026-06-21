@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "concurrently -k -n app,zero -c cyan,magenta \"pnpm dev:app\" \"pnpm dev:zero\"",
     "dev:app": "vite dev --host 0.0.0.0 --port 3000",
-    "dev:zero": "NODE_TLS_REJECT_UNAUTHORIZED=0 dotenv -e .env -- sh -c 'ZERO_LOG_LEVEL=${ZERO_LOG_LEVEL:-warn} exec zero-cache-dev'",
+    "dev:zero": "NODE_TLS_REJECT_UNAUTHORIZED=0 dotenv -e .env -- sh -c 'mkdir -p .zero-cache && ZERO_LOG_LEVEL=${ZERO_LOG_LEVEL:-warn} ZERO_REPLICA_FILE=${ZERO_REPLICA_FILE:-.zero-cache/zero.db} exec zero-cache-dev'",
     "build": "NODE_EXTRA_CA_CERTS=.cert/localhost-cert.pem vite build",
     "start": "node .output/server/index.mjs",
     "typecheck": "tsc --noEmit",

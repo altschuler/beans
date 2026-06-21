@@ -54,7 +54,7 @@ const bankTransactions = [
   {
     id: 'bank-takeaway-1',
     bankAccountId: 'checking-bank',
-    amount: '-100.00',
+    amount: -1_000_000,
     currency: 'DKK',
     bookingDate: '2026-03-03',
     valueDate: null,
@@ -63,7 +63,7 @@ const bankTransactions = [
   {
     id: 'bank-takeaway-2',
     bankAccountId: 'checking-bank',
-    amount: '-50.00',
+    amount: -500_000,
     currency: 'DKK',
     bookingDate: '2026-03-10',
     valueDate: null,
@@ -72,7 +72,7 @@ const bankTransactions = [
   {
     id: 'bank-refund-1',
     bankAccountId: 'checking-bank',
-    amount: '20.00',
+    amount: 200_000,
     currency: 'DKK',
     bookingDate: '2026-03-11',
     valueDate: null,
@@ -81,7 +81,7 @@ const bankTransactions = [
   {
     id: 'bank-savings-1',
     bankAccountId: 'checking-bank',
-    amount: '500.00',
+    amount: 5_000_000,
     currency: 'DKK',
     bookingDate: '2026-03-15',
     valueDate: null,
@@ -90,7 +90,7 @@ const bankTransactions = [
   {
     id: 'unreconciled-bank-1',
     bankAccountId: 'checking-bank',
-    amount: '999.00',
+    amount: 9_990_000,
     currency: 'DKK',
     bookingDate: '2026-03-31',
     valueDate: null,
@@ -108,18 +108,18 @@ const ledgerTransactions = [
 ]
 
 const postings = [
-  {id: 'p-bank-takeaway-1', ledgerTransactionId: 'lt-takeaway-1', accountId: 'checking-ledger', amount: '-100.0000', currency: 'DKK', bankTransactionId: 'bank-takeaway-1', sortOrder: 0},
-  {id: 'p-takeaway-1', ledgerTransactionId: 'lt-takeaway-1', accountId: 'takeaway', amount: '100.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
-  {id: 'p-bank-takeaway-2', ledgerTransactionId: 'lt-takeaway-2', accountId: 'checking-ledger', amount: '-50.0000', currency: 'DKK', bankTransactionId: 'bank-takeaway-2', sortOrder: 0},
-  {id: 'p-takeaway-2', ledgerTransactionId: 'lt-takeaway-2', accountId: 'takeaway', amount: '50.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
-  {id: 'p-bank-refund-1', ledgerTransactionId: 'lt-refund-1', accountId: 'checking-ledger', amount: '20.0000', currency: 'DKK', bankTransactionId: 'bank-refund-1', sortOrder: 0},
-  {id: 'p-refund-1', ledgerTransactionId: 'lt-refund-1', accountId: 'takeaway', amount: '-20.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
-  {id: 'p-bank-interest-1', ledgerTransactionId: 'lt-interest-1', accountId: 'checking-ledger', amount: '500.0000', currency: 'DKK', bankTransactionId: 'bank-savings-1', sortOrder: 0},
-  {id: 'p-interest-1', ledgerTransactionId: 'lt-interest-1', accountId: 'vacation', amount: '-500.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
-  {id: 'p-budget-move-1-a', ledgerTransactionId: 'lt-savings-1', accountId: 'takeaway', amount: '300.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 0},
-  {id: 'p-budget-move-1-b', ledgerTransactionId: 'lt-savings-1', accountId: 'vacation', amount: '-300.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
-  {id: 'p-budget-move-2-a', ledgerTransactionId: 'lt-savings-2', accountId: 'vacation', amount: '75.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 0},
-  {id: 'p-budget-move-2-b', ledgerTransactionId: 'lt-savings-2', accountId: 'dentist', amount: '-75.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
+  {id: 'p-bank-takeaway-1', ledgerTransactionId: 'lt-takeaway-1', accountId: 'checking-ledger', amount: -1_000_000, currency: 'DKK', bankTransactionId: 'bank-takeaway-1', sortOrder: 0},
+  {id: 'p-takeaway-1', ledgerTransactionId: 'lt-takeaway-1', accountId: 'takeaway', amount: 1_000_000, currency: 'DKK', bankTransactionId: null, sortOrder: 1},
+  {id: 'p-bank-takeaway-2', ledgerTransactionId: 'lt-takeaway-2', accountId: 'checking-ledger', amount: -500_000, currency: 'DKK', bankTransactionId: 'bank-takeaway-2', sortOrder: 0},
+  {id: 'p-takeaway-2', ledgerTransactionId: 'lt-takeaway-2', accountId: 'takeaway', amount: 500_000, currency: 'DKK', bankTransactionId: null, sortOrder: 1},
+  {id: 'p-bank-refund-1', ledgerTransactionId: 'lt-refund-1', accountId: 'checking-ledger', amount: 200_000, currency: 'DKK', bankTransactionId: 'bank-refund-1', sortOrder: 0},
+  {id: 'p-refund-1', ledgerTransactionId: 'lt-refund-1', accountId: 'takeaway', amount: -200_000, currency: 'DKK', bankTransactionId: null, sortOrder: 1},
+  {id: 'p-bank-interest-1', ledgerTransactionId: 'lt-interest-1', accountId: 'checking-ledger', amount: 5_000_000, currency: 'DKK', bankTransactionId: 'bank-savings-1', sortOrder: 0},
+  {id: 'p-interest-1', ledgerTransactionId: 'lt-interest-1', accountId: 'vacation', amount: -5_000_000, currency: 'DKK', bankTransactionId: null, sortOrder: 1},
+  {id: 'p-budget-move-1-a', ledgerTransactionId: 'lt-savings-1', accountId: 'takeaway', amount: 3_000_000, currency: 'DKK', bankTransactionId: null, sortOrder: 0},
+  {id: 'p-budget-move-1-b', ledgerTransactionId: 'lt-savings-1', accountId: 'vacation', amount: -3_000_000, currency: 'DKK', bankTransactionId: null, sortOrder: 1},
+  {id: 'p-budget-move-2-a', ledgerTransactionId: 'lt-savings-2', accountId: 'vacation', amount: 750_000, currency: 'DKK', bankTransactionId: null, sortOrder: 0},
+  {id: 'p-budget-move-2-b', ledgerTransactionId: 'lt-savings-2', accountId: 'dentist', amount: -750_000, currency: 'DKK', bankTransactionId: null, sortOrder: 1},
 ]
 
 const baseInput = {
@@ -146,12 +146,12 @@ describe('buildLedgerAccountDetailModel', () => {
     expect(model.mode).toBe('spending')
     expect(model.title).toBe('Take-away')
     expect(model.groupName).toBe('Everyday spending')
-    expect(model.currentBalance).toBe('-430.0000')
+    expect(model.currentBalance).toBe(-4_300_000)
     expect(model.chartType).toBe('bar')
     expect(model.chartTitle).toBe('Spending history')
     expect(model.chartSeries).toEqual([{key: '2026-03', label: 'Mar 2026', value: 130}])
     expect(model.rows.map(row => row.description)).toEqual(['Take-away refund', 'Burger', 'Pizza'])
-    expect(model.rows.map(row => row.amount)).toEqual(['-20.00', '50.00', '100.00'])
+    expect(model.rows.map(row => row.amount)).toEqual([-200_000, 500_000, 1_000_000])
   })
 
   it('builds weekly spending history with ISO-style Monday week buckets', () => {
@@ -163,6 +163,29 @@ describe('buildLedgerAccountDetailModel', () => {
       {key: '2026-03-02', label: 'Week of 2026-03-02', value: 100},
       {key: '2026-03-09', label: 'Week of 2026-03-09', value: 30},
     ])
+  })
+
+  it('keeps the non-zero balance currency when another currency nets to zero', () => {
+    const model = buildLedgerAccountDetailModel({
+      ...baseInput,
+      accountId: 'takeaway',
+      period: 'monthly',
+      postings: [
+        ...postings,
+        {id: 'p-takeaway-eur-in', ledgerTransactionId: 'lt-eur-in', accountId: 'takeaway', amount: 100_000, currency: 'EUR', bankTransactionId: null, sortOrder: 0},
+        {id: 'p-takeaway-eur-out', ledgerTransactionId: 'lt-eur-out', accountId: 'takeaway', amount: -100_000, currency: 'EUR', bankTransactionId: null, sortOrder: 0},
+      ],
+      ledgerTransactions: [
+        ...ledgerTransactions,
+        {id: 'lt-eur-in', source: 'budgeting', status: 'confirmed', date: '2026-03-12', description: 'EUR correction in'},
+        {id: 'lt-eur-out', source: 'budgeting', status: 'confirmed', date: '2026-03-13', description: 'EUR correction out'},
+      ],
+    })
+
+    expect(model.kind).toBe('detail')
+    if (model.kind !== 'detail') throw new Error('Expected detail model')
+    expect(model.currentBalance).toBe(-4_300_000)
+    expect(model.currentBalanceCurrency).toBe('DKK')
   })
 
   it('builds imported posting line data for linked bank accounts and ignores unreconciled raw bank rows', () => {
@@ -186,9 +209,9 @@ describe('buildLedgerAccountDetailModel', () => {
     expect(model.mode).toBe('envelope_activity')
     expect(model.chartType).toBe('bar')
     expect(model.chartTitle).toBe('Money added/removed')
-    expect(model.currentBalance).toBe('725.0000')
+    expect(model.currentBalance).toBe(7_250_000)
     expect(model.chartSeries).toEqual([{key: '2026-03', label: 'Mar 2026', value: 725}])
-    expect(model.rows.map(row => row.amount)).toEqual(['-75.00', '300.00', '500.00'])
+    expect(model.rows.map(row => row.amount)).toEqual([-750_000, 3_000_000, 5_000_000])
   })
 
   it('does not aggregate mixed currencies into one balance or chart series', () => {
@@ -198,7 +221,7 @@ describe('buildLedgerAccountDetailModel', () => {
       period: 'monthly',
       postings: [
         ...postings,
-        {id: 'p-vacation-eur', ledgerTransactionId: 'lt-eur-1', accountId: 'vacation', amount: '-10.0000', currency: 'EUR', bankTransactionId: null, sortOrder: 0},
+        {id: 'p-vacation-eur', ledgerTransactionId: 'lt-eur-1', accountId: 'vacation', amount: -100_000, currency: 'EUR', bankTransactionId: null, sortOrder: 0},
       ],
       ledgerTransactions: [...ledgerTransactions, {id: 'lt-eur-1', source: 'budgeting', status: 'confirmed', date: '2026-03-28', description: 'EUR vacation money'}],
     })

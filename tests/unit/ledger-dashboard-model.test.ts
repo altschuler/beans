@@ -34,7 +34,7 @@ function buildModelForTransaction(
         id: 'bank-posting-1',
         ledgerTransactionId: 'ledger-transaction-1',
         accountId: 'checking',
-        amount: '-100.0000',
+        amount: -1_000_000,
         currency: 'DKK',
         bankTransactionId: 'bank-transaction-1',
         sortOrder: 0,
@@ -43,7 +43,7 @@ function buildModelForTransaction(
         id: 'category-posting-1',
         ledgerTransactionId: 'ledger-transaction-1',
         accountId: categoryAccountId,
-        amount: '100.0000',
+        amount: 1_000_000,
         currency: 'DKK',
         bankTransactionId: null,
         sortOrder: 1,
@@ -53,7 +53,7 @@ function buildModelForTransaction(
       {
         id: 'bank-transaction-1',
         bankAccountId: 'bank-account-1',
-        amount: '-100.00',
+        amount: -1_000_000,
         currency: 'DKK',
         bookingDate: '2026-06-18',
         valueDate: null,
@@ -76,7 +76,7 @@ describe('buildLedgerDashboardModel', () => {
     expect(model.aiProcessingCount).toBe(1)
     expect(model.categorizationAccounts.map(account => account.name)).toEqual(['Groceries'])
     expect(model.accountGroups[0]).toMatchObject({name: 'Everyday spending'})
-    expect(model.accountGroups[0]?.accounts.find(account => account.id === 'uncategorized')?.balance).toBe('-100.0000')
+    expect(model.accountGroups[0]?.accounts.find(account => account.id === 'uncategorized')?.balance).toBe(-1_000_000)
     expect(model.transactionRows[0]).toMatchObject({
       id: 'bank-transaction-1',
       ledgerTransactionId: 'ledger-transaction-1',
@@ -84,7 +84,7 @@ describe('buildLedgerDashboardModel', () => {
       description: 'Netto',
       date: '2026-06-18',
       bankAccountName: 'Checking',
-      amount: '-100.00',
+      amount: -1_000_000,
       currency: 'DKK',
       categoryAccountId: null,
       isSplit: false,

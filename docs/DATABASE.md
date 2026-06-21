@@ -4,6 +4,12 @@ Postgres is the durable database. Drizzle defines the database schema in `src/db
 
 Zero is the required sync layer for app/domain data. Any user-facing application data that should be available to the client must be exposed through Zero rather than fetched directly from server routes or ad-hoc client APIs.
 
+## Generated files are read-only
+
+Never hand-edit generated database artifacts. Change the source files (`src/db/schema.ts`, `drizzle-zero.config.ts`, or related generator inputs) and rerun the appropriate generator instead.
+
+Generated files include `src/zero/schema.ts`, Drizzle migration metadata under `drizzle/meta/`, and generated migration files under `drizzle/`.
+
 ## App/domain data must use Zero
 
 Use Zero for all app/domain tables and queries:
@@ -53,3 +59,9 @@ just zero-generate
 ```
 
 Use `just zero-generate` after changing Drizzle tables or `drizzle-zero.config.ts`.
+
+## Zero dev replica resets
+
+`zero-cache-dev` keeps a local SQLite replica. In dev, keep it under `.zero-cache/` via `ZERO_REPLICA_FILE` so `just db-reset` can remove it.
+
+After migrations that rewrite existing synced data without changing Zero column types (for example changing money `number` semantics from decimal major units to scale-4 integers), reset the Zero replica before restarting the app. Zero's client schema hash is derived from generated table/column shape, so representation-only changes may not invalidate cached replica rows by themselves.

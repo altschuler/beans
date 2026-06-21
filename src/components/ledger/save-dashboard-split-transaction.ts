@@ -6,7 +6,7 @@ type MutationResult = Promise<unknown> | {server: Promise<unknown>}
 
 type SaveDashboardSplitTransactionInput = {
   bankTransactionId: string
-  bankAmount: string
+  bankAmount: number
   lines: CategorizationLineInput[]
   mutate: (mutation: SplitTransactionMutation) => MutationResult
   onSuccess: () => void

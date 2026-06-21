@@ -5,6 +5,7 @@ import {generateObject} from 'ai'
 import {and, desc, eq, inArray, isNull, lt, or} from 'drizzle-orm'
 import {z} from 'zod'
 import {db, type Database} from '@/db/client'
+import {formatMoneyDecimal} from '@/lib/money'
 import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from '@/db/schema'
 import {categorizeBankTransaction, normalizeAiReasoning} from './categorization.server'
 import {loadSimilarCategorizationExamples, type AiCategorizationSimilarExample} from './similar-categorization-examples.server'
@@ -73,7 +74,7 @@ type AiCategorizeBankTransactionsInput = {
 type CategorizeWithModel = (input: AiCategorizationModelInput) => Promise<AiCategorizationSuggestion[]>
 
 type LoadedAiCategorizationCategory = AiCategorizationCategory & {teamId: string}
-type LoadedAiCategorizationTransaction = Omit<AiCategorizationTransaction, 'similarConfirmedExamples'> & {teamId: string}
+type LoadedAiCategorizationTransaction = Omit<AiCategorizationTransaction, 'amount' | 'similarConfirmedExamples'> & {teamId: string; amount: number}
 
 type ClaimedAiCategorizationWork = {
   transactions: LoadedAiCategorizationTransaction[]
@@ -430,7 +431,7 @@ async function loadTransactions(
     teamId: row.teamId,
     date: row.bookingDate ?? row.valueDate,
     description: row.description,
-    amount: String(row.amount),
+    amount: row.amount,
     currency: row.currency,
     bankAccountName: row.bankAccountName,
     counterpartyName: row.counterpartyName,
@@ -467,7 +468,7 @@ function toModelTransaction(transaction: LoadedAiCategorizationTransaction, simi
     id: transaction.id,
     date: transaction.date,
     description: transaction.description,
-    amount: transaction.amount,
+    amount: formatMoneyDecimal(transaction.amount, transaction.currency),
     currency: transaction.currency,
     bankAccountName: transaction.bankAccountName,
     counterpartyName: transaction.counterpartyName,

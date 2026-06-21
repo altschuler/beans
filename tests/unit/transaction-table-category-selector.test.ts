@@ -49,7 +49,7 @@ const row: TransactionTableRow = {
   description: 'Netto',
   date: '2026-06-18',
   bankAccountName: 'Checking',
-  amount: '-100.00',
+  amount: -1_000_000,
   currency: 'DKK',
   status: 'needs_review',
   needsReview: true,

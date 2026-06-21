@@ -8,13 +8,14 @@ type SplitEditorProps = {
   splitLines: SplitLine[]
   setSplitLines: (lines: SplitLine[]) => void
   categorizationAccounts: CategorizationAccountOption[]
-  transactionAmount: string
+  transactionAmount: number
+  currency: string
   onBack: () => void
   onCancel: () => void
   onSave: () => void
 }
 
-export function SplitEditor({splitLines, setSplitLines, categorizationAccounts, transactionAmount, onBack, onCancel, onSave}: SplitEditorProps) {
+export function SplitEditor({splitLines, setSplitLines, categorizationAccounts, transactionAmount, currency, onBack, onCancel, onSave}: SplitEditorProps) {
   const canRemove = canRemoveSplitLine(splitLines)
 
   return (
@@ -61,7 +62,7 @@ export function SplitEditor({splitLines, setSplitLines, categorizationAccounts, 
               className="h-9 w-9"
               aria-label={`Fill remaining amount for split line ${index + 1}`}
               title="Fill remaining amount"
-              onClick={() => setSplitLines(fillRemainingSplitAmount(splitLines, index, transactionAmount))}
+              onClick={() => setSplitLines(fillRemainingSplitAmount(splitLines, index, transactionAmount, currency))}
             >
               <Minus className="h-4 w-4" aria-hidden="true" />
             </Button>

@@ -1,4 +1,5 @@
-import {deriveLedgerAccountBalances, formatScaledUnits, parseMoneyToScaledUnits} from '@/ledger/categorization'
+import {absoluteMoneyAmount} from '@/lib/money'
+import {deriveLedgerAccountBalances, deriveSingleBalanceCurrency} from '@/ledger/categorization'
 
 export const CATEGORY_ACCOUNT_TYPES = ['expense', 'income', 'savings'] as const
 export type CategoryAccountType = (typeof CATEGORY_ACCOUNT_TYPES)[number]
@@ -27,7 +28,7 @@ export type CategoryManagementPostingInput = {
   id: string
   ledgerTransactionId: string
   accountId: string
-  amount: string | number
+  amount: number
   currency: string
   bankTransactionId?: string | null
   sortOrder: number | null
@@ -40,7 +41,8 @@ export type CategoryManagementAccount = {
   description: string
   type: CategoryAccountType | 'system'
   typeLabel: string
-  balance: string
+  balance: number | 'Multiple currencies'
+  balanceCurrency: string | null
   postingCount: number
   locked: boolean
   lockReason: string | null
@@ -77,7 +79,7 @@ export function buildCategoryManagementModel(input: {
   }))
   const normalizedPostings = input.postings.map(posting => ({
     ...posting,
-    amount: String(posting.amount),
+    amount: posting.amount,
     bankTransactionId: posting.bankTransactionId ?? null,
     sortOrder: posting.sortOrder ?? 0,
   }))
@@ -104,7 +106,7 @@ export function buildCategoryManagementModel(input: {
     .map(group => {
       const groupAccounts = (accountsByGroup.get(group.id) ?? [])
         .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name))
-        .map(account => buildAccountModel(account, absoluteMoneyString(balances.get(account.id) ?? '0.0000'), postingCounts.get(account.id) ?? 0))
+        .map(account => buildAccountModel(account, absoluteMoneyBalance(balances.get(account.id) ?? 0), deriveSingleBalanceCurrency(account.id, normalizedPostings), postingCounts.get(account.id) ?? 0))
       const locked = Boolean(group.systemKey)
       return {
         id: group.id,
@@ -139,7 +141,8 @@ export function categoryTypeLabel(type: CategoryAccountType | 'system') {
 
 function buildAccountModel(
   account: CategoryManagementAccountInput & {linkedBankAccountId: string | null; systemKey: string | null; description: string; status: string; sortOrder: number},
-  balance: string,
+  balance: number | 'Multiple currencies',
+  balanceCurrency: string | null,
   postingCount: number,
 ): CategoryManagementAccount {
   const locked = Boolean(account.systemKey)
@@ -152,6 +155,7 @@ function buildAccountModel(
     type,
     typeLabel: categoryTypeLabel(type),
     balance,
+    balanceCurrency,
     postingCount,
     locked,
     lockReason: locked ? 'System accounts are managed by Penge.' : null,
@@ -170,8 +174,7 @@ function groupBy<T>(items: T[], key: (item: T) => string) {
   return groups
 }
 
-function absoluteMoneyString(value: string) {
+function absoluteMoneyBalance(value: number | 'Multiple currencies') {
   if (value === 'Multiple currencies') return value
-  const units = parseMoneyToScaledUnits(value)
-  return formatScaledUnits(units < 0n ? -units : units)
+  return absoluteMoneyAmount(value)
 }

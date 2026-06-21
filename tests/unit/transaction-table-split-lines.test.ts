@@ -15,7 +15,7 @@ const row: TransactionTableRow = {
   description: 'Netto',
   date: '2026-06-18',
   bankAccountName: 'Checking',
-  amount: '-100.00',
+  amount: -1_000_000,
   currency: 'DKK',
   status: 'needs_review',
   needsReview: true,
@@ -98,9 +98,9 @@ describe('transaction table split line helpers', () => {
       {accountId: 'groceries', amount: '5.00'},
     ]
 
-    expect(fillRemainingSplitAmount(lines, 1, '-100.00')).toEqual([
+    expect(fillRemainingSplitAmount(lines, 1, -1_000_000, 'DKK')).toEqual([
       {accountId: 'groceries', amount: '25.00'},
-      {accountId: 'household', amount: '70.0000'},
+      {accountId: 'household', amount: '70.00'},
       {accountId: 'groceries', amount: '5.00'},
     ])
   })
@@ -112,6 +112,6 @@ describe('transaction table split line helpers', () => {
       {accountId: 'groceries', amount: 'abc'},
     ]
 
-    expect(fillRemainingSplitAmount(lines, 1, '-100.00')[1]).toEqual({accountId: 'household', amount: '100.0000'})
+    expect(fillRemainingSplitAmount(lines, 1, -1_000_000, 'DKK')[1]).toEqual({accountId: 'household', amount: '100.00'})
   })
 })

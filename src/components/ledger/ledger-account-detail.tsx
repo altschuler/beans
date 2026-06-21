@@ -1,8 +1,10 @@
 import {useState} from 'react'
 import {useQuery} from '@rocicorp/zero/react'
+import {Currency} from '@/components/currency'
 import {PageLayout} from '@/components/page-layout'
 import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card'
+import {DEFAULT_CURRENCY} from '@/lib/money'
 import {queries} from '@/zero/queries'
 import {AccountHistoryChart} from './account-history-chart'
 import {buildLedgerAccountDetailModel, type AccountDetailPeriod} from './ledger-account-detail-model'
@@ -55,7 +57,13 @@ export function LedgerAccountDetail({accountId}: {accountId: string}) {
           </div>
           <div className="rounded-md border bg-background px-4 py-3">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current balance</p>
-            <p className="font-mono text-lg font-semibold">{model.currentBalance}</p>
+            <p className="font-mono text-lg font-semibold">
+              {model.currentBalance === 'Multiple currencies' ? (
+                model.currentBalance
+              ) : (
+                <Currency amount={model.currentBalance} currency={model.currentBalanceCurrency ?? DEFAULT_CURRENCY} />
+              )}
+            </p>
           </div>
         </div>
 
@@ -100,7 +108,7 @@ export function LedgerAccountDetail({accountId}: {accountId: string}) {
                       </p>
                     </div>
                     <p className="font-mono text-sm">
-                      {row.amount} {row.currency}
+                      <Currency amount={row.amount} currency={row.currency} />
                     </p>
                   </div>
                 ))

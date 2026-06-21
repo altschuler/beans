@@ -9,7 +9,7 @@ const queryRows = vi.hoisted(() => ({
     id: string
     ledgerTransactionId: string
     accountId: string
-    amount: string
+    amount: number
     currency: string
     bankTransactionId: string | null
     sortOrder: number | null
@@ -89,7 +89,7 @@ describe('LedgerPostingsPage', () => {
         id: 'posting-1',
         ledgerTransactionId: 'ledger-transaction-1',
         accountId: 'account-1',
-        amount: '125.0000',
+        amount: 1_250_000,
         currency: 'DKK',
         bankTransactionId: 'bank-transaction-1',
         sortOrder: 1,
@@ -120,7 +120,7 @@ describe('LedgerPostingsPage', () => {
     expect(markup).toContain('ledger-transaction-1')
     expect(markup).toContain('Groceries')
     expect(markup).toContain('2026-06-20')
-    expect(markup).toContain('125.0000')
+    expect(markup).toContain('125.00 DKK')
     expect(markup).toContain('DKK')
     expect(markup).toContain('bank-transaction-1')
     expect(markup).toContain('1')
@@ -138,7 +138,7 @@ describe('LedgerPostingsPage', () => {
       id: `posting-${index.toString().padStart(2, '0')}`,
       ledgerTransactionId: transaction.id,
       accountId: 'account-1',
-      amount: `${index}.0000`,
+      amount: index * 10_000,
       currency: 'DKK',
       bankTransactionId: null,
       sortOrder: index,

@@ -22,7 +22,7 @@ export type TransactionTableRow = {
   description: string
   date: string | null
   bankAccountName: string
-  amount: string
+  amount: number
   currency: string
   status: string
   needsReview: boolean

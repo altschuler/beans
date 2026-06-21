@@ -1,5 +1,5 @@
-import {relations} from 'drizzle-orm'
-import {boolean, foreignKey, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex} from 'drizzle-orm/pg-core'
+import {relations, sql} from 'drizzle-orm'
+import {bigint, boolean, check, foreignKey, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex} from 'drizzle-orm/pg-core'
 
 export const user = pgTable(
   'user',
@@ -165,7 +165,7 @@ export const bankTransactions = pgTable(
     status: text('status').notNull(),
     bookingDate: text('booking_date'),
     valueDate: text('value_date'),
-    amount: numeric('amount', {precision: 18, scale: 4}).notNull(),
+    amount: bigint('amount', {mode: 'number'}).notNull(),
     currency: text('currency').notNull(),
     description: text('description').notNull(),
     counterpartyName: text('counterparty_name'),
@@ -183,6 +183,7 @@ export const bankTransactions = pgTable(
       table.bankAccountId,
       table.providerTransactionId,
     ),
+    amountSafeIntegerCheck: check('bank_transactions_amount_safe_integer', sql`"amount" between -9007199254740991 and 9007199254740991`),
   }),
 )
 
@@ -265,7 +266,7 @@ export const ledgerPostings = pgTable(
     id: text('id').primaryKey(),
     ledgerTransactionId: text('ledger_transaction_id').notNull(),
     accountId: text('account_id').notNull(),
-    amount: numeric('amount', {precision: 18, scale: 4}).notNull(),
+    amount: bigint('amount', {mode: 'number'}).notNull(),
     currency: text('currency').notNull(),
     bankTransactionId: text('bank_transaction_id'),
     sortOrder: integer('sort_order').notNull().default(0),
@@ -291,6 +292,7 @@ export const ledgerPostings = pgTable(
       columns: [table.bankTransactionId],
       foreignColumns: [bankTransactions.id],
     }).onDelete('restrict'),
+    amountSafeIntegerCheck: check('ledger_postings_amount_safe_integer', sql`"amount" between -9007199254740991 and 9007199254740991`),
   }),
 )
 

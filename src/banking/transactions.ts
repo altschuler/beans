@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto'
+import {parseDecimalMoneyToAmount} from '@/lib/money'
 import type {GoCardlessTransaction} from './gocardless/types'
 
 export type BankTransactionStatus = 'booked' | 'pending'
@@ -8,7 +9,7 @@ export type NormalizedBankTransaction = {
   status: BankTransactionStatus
   bookingDate?: string
   valueDate?: string
-  amount: string
+  amount: number
   currency: string
   description: string
   counterpartyName?: string
@@ -24,7 +25,7 @@ export function normalizeGoCardlessTransaction(
     status,
     bookingDate: transaction.bookingDate,
     valueDate: transaction.valueDate,
-    amount: transaction.transactionAmount.amount,
+    amount: parseDecimalMoneyToAmount(transaction.transactionAmount.amount),
     currency: transaction.transactionAmount.currency,
     description: transactionDescription(transaction),
     counterpartyName: transaction.creditorName ?? transaction.debtorName,

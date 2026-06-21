@@ -1,4 +1,5 @@
-import {deriveLedgerAccountBalances, formatScaledUnits, isCategorizationAccount, parseMoneyToScaledUnits} from '@/ledger/categorization'
+import {absoluteMoneyAmount, formatMoneyDecimal} from '@/lib/money'
+import {deriveLedgerAccountBalances, isCategorizationAccount} from '@/ledger/categorization'
 
 export type LedgerDashboardGroup = {id: string; name: string; sortOrder: number | null}
 export type LedgerDashboardAccount = {
@@ -26,7 +27,7 @@ export type LedgerDashboardPosting = {
   id: string
   ledgerTransactionId: string
   accountId: string
-  amount: string | number
+  amount: number
   currency: string
   bankTransactionId?: string | null
   sortOrder: number | null
@@ -34,7 +35,7 @@ export type LedgerDashboardPosting = {
 export type LedgerDashboardBankTransaction = {
   id: string
   bankAccountId: string
-  amount: string | number
+  amount: number
   currency: string
   bookingDate: string | null
   valueDate: string | null
@@ -54,7 +55,7 @@ export type LedgerDashboardStatusIndicator = {
 export type LedgerDashboardAiIndicator = LedgerDashboardStatusIndicator
 
 type NormalizedAccount = LedgerDashboardAccount & {status: string; sortOrder: number; systemKey: string | null; linkedBankAccountId: string | null}
-type NormalizedPosting = LedgerDashboardPosting & {amount: string; sortOrder: number; bankTransactionId: string | null}
+type NormalizedPosting = LedgerDashboardPosting & {amount: number; sortOrder: number; bankTransactionId: string | null}
 type RowInterpretation = {
   categoryAccounts: NormalizedAccount[]
   categoryAccountId: string | null
@@ -82,13 +83,13 @@ export function buildLedgerDashboardModel(input: {
   }))
   const postings: NormalizedPosting[] = input.postings.map(posting => ({
     ...posting,
-    amount: String(posting.amount),
+    amount: posting.amount,
     sortOrder: posting.sortOrder ?? 0,
     bankTransactionId: posting.bankTransactionId ?? null,
   }))
   const bankTransactions = input.bankTransactions.map(transaction => ({
     ...transaction,
-    amount: String(transaction.amount),
+    amount: transaction.amount,
     aiConfidence: transaction.aiConfidence ?? null,
     aiProcessingStartedAt: transaction.aiProcessingStartedAt ?? null,
     aiReasoning: transaction.aiReasoning ?? null,
@@ -121,7 +122,7 @@ export function buildLedgerDashboardModel(input: {
       accounts: accounts
         .filter(account => account.groupId === group.id)
         .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name))
-        .map(account => ({...account, balance: balances.get(account.id) ?? '0.0000'})),
+        .map(account => ({...account, balance: balances.get(account.id) ?? 0})),
     }))
 
   const reconciledPostingByBankTransactionId = new Map(
@@ -357,7 +358,7 @@ function buildRowInterpretation(input: {
       categoryAccountId,
       categoryLabel: isSplit ? 'Split transaction' : (input.accountsById.get(categoryAccountId ?? '')?.name ?? 'Unknown category'),
       isSplit,
-      splitLines: categoryPostings.map(posting => ({accountId: posting.accountId, amount: absoluteMoneyString(posting.amount)})),
+      splitLines: categoryPostings.map(posting => ({accountId: posting.accountId, amount: formatMoneyDecimal(absoluteMoneyAmount(posting.amount), posting.currency)})),
       isUncategorized: false,
     }
   }
@@ -366,7 +367,7 @@ function buildRowInterpretation(input: {
   if (transferCounterPosting) {
     const counterAccount = input.accountsById.get(transferCounterPosting.accountId)
     const counterAccountName = counterAccount?.linkedBankAccountId ? (input.bankAccountNamesById.get(counterAccount.linkedBankAccountId) ?? counterAccount.name) : 'Unknown account'
-    const direction = parseMoneyToScaledUnits(input.bankPosting.amount) < 0n ? 'to' : 'from'
+    const direction = input.bankPosting.amount < 0 ? 'to' : 'from'
     return {
       categoryAccounts: [],
       categoryAccountId: null,
@@ -415,10 +416,3 @@ function groupBy<T>(items: T[], key: (item: T) => string) {
   return groups
 }
 
-function absoluteMoneyString(value: string) {
-  return formatScaledUnits(absBigInt(parseMoneyToScaledUnits(value)))
-}
-
-function absBigInt(value: bigint) {
-  return value < 0n ? -value : value
-}

@@ -6,22 +6,38 @@
 
 ## Category selector
 
-- Restore transaction-row virtualization measurement after the category selector/split popover change. `src/components/transaction-table/transaction-table.tsx` no longer passes `rowVirtualizer.measureElement` to `TransactionRow`, but rows are still positioned from a fixed `estimateSize: () => 56`; long descriptions/categories or actual row-height drift can cause overlap, gaps, or incorrect scroll range. Restore the row ref/`measureElement` wiring or enforce a truly fixed row height with matching truncation.
-- Add focused test coverage that proves the virtualizer measurement ref is wired to rendered transaction rows. The mock still exposes `measureElement`, but the last commit removed the production wiring without a failing test.
+- Enforce a truly fixed transaction-row height in the virtualized transaction table. Rows should not use virtualizer row measurement; `estimateSize` and the rendered row height must match, and long descriptions/categories should truncate instead of wrapping.
 - Collapse the one-off `CategorySelectorContent` boundary unless it starts owning cohesive behavior. It has one production caller and mostly passes through selector state, setters, and callbacks from `CategorySelector`; inline it back into `CategorySelector` while keeping `SplitEditor` separate, or move the relevant state/handlers into the child.
 - Reduce category-selector test scaffolding duplication. The new selector/split tests repeat large `TransactionTableRow` fixtures and button-recorder mocks; add a small shared row builder/test helper, or collapse the tests that become unnecessary if `CategorySelectorContent` is inlined.
 - Replace over-mocked selector/popover tests with real UI behavior where practical. The new tests mock `Button` and make `Popover` a passthrough, so closed popover content is always present and Radix/shadcn integration/accessibility regressions can be hidden; render real primitives in a DOM-oriented test and mock only unavoidable browser gaps.
 - Inline low-value split-line helpers such as `normalizeSplitLines` and `canRemoveSplitLine`; they only wrap local length/defaulting expressions. Keep helpers that encode real behavior, such as remaining-amount calculation.
-- Split or drop unrelated category-management TODO additions from the category-selector commit if curating history. The backlog entries are useful, but they are not part of the category selector change.
 
 ## Category management cleanup
 
-- Replace custom category-management form controls with shadcn components: use shadcn `Textarea` for description, `Select` for group selection, `RadioGroup`/`RadioGroupItem` for category type, and `Badge` for the category type pill instead of hand-styled native controls/spans.
-- Simplify category management dialog mounting. `src/components/ledger/category-management-page.tsx` currently mounts all dialogs and uses `key` resets plus repeated `dialog.kind` guards; render only the active dialog or make form resets explicit.
-- Derive category/group dialog titles and descriptions from dialog mode instead of passing repeated `mode`, `title`, and `description` props at each call site.
-- Drop low-value category-management Zero mutator dispatch tests in `tests/unit/zero-mutators.test.ts`; schema tests plus `tests/unit/category-management-server.test.ts` cover the meaningful behavior.
-- Inline `normalizeName` in `src/ledger/category-management.server.ts`; it only wraps `requireNonEmpty` without adding domain meaning.
-- Keep `tests/unit/category-management-page.test.ts` focused on page-level behavior; move useful dialog-internal assertions to a focused dialog test or drop static markup checks that do not protect behavior.
+- Replace custom category-management form controls with shadcn-style primitives. Still relevant: `src/components/ledger/category-management-dialogs.tsx` hand-styles a native `textarea`, `select`, radio inputs, and `category-management-page.tsx` renders the type pill as a raw `span`.
+  - Add missing primitives under `src/components/ui/` first, following the existing shadcn wrapper pattern and token usage: `Textarea`, `Select`, `RadioGroup`/`RadioGroupItem`, and `Badge`.
+  - Update `CategoryDialog` to use `Textarea` for description, `Select` for group choice, and `RadioGroup` for type choice while preserving the current controlled form state, labels, option descriptions, disabled/pending behavior, and submit payload shape.
+  - Update the category row type pill to use `Badge` rather than a hand-styled `span`.
+  - Prefer tests that render the real UI primitives; only mock browser/Radix gaps that make the test impractical.
+- Simplify category management dialog mounting. Still relevant: `src/components/ledger/category-management-page.tsx` mounts four dialogs at all times and uses `key` resets plus repeated `dialog.kind` guards.
+  - Render only the active dialog from a `switch`/helper on `dialog.kind`, or make form resets explicit inside the dialog components. Avoid keeping closed dialogs mounted just to preserve reset behavior.
+  - Keep the current stacked flow intact: Add category → Add group should return to category creation, and successful group creation should pass the new group id back as `initialGroupId`.
+  - Once only the active dialog is rendered, remove unnecessary `key` reset props and reduce inline `dialog.kind === ... ? ... : ...` guards.
+- Derive category/group dialog titles and descriptions from dialog mode instead of passing repeated copy from `CategoryManagementPage`.
+  - Move the create/edit title and description constants into `CategoryDialog` and `GroupDialog`, keyed by `mode`, or expose a small local helper in `category-management-dialogs.tsx`.
+  - Keep delete-section copy data-driven from `category`/`group.deleteDisabledReason`; only the static dialog chrome should be derived from mode.
+  - After this, callers should pass `mode`, entity data, and callbacks, not repeated `title`/`description` strings.
+- Drop low-value category-management Zero mutator dispatch tests in `tests/unit/zero-mutators.test.ts`. Still relevant: the tests named `runs category account management on the server transaction` and `runs category group management on the server transaction` mostly assert mocked pass-through argument plumbing.
+  - Keep the Zod input schema tests for category account/group mutators; those protect the public Zero input boundary.
+  - Rely on `tests/unit/category-management-server.test.ts` for authorization, editability, deletion, trimming, and persistence behavior.
+  - If a Zero server-mutator smoke test is still desired, keep at most one generic test for the server transaction/user-id seam rather than one assertion per category-management command.
+- Inline `normalizeName` in `src/ledger/category-management.server.ts`. Still relevant: it only calls `requireNonEmpty(value, message)` and adds no domain-specific behavior.
+  - Replace `normalizeName(input.name, '...')` calls with `requireNonEmpty(input.name, '...')`, then delete `normalizeName`.
+  - Preserve the current trim-and-empty-validation behavior; no behavior change or new test should be needed.
+- Keep `tests/unit/category-management-page.test.ts` focused on page-level behavior. Still relevant: it currently mixes page rendering assertions with direct `CategoryDialog`/`GroupDialog` static markup checks and broad absence assertions.
+  - Page tests should cover page-owned behavior only: query/model filtering into the visible list, header actions, lock/edit affordances, and the mutation/dialog boundary if tested with an interactive renderer.
+  - Move valuable dialog-internal coverage to a focused `tests/unit/category-management-dialogs.test.tsx` (for delete section disabled copy, Add group callback, initial group selection, submit payloads), or drop static markup checks that only restate component structure.
+  - Avoid absence-only assertions for removed markup unless the absence is a durable product rule; prefer positive behavior assertions backed by `category-management-model.test.ts` and `category-management-server.test.ts`.
 
 ## Transaction categorization
 
@@ -43,8 +59,15 @@
 
 ## Review follow-up
 
-- Add missing authorization coverage for the bank-transaction categorization paths, especially split categorization and fresh-import categorization by bank transaction id.
-- Drop or replace the low-value transfer selector test in `tests/unit/transaction-table.test.ts`; meaningful coverage belongs in focused category-selector tests for transfer option filtering, direction labels, and selection callback payloads.
+- Add missing authorization coverage for the bank-transaction categorization paths. Still relevant: `tests/unit/ledger-categorization-server.test.ts` only has a category-path denial for `user-2` against an already-interpreted bank transaction; it does not directly cover split authorization or the fresh-import/no-existing-interpretation path by `bankTransactionId`.
+  - Add tests at the server-function boundary, not Zero dispatch tests: call `categorizeBankTransaction` and `splitBankTransaction` inside `db.transaction` and assert persisted rows are unchanged or absent after denial.
+  - Extend the fixture with a team-2 bank account, matching team-2 bank-linked ledger account, and an unreconciled team-2 bank transaction. Then assert `user-1` cannot categorize or split that team-2 bank transaction (`Bank transaction not found`) and no `ledgerPostings.bankTransactionId` row is created for it.
+  - Keep the existing invalid-category account coverage, but add a cross-team category case on a fresh team-1 bank transaction if it is not already explicit enough for the path being changed. The expected error should remain `Invalid categorization account` without creating a new interpretation.
+  - Focus on observable authorization outcomes: denied result/error plus no persisted interpretation. Avoid asserting Drizzle join shape or internal helper calls.
+- Drop or replace the low-value transfer selector test in `tests/unit/transaction-table.test.ts`. Still relevant: `keeps transfer choices available through row props for selector filtering` only proves the table renders a selector trigger and lacks a native `<select>`; it does not prove transfer filtering, labels, or selection behavior.
+  - Prefer deleting that table-level test unless `TransactionTable` itself owns a transfer-specific contract. The table should only need a narrow boundary test that rows receive `transferAccounts` if that plumbing is otherwise easy to break.
+  - Put meaningful transfer coverage in focused category-selector tests: exclude the current row's own bank account from transfer options, label negative amounts as `Transfer to: <account>` and positive amounts as `Transfer from: <account>`, filter transfer options by the search text, and call `onChoose({kind: 'transfer', accountId})` when a transfer option is selected.
+  - If selector tests are rewritten to render real popover/UI primitives, cover this through user-visible options and clicks rather than `renderToStaticMarkup` string checks or button-recorder mocks.
 
 ## Auth review
 

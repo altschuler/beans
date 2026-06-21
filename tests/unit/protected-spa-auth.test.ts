@@ -72,5 +72,7 @@ describe('Zero SPA protected auth', () => {
     expect(resolveAuthRedirectTarget(undefined)).toBe('/app')
     expect(resolveAuthRedirectTarget('https://evil.example/phish')).toBe('/app')
     expect(resolveAuthRedirectTarget('//evil.example/phish')).toBe('/app')
+    expect(resolveAuthRedirectTarget(`/app/transactions?${'x'.repeat(4096)}`)).toBe('/app')
+    expect(resolveAuthRedirectTarget('/login?redirect=/app/transactions')).toBe('/app')
   })
 })

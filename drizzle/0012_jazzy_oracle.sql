@@ -1,0 +1,2 @@
+ALTER TABLE "bank_transactions" ALTER COLUMN "amount" SET DATA TYPE bigint USING round("amount" * 10000)::bigint;--> statement-breakpoint
+ALTER TABLE "ledger_postings" ALTER COLUMN "amount" SET DATA TYPE bigint USING round("amount" * 10000)::bigint;

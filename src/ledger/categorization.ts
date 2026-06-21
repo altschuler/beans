@@ -1,10 +1,12 @@
+import {absoluteMoneyAmount, assertSafeMoneyAmount, parseDecimalMoneyToAmount} from '@/lib/money'
+
 export type CategorizationLineInput = {
   accountId: string
   amount: string
 }
 
 export type BankLinkedCategorizationLinesInput = {
-  bankAmount: string
+  bankAmount: number
   lines: CategorizationLineInput[]
 }
 
@@ -12,7 +14,7 @@ export type LedgerPostingInput = {
   id?: string
   ledgerTransactionId: string
   accountId: string
-  amount: string
+  amount: number
   currency: string
   bankTransactionId?: string | null
   sortOrder?: number
@@ -23,7 +25,7 @@ export type BuiltLedgerPosting = {
   id: string
   ledgerTransactionId: string
   accountId: string
-  amount: string
+  amount: number
   currency: string
   bankTransactionId: string | null
   sortOrder: number
@@ -35,7 +37,7 @@ export type ReconciledBankPosting = {
   id: string
   ledgerTransactionId: string
   accountId: string
-  amount: string
+  amount: number
   currency: string
   bankTransactionId: string
 }
@@ -43,7 +45,7 @@ export type ReconciledBankPosting = {
 export type BankTransactionPostingSource = {
   bankTransactionId: string
   bankLedgerAccountId: string
-  amount: string
+  amount: number
   currency: string
 }
 
@@ -69,7 +71,7 @@ export type BalanceAccount = {
 
 export type BalancePosting = {
   accountId: string
-  amount: string
+  amount: number
   currency?: string | null
 }
 
@@ -80,8 +82,6 @@ export type CategorizationAccountCandidate = {
   linkedBankAccountId?: string | null
 }
 
-const MONEY_SCALE = 4n
-const MONEY_FACTOR = 10_000n
 const REAL_CATEGORIZATION_ACCOUNT_TYPES = new Set(['income', 'expense', 'savings'])
 
 export function validateBankLinkedCategorizationLines(input: BankLinkedCategorizationLinesInput) {
@@ -89,19 +89,20 @@ export function validateBankLinkedCategorizationLines(input: BankLinkedCategoriz
     throw new Error('At least one categorization line is required')
   }
 
-  const bankAmountUnits = parseMoneyToScaledUnits(input.bankAmount)
-  if (bankAmountUnits === 0n) {
+  const bankAmountUnits = input.bankAmount
+  assertSafeMoneyAmount(bankAmountUnits)
+  if (bankAmountUnits === 0) {
     throw new Error('Bank transaction amount must be non-zero')
   }
 
-  const expectedTotal = absoluteBigInt(bankAmountUnits)
-  const lineUnits = input.lines.map(line => parseMoneyToScaledUnits(line.amount))
+  const expectedTotal = absoluteMoneyAmount(bankAmountUnits)
+  const lineUnits = input.lines.map(line => parseDecimalMoneyToAmount(line.amount))
 
-  if (lineUnits.some(amount => amount <= 0n)) {
+  if (lineUnits.some(amount => amount <= 0)) {
     throw new Error('Split amounts must be positive')
   }
 
-  const actualTotal = lineUnits.reduce((total, amount) => total + amount, 0n)
+  const actualTotal = lineUnits.reduce((total, amount) => total + amount, 0)
   if (actualTotal !== expectedTotal) {
     throw new Error('Split total must equal the bank transaction amount')
   }
@@ -119,12 +120,12 @@ export function buildBankLinkedCategorizationPostings(input: {
     lines: input.lines,
   })
   const now = input.now ?? new Date()
-  const explanatorySign = bankAmountUnits > 0n ? -1n : 1n
+  const explanatorySign = bankAmountUnits > 0 ? -1 : 1
   const bankPosting: BuiltLedgerPosting = {
     id: input.bankPosting.id,
     ledgerTransactionId: input.bankPosting.ledgerTransactionId,
     accountId: input.bankPosting.accountId,
-    amount: formatScaledUnits(bankAmountUnits),
+    amount: bankAmountUnits,
     currency: input.bankPosting.currency,
     bankTransactionId: input.bankPosting.bankTransactionId,
     sortOrder: 0,
@@ -136,7 +137,7 @@ export function buildBankLinkedCategorizationPostings(input: {
     id: crypto.randomUUID(),
     ledgerTransactionId: input.bankPosting.ledgerTransactionId,
     accountId: line.accountId,
-    amount: formatScaledUnits((lineUnits[index] ?? 0n) * explanatorySign),
+    amount: (lineUnits[index] ?? 0) * explanatorySign,
     currency: input.bankPosting.currency,
     bankTransactionId: null,
     sortOrder: index + 1,
@@ -150,8 +151,9 @@ export function buildBankLinkedCategorizationPostings(input: {
 }
 
 export function buildBankTransactionCategorizationPostings(input: BankTransactionInterpretationInput): BuiltLedgerPosting[] {
-  const sourceAmountUnits = parseMoneyToScaledUnits(input.source.amount)
-  if (sourceAmountUnits === 0n) {
+  const sourceAmountUnits = input.source.amount
+  assertSafeMoneyAmount(sourceAmountUnits)
+  if (sourceAmountUnits === 0) {
     throw new Error('Bank transaction amount must be non-zero')
   }
 
@@ -160,13 +162,13 @@ export function buildBankTransactionCategorizationPostings(input: BankTransactio
     lines: input.lines,
   })
   const now = input.now ?? new Date()
-  const explanatorySign = sourceAmountUnits > 0n ? -1n : 1n
+  const explanatorySign = sourceAmountUnits > 0 ? -1 : 1
   const postings: BuiltLedgerPosting[] = [
     {
       id: crypto.randomUUID(),
       ledgerTransactionId: input.ledgerTransactionId,
       accountId: input.source.bankLedgerAccountId,
-      amount: formatScaledUnits(sourceAmountUnits),
+      amount: sourceAmountUnits,
       currency: input.source.currency,
       bankTransactionId: input.source.bankTransactionId,
       sortOrder: 0,
@@ -177,7 +179,7 @@ export function buildBankTransactionCategorizationPostings(input: BankTransactio
       id: crypto.randomUUID(),
       ledgerTransactionId: input.ledgerTransactionId,
       accountId: line.accountId,
-      amount: formatScaledUnits((lineUnits[index] ?? 0n) * explanatorySign),
+      amount: (lineUnits[index] ?? 0) * explanatorySign,
       currency: input.source.currency,
       bankTransactionId: null,
       sortOrder: index + 1,
@@ -191,8 +193,9 @@ export function buildBankTransactionCategorizationPostings(input: BankTransactio
 }
 
 export function buildBankTransactionTransferPostings(input: BankTransactionTransferInput): BuiltLedgerPosting[] {
-  const sourceAmountUnits = parseMoneyToScaledUnits(input.source.amount)
-  if (sourceAmountUnits === 0n) {
+  const sourceAmountUnits = input.source.amount
+  assertSafeMoneyAmount(sourceAmountUnits)
+  if (sourceAmountUnits === 0) {
     throw new Error('Bank transaction amount must be non-zero')
   }
 
@@ -202,7 +205,7 @@ export function buildBankTransactionTransferPostings(input: BankTransactionTrans
       id: crypto.randomUUID(),
       ledgerTransactionId: input.ledgerTransactionId,
       accountId: input.source.bankLedgerAccountId,
-      amount: formatScaledUnits(sourceAmountUnits),
+      amount: sourceAmountUnits,
       currency: input.source.currency,
       bankTransactionId: input.source.bankTransactionId,
       sortOrder: 0,
@@ -213,7 +216,7 @@ export function buildBankTransactionTransferPostings(input: BankTransactionTrans
       id: crypto.randomUUID(),
       ledgerTransactionId: input.ledgerTransactionId,
       accountId: input.targetLedgerAccountId,
-      amount: formatScaledUnits(-sourceAmountUnits),
+      amount: -sourceAmountUnits,
       currency: input.source.currency,
       bankTransactionId: input.counterBankTransactionId,
       sortOrder: 1,
@@ -226,27 +229,27 @@ export function buildBankTransactionTransferPostings(input: BankTransactionTrans
   return postings
 }
 
-export function validateLedgerPostingsBalance(postings: Array<{amount: string; currency: string}>) {
+export function validateLedgerPostingsBalance(postings: Array<{amount: number; currency: string}>) {
   if (postings.length < 2) {
     throw new Error('Ledger transaction must have at least two postings')
   }
 
-  const totalsByCurrency = new Map<string, bigint>()
+  const totalsByCurrency = new Map<string, number>()
   for (const posting of postings) {
-    const amount = parseMoneyToScaledUnits(posting.amount)
-    if (amount === 0n) {
+    assertSafeMoneyAmount(posting.amount)
+    if (posting.amount === 0) {
       throw new Error('Ledger postings must be non-zero')
     }
-    totalsByCurrency.set(posting.currency, (totalsByCurrency.get(posting.currency) ?? 0n) + amount)
+    totalsByCurrency.set(posting.currency, (totalsByCurrency.get(posting.currency) ?? 0) + posting.amount)
   }
 
-  if ([...totalsByCurrency.values()].some(total => total !== 0n)) {
+  if ([...totalsByCurrency.values()].some(total => total !== 0)) {
     throw new Error('Ledger postings must balance to zero per currency')
   }
 }
 
-export function deriveLedgerAccountBalances(accounts: BalanceAccount[], postings: BalancePosting[]) {
-  const balancesByAccount = new Map(accounts.map(account => [account.id, new Map<string, bigint>()]))
+export function deriveLedgerAccountBalances(accounts: BalanceAccount[], postings: BalancePosting[]): Map<string, number | 'Multiple currencies'> {
+  const balancesByAccount = new Map(accounts.map(account => [account.id, new Map<string, number>()]))
   const normalBalances = new Map(accounts.map(account => [account.id, account.normalBalance]))
 
   for (const posting of postings) {
@@ -254,19 +257,37 @@ export function deriveLedgerAccountBalances(accounts: BalanceAccount[], postings
     const accountBalances = balancesByAccount.get(posting.accountId)
     if (!normalBalance || !accountBalances) continue
     const currency = posting.currency ?? ''
-    const amount = parseMoneyToScaledUnits(posting.amount)
-    const displayAmount = normalBalance === 'credit' ? -amount : amount
-    accountBalances.set(currency, (accountBalances.get(currency) ?? 0n) + displayAmount)
+    assertSafeMoneyAmount(posting.amount)
+    const displayAmount = normalBalance === 'credit' ? -posting.amount : posting.amount
+    accountBalances.set(currency, (accountBalances.get(currency) ?? 0) + displayAmount)
   }
 
-  return new Map(
+  return new Map<string, number | 'Multiple currencies'>(
     [...balancesByAccount.entries()].map(([accountId, balancesByCurrency]) => {
-      const nonZeroBalances = [...balancesByCurrency.values()].filter(balance => balance !== 0n)
-      if (nonZeroBalances.length === 0) return [accountId, '0.0000']
-      if (nonZeroBalances.length > 1) return [accountId, 'Multiple currencies']
-      return [accountId, formatScaledUnits(nonZeroBalances[0]!)]
+      const nonZeroBalances = [...balancesByCurrency.values()].filter(balance => balance !== 0)
+      if (nonZeroBalances.length === 0) return [accountId, 0] as const
+      if (nonZeroBalances.length > 1) return [accountId, 'Multiple currencies'] as const
+      return [accountId, nonZeroBalances[0]!] as const
     }),
   )
+}
+
+// Picks the single currency to display an account balance in: the lone currency with a
+// non-zero net, or (when everything nets to zero) the lone currency seen at all. Returns
+// null when the account mixes currencies or has no postings.
+export function deriveSingleBalanceCurrency(accountId: string, postings: Array<{accountId: string; amount: number; currency: string}>) {
+  const totalsByCurrency = new Map<string, number>()
+  for (const posting of postings) {
+    if (posting.accountId !== accountId) continue
+    totalsByCurrency.set(posting.currency, (totalsByCurrency.get(posting.currency) ?? 0) + posting.amount)
+  }
+
+  const nonZeroCurrencies = [...totalsByCurrency.entries()].filter(([, amount]) => amount !== 0).map(([currency]) => currency)
+  if (nonZeroCurrencies.length === 1) return nonZeroCurrencies[0]!
+  if (nonZeroCurrencies.length > 1) return null
+
+  const allCurrencies = [...totalsByCurrency.keys()]
+  return allCurrencies.length === 1 ? allCurrencies[0]! : null
 }
 
 export function isRealCategorizationAccount(account: CategorizationAccountCandidate) {
@@ -282,28 +303,3 @@ export function isCategorizationAccount(account: CategorizationAccountCandidate)
   return isRealCategorizationAccount(account)
 }
 
-export function parseMoneyToScaledUnits(value: string) {
-  const trimmed = value.trim()
-  const sign = trimmed.startsWith('-') ? -1n : 1n
-  const unsigned = trimmed.replace(/^[+-]/, '')
-  const [wholePart = '', fractionalPart = ''] = unsigned.split('.')
-
-  if (!/^\d+$/.test(wholePart || '0') || !/^\d*$/.test(fractionalPart) || fractionalPart.length > Number(MONEY_SCALE)) {
-    throw new Error('Invalid money amount')
-  }
-
-  const paddedFraction = fractionalPart.padEnd(Number(MONEY_SCALE), '0')
-  return sign * (BigInt(wholePart || '0') * MONEY_FACTOR + BigInt(paddedFraction || '0'))
-}
-
-export function formatScaledUnits(value: bigint) {
-  const sign = value < 0n ? '-' : ''
-  const absolute = absoluteBigInt(value)
-  const whole = absolute / MONEY_FACTOR
-  const fractional = (absolute % MONEY_FACTOR).toString().padStart(Number(MONEY_SCALE), '0')
-  return `${sign}${whole}.${fractional}`
-}
-
-function absoluteBigInt(value: bigint) {
-  return value < 0n ? -value : value
-}

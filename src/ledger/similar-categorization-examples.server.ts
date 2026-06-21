@@ -2,6 +2,7 @@ import '@tanstack/react-start/server-only'
 
 import {and, desc, eq, inArray, isNotNull, isNull, sql} from 'drizzle-orm'
 import type {Database} from '@/db/client'
+import {formatMoneyDecimal, moneySign} from '@/lib/money'
 import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from '@/db/schema'
 
 type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
@@ -14,7 +15,7 @@ export type SimilarCategorizationTargetTransaction = {
   teamId: string
   date: string | null
   description: string
-  amount: string
+  amount: number
   currency: string
   bankAccountName: string
   counterpartyName: string | null
@@ -45,7 +46,7 @@ type CandidateTransactionRow = {
   teamId: string
   date: string | null
   description: string
-  amount: string
+  amount: number
   currency: string
   counterpartyName: string | null
   categorizedBy: CategorizedBy
@@ -195,7 +196,7 @@ function addCandidateRows(
     teamId: string
     date: string | null
     description: string
-    amount: unknown
+    amount: number
     currency: string
     counterpartyName: string | null
     categorizedBy: string | null
@@ -207,7 +208,7 @@ function addCandidateRows(
       teamId: row.teamId,
       date: row.date,
       description: row.description,
-      amount: String(row.amount),
+      amount: row.amount,
       currency: row.currency,
       counterpartyName: row.counterpartyName,
       categorizedBy: row.categorizedBy === 'user' || row.categorizedBy === 'ai' ? row.categorizedBy : null,
@@ -291,7 +292,7 @@ function scoreCandidate(target: SimilarCategorizationTargetTransaction, candidat
     date: candidate.date,
     description: candidate.description,
     counterpartyName: candidate.counterpartyName,
-    amount: candidate.amount,
+    amount: formatMoneyDecimal(candidate.amount, candidate.currency),
     currency: candidate.currency,
     categoryAccountId: candidate.categoryAccountId,
     categoryName: candidate.categoryName,
@@ -357,21 +358,15 @@ function tokenSimilarity(left: string, right: string) {
   return intersection / union
 }
 
-function similarAmountScore(left: string, right: string) {
-  const leftAmount = Math.abs(Number(left))
-  const rightAmount = Math.abs(Number(right))
-  if (!Number.isFinite(leftAmount) || !Number.isFinite(rightAmount) || leftAmount === 0 || rightAmount === 0) return 0
+function similarAmountScore(left: number, right: number) {
+  const leftAmount = Math.abs(left)
+  const rightAmount = Math.abs(right)
+  if (leftAmount === 0 || rightAmount === 0) return 0
   const ratio = Math.min(leftAmount, rightAmount) / Math.max(leftAmount, rightAmount)
   if (ratio >= 0.98) return 150
   if (ratio >= 0.9) return 100
   if (ratio >= 0.75) return 40
   return 0
-}
-
-function moneySign(value: string) {
-  const amount = Number(value)
-  if (!Number.isFinite(amount) || amount === 0) return 0
-  return amount > 0 ? 1 : -1
 }
 
 function recencyScore(date: string | null) {

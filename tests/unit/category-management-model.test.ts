@@ -17,8 +17,8 @@ const accounts = [
 ]
 
 const postings = [
-  {id: 'posting-groceries', ledgerTransactionId: 'ledger-1', accountId: 'groceries', amount: '100.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 1},
-  {id: 'posting-checking', ledgerTransactionId: 'ledger-1', accountId: 'checking', amount: '-100.0000', currency: 'DKK', bankTransactionId: 'bank-transaction-1', sortOrder: 0},
+  {id: 'posting-groceries', ledgerTransactionId: 'ledger-1', accountId: 'groceries', amount: 1_000_000, currency: 'DKK', bankTransactionId: null, sortOrder: 1},
+  {id: 'posting-checking', ledgerTransactionId: 'ledger-1', accountId: 'checking', amount: -1_000_000, currency: 'DKK', bankTransactionId: 'bank-transaction-1', sortOrder: 0},
 ]
 
 describe('buildCategoryManagementModel', () => {
@@ -46,7 +46,8 @@ describe('buildCategoryManagementModel', () => {
       description: 'Food shops',
       type: 'expense',
       typeLabel: 'Expense',
-      balance: '100.0000',
+      balance: 1_000_000,
+      balanceCurrency: 'DKK',
       postingCount: 1,
     })
     expect(model.editableGroups).toEqual([
@@ -56,13 +57,30 @@ describe('buildCategoryManagementModel', () => {
     expect(model.categoryCount).toBe(3)
   })
 
+  it('uses the non-zero balance currency when another currency nets to zero', () => {
+    const model = buildCategoryManagementModel({
+      groups,
+      accounts,
+      postings: [
+        ...postings,
+        {id: 'posting-groceries-eur-in', ledgerTransactionId: 'ledger-2', accountId: 'groceries', amount: 100_000, currency: 'EUR', bankTransactionId: null, sortOrder: 0},
+        {id: 'posting-groceries-eur-out', ledgerTransactionId: 'ledger-3', accountId: 'groceries', amount: -100_000, currency: 'EUR', bankTransactionId: null, sortOrder: 0},
+      ],
+    })
+
+    expect(model.groups.find(group => group.id === 'spending-group')?.accounts.find(account => account.id === 'groceries')).toMatchObject({
+      balance: 1_000_000,
+      balanceCurrency: 'DKK',
+    })
+  })
+
   it('keeps multiple-currency balances displayable', () => {
     const model = buildCategoryManagementModel({
       groups,
       accounts,
       postings: [
         ...postings,
-        {id: 'posting-groceries-eur', ledgerTransactionId: 'ledger-2', accountId: 'groceries', amount: '10.0000', currency: 'EUR', bankTransactionId: null, sortOrder: 0},
+        {id: 'posting-groceries-eur', ledgerTransactionId: 'ledger-2', accountId: 'groceries', amount: 100_000, currency: 'EUR', bankTransactionId: null, sortOrder: 0},
       ],
     })
 

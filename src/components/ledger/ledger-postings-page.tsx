@@ -1,6 +1,7 @@
 import {useRef} from 'react'
 import {useQuery} from '@rocicorp/zero/react'
 import {useVirtualizer} from '@tanstack/react-virtual'
+import {Currency} from '@/components/currency'
 import {PageLayout} from '@/components/page-layout'
 import {queries} from '@/zero/queries'
 
@@ -9,7 +10,7 @@ type LedgerPostingRow = {
   ledgerTransactionId: string
   accountName: string
   date: string
-  amount: string
+  amount: number
   currency: string
   bankTransactionId: string
   sortOrder: number | null
@@ -70,7 +71,9 @@ export function LedgerPostingsPage() {
                       <td className="px-3 py-2 font-mono text-xs">{row.ledgerTransactionId}</td>
                       <td className="px-3 py-2 font-mono text-xs">{row.id}</td>
                       <td className="px-3 py-2">{row.accountName}</td>
-                      <td className="px-3 py-2 text-right font-mono">{row.amount}</td>
+                      <td className="px-3 py-2 text-right font-mono">
+                        <Currency amount={row.amount} currency={row.currency} />
+                      </td>
                       <td className="px-3 py-2">{row.currency}</td>
                       <td className="px-3 py-2 font-mono text-xs">{row.bankTransactionId}</td>
                       <td className="px-3 py-2 text-right font-mono">{row.sortOrder ?? '—'}</td>
@@ -93,7 +96,7 @@ function buildLedgerPostingRows(input: {
     id: string
     ledgerTransactionId: string
     accountId: string
-    amount: string | number
+    amount: number
     currency: string
     bankTransactionId?: string | null
     sortOrder: number | null
@@ -113,7 +116,7 @@ function buildLedgerPostingRows(input: {
         ledgerTransactionId: posting.ledgerTransactionId,
         accountName: accountsById.get(posting.accountId)?.name ?? 'Unknown account',
         date: ledgerTransaction?.date ?? bankTransaction?.bookingDate ?? bankTransaction?.valueDate ?? '—',
-        amount: String(posting.amount),
+        amount: posting.amount,
         currency: posting.currency,
         bankTransactionId: posting.bankTransactionId ?? '—',
         sortOrder: posting.sortOrder,

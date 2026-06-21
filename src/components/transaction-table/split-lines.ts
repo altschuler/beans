@@ -1,4 +1,4 @@
-import {formatScaledUnits, parseMoneyToScaledUnits} from '@/ledger/categorization'
+import {absoluteMoneyAmount, DEFAULT_CURRENCY, formatMoneyDecimal, parseDecimalMoneyToAmount} from '@/lib/money'
 import type {CategorizationAccountOption, SplitLine, TransactionTableRow} from './types'
 
 const MINIMUM_SPLIT_LINES = 2
@@ -12,7 +12,7 @@ export function getInitialSplitLines(row: TransactionTableRow, categorizationAcc
 
   return normalizeSplitLines(
     [
-      {accountId: fallbackAccountId, amount: row.amount.replace(/^-/, '')},
+      {accountId: fallbackAccountId, amount: formatMoneyDecimal(absoluteMoneyAmount(row.amount), row.currency)},
       {accountId: categorizationAccounts[0]?.id ?? fallbackAccountId, amount: ''},
     ],
     categorizationAccounts,
@@ -43,27 +43,23 @@ export function canRemoveSplitLine(splitLines: SplitLine[]) {
   return splitLines.length > MINIMUM_SPLIT_LINES
 }
 
-export function fillRemainingSplitAmount(splitLines: SplitLine[], indexToFill: number, transactionAmount: string): SplitLine[] {
-  const transactionTotal = absoluteBigInt(parseMoneyToScaledUnits(transactionAmount))
+export function fillRemainingSplitAmount(splitLines: SplitLine[], indexToFill: number, transactionAmount: number, currency = DEFAULT_CURRENCY): SplitLine[] {
+  const transactionTotal = absoluteMoneyAmount(transactionAmount)
   const otherLinesTotal = splitLines.reduce((total, line, lineIndex) => {
     if (lineIndex === indexToFill) return total
-    return total + parseOptionalMoneyToScaledUnits(line.amount)
-  }, 0n)
+    return total + parseOptionalMoneyToAmount(line.amount)
+  }, 0)
   const remainingAmount = transactionTotal - otherLinesTotal
 
-  return splitLines.map((line, lineIndex) => (lineIndex === indexToFill ? {...line, amount: formatScaledUnits(remainingAmount)} : line))
+  return splitLines.map((line, lineIndex) => (lineIndex === indexToFill ? {...line, amount: formatMoneyDecimal(remainingAmount, currency)} : line))
 }
 
-function parseOptionalMoneyToScaledUnits(value: string) {
-  if (value.trim() === '') return 0n
+function parseOptionalMoneyToAmount(value: string) {
+  if (value.trim() === '') return 0
 
   try {
-    return parseMoneyToScaledUnits(value)
+    return parseDecimalMoneyToAmount(value)
   } catch {
-    return 0n
+    return 0
   }
-}
-
-function absoluteBigInt(value: bigint) {
-  return value < 0n ? -value : value
 }

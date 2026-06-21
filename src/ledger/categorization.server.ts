@@ -1,6 +1,7 @@
 import '@tanstack/react-start/server-only'
 
 import {and, eq, inArray, isNotNull, isNull} from 'drizzle-orm'
+import {absoluteMoneyAmount, formatMoneyDecimal} from '@/lib/money'
 import type {DrizzleTransaction as ZeroDrizzleTransaction} from '@rocicorp/zero/server/adapters/drizzle'
 import type {Database} from '@/db/client'
 import {bankAccounts, bankTransactions, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from '@/db/schema'
@@ -9,8 +10,6 @@ import {
   buildBankTransactionCategorizationPostings,
   buildBankTransactionTransferPostings,
   isRealCategorizationAccount,
-  formatScaledUnits,
-  parseMoneyToScaledUnits,
   validateLedgerPostingsBalance,
   type BuiltLedgerPosting,
   type CategorizationLineInput,
@@ -67,8 +66,8 @@ type ClearLedgerCategorizationsInput = {
 
 type LoadedImportedLedgerTransaction = {
   ledgerTransaction: {id: string; teamId: string; source: string; status: string}
-  bankPosting: {id: string; ledgerTransactionId: string; accountId: string; amount: string; currency: string; bankTransactionId: string}
-  bankTransaction: {id: string; bankAccountId: string; amount: string; currency: string; aiProcessingStartedAt: Date | null}
+  bankPosting: {id: string; ledgerTransactionId: string; accountId: string; amount: number; currency: string; bankTransactionId: string}
+  bankTransaction: {id: string; bankAccountId: string; amount: number; currency: string; aiProcessingStartedAt: Date | null}
 }
 
 type LoadedBankTransactionForCategorization = {
@@ -76,7 +75,7 @@ type LoadedBankTransactionForCategorization = {
   bankTransaction: {
     id: string
     bankAccountId: string
-    amount: string
+    amount: number
     currency: string
     bookingDate: string | null
     valueDate: string | null
@@ -196,7 +195,7 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
 
   const lines =
     input.interpretation.kind === 'category'
-      ? [{accountId: input.interpretation.accountId, amount: absoluteMoneyString(loaded.bankTransaction.amount)}]
+      ? [{accountId: input.interpretation.accountId, amount: formatMoneyDecimal(absoluteMoneyAmount(loaded.bankTransaction.amount), loaded.bankTransaction.currency)}]
       : input.interpretation.lines
 
   await validateCategorizationAccounts(tx, loaded.teamId, lines.map(line => line.accountId))
@@ -410,11 +409,11 @@ async function findExactCounterBankTransaction(input: {
   teamId: string
   sourceBankTransactionId: string
   targetBankAccountId: string
-  sourceAmount: string
+  sourceAmount: number
   currency: string
   sourceDate: string | null
 }) {
-  const expectedAmount = formatScaledUnits(-parseMoneyToScaledUnits(input.sourceAmount))
+  const expectedAmount = -input.sourceAmount
   const rows = await input.tx
     .select({id: bankTransactions.id, bookingDate: bankTransactions.bookingDate, valueDate: bankTransactions.valueDate})
     .from(bankTransactions)
@@ -574,7 +573,7 @@ function validateReconciledPostingInvariant(input: ReconciledPostingInvariantInp
     throw new Error('Reconciled posting account must match the bank transaction account')
   }
 
-  if (parseMoneyToScaledUnits(input.bankPosting.amount) !== parseMoneyToScaledUnits(input.bankTransaction.amount)) {
+  if (input.bankPosting.amount !== input.bankTransaction.amount) {
     throw new Error('Reconciled posting amount must match the bank transaction amount')
   }
 
@@ -673,7 +672,7 @@ async function validateConfirmableInterpretationPostings(tx: DrizzleTransaction,
       !posting.linkedBankAccountId ||
       posting.linkedBankAccountId !== bankTransaction.bankAccountId ||
       bankTransaction.teamId !== teamId ||
-      !moneyAmountsEqual(posting.amount, bankTransaction.amount) ||
+      posting.amount !== bankTransaction.amount ||
       posting.currency !== bankTransaction.currency
     )
   })
@@ -721,18 +720,6 @@ function requireAiReasoning(reasoning: string | null | undefined) {
     throw new Error('AI reasoning is required')
   }
   return normalizedReasoning
-}
-
-function absoluteMoneyString(amount: string) {
-  return amount.trim().replace(/^[+-]/, '')
-}
-
-function moneyAmountsEqual(left: string, right: string) {
-  try {
-    return parseMoneyToScaledUnits(left) === parseMoneyToScaledUnits(right)
-  } catch {
-    return false
-  }
 }
 
 function isRecentlyProcessing(value: Date | string | number | null) {

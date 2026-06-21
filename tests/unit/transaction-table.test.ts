@@ -27,7 +27,7 @@ const row: TransactionTableRow = {
   description: 'Netto',
   date: '2026-06-18',
   bankAccountName: 'Checking',
-  amount: '-100.00',
+  amount: -1_000_000,
   currency: 'DKK',
   status: 'needs_review',
   needsReview: true,
@@ -155,7 +155,7 @@ describe('TransactionTable', () => {
   })
 
   it('keeps transfer choices available through row props for selector filtering', () => {
-    const positiveRow: TransactionTableRow = {...row, id: 'bank-transaction-2', bankTransactionId: 'bank-transaction-2', ledgerTransactionId: null, amount: '100.00', categoryAccountId: null, categoryLabel: 'Choose category'}
+    const positiveRow: TransactionTableRow = {...row, id: 'bank-transaction-2', bankTransactionId: 'bank-transaction-2', ledgerTransactionId: null, amount: 1_000_000, categoryAccountId: null, categoryLabel: 'Choose category'}
     const markup = renderToStaticMarkup(
       React.createElement(TransactionTable, {
         rows: [positiveRow],

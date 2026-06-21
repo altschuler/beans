@@ -105,7 +105,7 @@ describe('drizzleBankingSyncRepository.upsertTransactions', () => {
     const {drizzleBankingSyncRepository} = await import('@/banking/repository.server')
     selectResults.push(
       [{id: 'bank-account-1', teamId: 'team-1', name: 'Checking', provider: 'gocardless', ledgerAccountId: 'checking-ledger'}],
-      [{id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: '100.0000', currency: 'DKK', reconciledPostingId: 'posting-1'}],
+      [{id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: 1_000_000, currency: 'DKK', reconciledPostingId: 'posting-1'}],
     )
 
     await expect(
@@ -115,7 +115,7 @@ describe('drizzleBankingSyncRepository.upsertTransactions', () => {
           status: 'booked',
           bookingDate: '2026-06-20',
           valueDate: undefined,
-          amount: '100.00',
+          amount: 1_000_000,
           currency: 'DKK',
           description: 'Updated description',
           counterpartyName: 'Shop',
@@ -144,7 +144,7 @@ describe('drizzleBankingSyncRepository.upsertTransactions', () => {
           status: 'booked',
           bookingDate: '2026-06-20',
           valueDate: undefined,
-          amount: '-100.00',
+          amount: -1_000_000,
           currency: 'DKK',
           description: 'Card purchase',
           counterpartyName: 'Shop',
@@ -162,7 +162,7 @@ describe('drizzleBankingSyncRepository.upsertTransactions', () => {
     const {drizzleBankingSyncRepository} = await import('@/banking/repository.server')
     selectResults.push(
       [{id: 'bank-account-1', teamId: 'team-1', name: 'Checking', provider: 'gocardless', ledgerAccountId: 'checking-ledger'}],
-      [{id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: '100.0000', currency: 'DKK', reconciledPostingId: 'posting-1'}],
+      [{id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: 1_000_000, currency: 'DKK', reconciledPostingId: 'posting-1'}],
     )
 
     await expect(
@@ -172,7 +172,7 @@ describe('drizzleBankingSyncRepository.upsertTransactions', () => {
           status: 'booked',
           bookingDate: '2026-06-20',
           valueDate: undefined,
-          amount: '101.00',
+          amount: 1_010_000,
           currency: 'DKK',
           description: 'Changed amount',
           counterpartyName: undefined,
@@ -189,7 +189,7 @@ describe('drizzleBankingSyncRepository.upsertTransactions', () => {
     const {drizzleBankingSyncRepository} = await import('@/banking/repository.server')
     selectResults.push(
       [{id: 'bank-account-2', teamId: 'team-1', name: 'Savings', provider: 'gocardless', ledgerAccountId: 'savings-ledger'}],
-      [{id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: '100.0000', currency: 'DKK', reconciledPostingId: 'posting-1'}],
+      [{id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: 1_000_000, currency: 'DKK', reconciledPostingId: 'posting-1'}],
     )
 
     await expect(
@@ -199,7 +199,7 @@ describe('drizzleBankingSyncRepository.upsertTransactions', () => {
           status: 'booked',
           bookingDate: '2026-06-20',
           valueDate: undefined,
-          amount: '100.00',
+          amount: 1_000_000,
           currency: 'DKK',
           description: 'Moved account',
           counterpartyName: undefined,
@@ -215,7 +215,7 @@ describe('drizzleBankingSyncRepository.upsertTransactions', () => {
     const {drizzleBankingSyncRepository} = await import('@/banking/repository.server')
     selectResults.push(
       [{id: 'bank-account-1', teamId: 'team-1', name: 'Checking', provider: 'gocardless', ledgerAccountId: 'checking-ledger'}],
-      [{id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: '100.0000', currency: 'DKK', reconciledPostingId: 'posting-1'}],
+      [{id: 'bank-transaction-1', bankAccountId: 'bank-account-1', amount: 1_000_000, currency: 'DKK', reconciledPostingId: 'posting-1'}],
     )
 
     await expect(
@@ -225,7 +225,7 @@ describe('drizzleBankingSyncRepository.upsertTransactions', () => {
           status: 'booked',
           bookingDate: '2026-06-20',
           valueDate: undefined,
-          amount: '100.00',
+          amount: 1_000_000,
           currency: 'EUR',
           description: 'Changed currency',
           counterpartyName: undefined,

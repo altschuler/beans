@@ -47,7 +47,8 @@ describe('SplitEditor', () => {
         ],
         setSplitLines: vi.fn(),
         categorizationAccounts: accounts,
-        transactionAmount: '-100.00',
+        transactionAmount: -1_000_000,
+        currency: 'DKK',
         onBack: vi.fn(),
         onCancel: vi.fn(),
         onSave: vi.fn(),
@@ -74,7 +75,8 @@ describe('SplitEditor', () => {
         ],
         setSplitLines,
         categorizationAccounts: accounts,
-        transactionAmount: '-100.00',
+        transactionAmount: -1_000_000,
+        currency: 'DKK',
         onBack: vi.fn(),
         onCancel: vi.fn(),
         onSave: vi.fn(),
@@ -99,7 +101,8 @@ describe('SplitEditor', () => {
         ],
         setSplitLines,
         categorizationAccounts: accounts,
-        transactionAmount: '-100.00',
+        transactionAmount: -1_000_000,
+        currency: 'DKK',
         onBack: vi.fn(),
         onCancel: vi.fn(),
         onSave: vi.fn(),
@@ -110,7 +113,7 @@ describe('SplitEditor', () => {
 
     expect(setSplitLines).toHaveBeenCalledWith([
       {accountId: 'groceries', amount: '25.00'},
-      {accountId: 'household', amount: '70.0000'},
+      {accountId: 'household', amount: '70.00'},
       {accountId: 'groceries', amount: '5.00'},
     ] satisfies SplitLine[])
   })

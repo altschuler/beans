@@ -17,11 +17,20 @@ describe('normalizeGoCardlessTransaction', () => {
       status: 'booked',
       bookingDate: '2026-06-01',
       valueDate: '2026-06-02',
-      amount: '-42.50',
+      amount: -425_000,
       currency: 'DKK',
       description: 'Groceries',
       counterpartyName: 'Shop',
     })
+  })
+
+  it('rounds provider amounts to scale 4 during normalization', () => {
+    expect(
+      normalizeGoCardlessTransaction('booked', {
+        transactionId: 'tx-rounding',
+        transactionAmount: {amount: '-42.12345', currency: 'DKK'},
+      }),
+    ).toMatchObject({amount: -421_235})
   })
 
   it('creates a stable fallback id when transactionId is missing', () => {

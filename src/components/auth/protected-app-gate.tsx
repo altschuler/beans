@@ -4,6 +4,7 @@ import {authClient} from '@/auth/client'
 import {Shell} from '@/components/layout/shell'
 import {AppZeroProvider} from '@/components/zero/app-zero-provider'
 import {ensureCurrentUserPersonalTeam} from '@/teams/personal-team-fns'
+import {resolveAuthRedirectTarget} from './redirect'
 
 type ProtectedUser = {
   id: string
@@ -34,7 +35,7 @@ export function ProtectedAppGate({children}: {children: ReactNode}) {
   useEffect(() => {
     if (session.isPending || userId) return
 
-    void router.navigate({to: '/login', search: {redirect: href}})
+    void router.navigate({to: '/login', search: {redirect: resolveAuthRedirectTarget(href)}})
   }, [href, router, session.isPending, userId])
 
   useEffect(() => {

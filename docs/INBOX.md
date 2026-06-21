@@ -1,5 +1,6 @@
 # Inbox
 
+- 2026-06-21: `pnpm test:e2e` smoke currently expects the banking dashboard at `/app`, but `/app` now renders the intentional welcome page and the banking dashboard lives at `/app/banks`. Update the smoke flow or route expectation before using e2e as a merge gate.
 - 2026-06-20: Vite 8 warns that `vite-tsconfig-paths` is now redundant because `resolve.tsconfigPaths: true` is built in. Consider replacing the plugin to remove repeated build/test warnings.
 - 2026-06-20: `AGENTS.md` still points to several missing docs (`docs/FRONTEND.md`, `docs/I18N.md`, `docs/ENVIRONMENT.md`, `docs/TESTING.md`, `docs/CODESTYLE.md`, `docs/DATABASES.md`) while this checkout has only some renamed/partial equivalents. Agents changing frontend/auth/test areas need to fall back to available docs and source until the references are reconciled.
 - 2026-06-19: Database-backed unit tests must never point at the dev database. Test setup now requires `TEST_DATABASE_URL`, copies it into `DATABASE_URL`/`ZERO_UPSTREAM_DB`, and destructive helpers refuse DB names that do not look test-only. Use manual dev DB resets only when explicitly intended.

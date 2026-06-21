@@ -1,4 +1,5 @@
-import {deriveLedgerAccountBalances} from '@/ledger/categorization'
+import {MONEY_FACTOR} from '@/lib/money'
+import {deriveLedgerAccountBalances, deriveSingleBalanceCurrency} from '@/ledger/categorization'
 
 export type AccountDetailPeriod = 'weekly' | 'monthly'
 export type AccountDetailMode = 'spending' | 'linked_bank' | 'envelope_activity'
@@ -26,7 +27,7 @@ export type LedgerAccountDetailPosting = {
   id: string
   ledgerTransactionId: string
   accountId: string
-  amount: string | number
+  amount: number
   currency: string
   bankTransactionId?: string | null
   sortOrder: number | null
@@ -34,7 +35,7 @@ export type LedgerAccountDetailPosting = {
 export type LedgerAccountDetailBankTransaction = {
   id: string
   bankAccountId: string
-  amount: string | number
+  amount: number
   currency: string
   bookingDate: string | null
   valueDate: string | null
@@ -47,7 +48,7 @@ export type LedgerAccountDetailRow = {
   id: string
   date: string | null
   description: string
-  amount: string
+  amount: number
   currency: string
   context: string
 }
@@ -59,7 +60,8 @@ export type LedgerAccountDetailModel =
       accountId: string
       title: string
       groupName: string
-      currentBalance: string
+      currentBalance: number | 'Multiple currencies'
+      currentBalanceCurrency: string | null
       mode: AccountDetailMode
       period: AccountDetailPeriod
       chartType: AccountDetailChartType
@@ -91,34 +93,36 @@ export function buildLedgerAccountDetailModel(input: {
 
   const postings: NormalizedPosting[] = input.postings.map(posting => ({
     ...posting,
-    amount: String(posting.amount),
+    amount: posting.amount,
     sortOrder: posting.sortOrder ?? 0,
     bankTransactionId: posting.bankTransactionId ?? null,
   }))
-  const bankTransactions = input.bankTransactions.map(transaction => ({...transaction, amount: String(transaction.amount)}))
+  const bankTransactions = input.bankTransactions.map(transaction => ({...transaction}))
   const ledgerTransactionsById = new Map(input.ledgerTransactions.map(transaction => [transaction.id, transaction]))
   const bankTransactionsById = new Map(bankTransactions.map(transaction => [transaction.id, transaction]))
   const bankAccountNamesById = new Map(input.bankAccounts.map(bankAccount => [bankAccount.id, bankAccount.name]))
   const postingsByTransactionId = groupBy(postings, posting => posting.ledgerTransactionId)
   const groupName = input.groups.find(group => group.id === account.groupId)?.name ?? 'Ungrouped'
-  const currentBalance = deriveLedgerAccountBalances(accounts, postings).get(account.id) ?? '0.0000'
+  const currentBalance = deriveLedgerAccountBalances(accounts, postings).get(account.id) ?? 0
+  const currentBalanceCurrency = currentBalance === 'Multiple currencies' ? null : deriveSingleBalanceCurrency(account.id, postings)
   const mode = account.type === 'bank' && account.linkedBankAccountId ? 'linked_bank' : account.type === 'expense' ? 'spending' : 'envelope_activity'
 
   if (mode === 'linked_bank') {
-    return buildLinkedBankModel({account, groupName, currentBalance, period: input.period, postings, bankTransactionsById, bankAccountNamesById})
+    return buildLinkedBankModel({account, groupName, currentBalance, currentBalanceCurrency, period: input.period, postings, bankTransactionsById, bankAccountNamesById})
   }
 
   if (mode === 'spending') {
-    return buildSpendingModel({account, groupName, currentBalance, period: input.period, postings, ledgerTransactionsById, bankTransactionsById, bankAccountNamesById, postingsByTransactionId})
+    return buildSpendingModel({account, groupName, currentBalance, currentBalanceCurrency, period: input.period, postings, ledgerTransactionsById, bankTransactionsById, bankAccountNamesById, postingsByTransactionId})
   }
 
-  return buildEnvelopeActivityModel({account, groupName, currentBalance, period: input.period, postings, ledgerTransactionsById})
+  return buildEnvelopeActivityModel({account, groupName, currentBalance, currentBalanceCurrency, period: input.period, postings, ledgerTransactionsById})
 }
 
 function buildSpendingModel(input: {
   account: NormalizedAccount
   groupName: string
-  currentBalance: string
+  currentBalance: number | 'Multiple currencies'
+  currentBalanceCurrency: string | null
   period: AccountDetailPeriod
   postings: NormalizedPosting[]
   ledgerTransactionsById: Map<string, LedgerAccountDetailTransaction>
@@ -135,13 +139,14 @@ function buildSpendingModel(input: {
     const bankTransaction = input.bankTransactionsById.get(reconciledPosting.bankTransactionId)
     if (!bankTransaction) return []
     const date = preferredDate(bankTransaction.bookingDate, bankTransaction.valueDate, ledgerTransaction.date)
-    const amount = Number(posting.amount)
+    const amount = posting.amount
     return [
       {
         id: posting.id,
         date,
         description: bankTransaction.description,
         amount,
+        chartAmount: amount / MONEY_FACTOR,
         currency: posting.currency,
         context: input.bankAccountNamesById.get(bankTransaction.bankAccountId) ?? 'Unknown bank account',
       },
@@ -154,6 +159,7 @@ function buildSpendingModel(input: {
     title: input.account.name,
     groupName: input.groupName,
     currentBalance: input.currentBalance,
+    currentBalanceCurrency: input.currentBalanceCurrency,
     mode: 'spending',
     period: input.period,
     chartType: 'bar',
@@ -164,14 +170,15 @@ function buildSpendingModel(input: {
     rows: entries
       .slice()
       .sort(compareRowsNewestFirst)
-      .map(entry => ({...entry, amount: formatDisplayAmount(entry.amount)})),
+
   }
 }
 
 function buildLinkedBankModel(input: {
   account: NormalizedAccount
   groupName: string
-  currentBalance: string
+  currentBalance: number | 'Multiple currencies'
+  currentBalanceCurrency: string | null
   period: AccountDetailPeriod
   postings: NormalizedPosting[]
   bankTransactionsById: Map<string, NormalizedBankTransaction>
@@ -186,7 +193,8 @@ function buildLinkedBankModel(input: {
         id: posting.id,
         date: preferredDate(bankTransaction.bookingDate, bankTransaction.valueDate, null),
         description: bankTransaction.description,
-        amount: Number(posting.amount),
+        amount: posting.amount,
+        chartAmount: posting.amount / MONEY_FACTOR,
         currency: posting.currency,
         context: input.bankAccountNamesById.get(bankTransaction.bankAccountId) ?? 'Unknown bank account',
       },
@@ -199,6 +207,7 @@ function buildLinkedBankModel(input: {
     title: input.account.name,
     groupName: input.groupName,
     currentBalance: input.currentBalance,
+    currentBalanceCurrency: input.currentBalanceCurrency,
     mode: 'linked_bank',
     period: input.period,
     chartType: 'line',
@@ -209,14 +218,15 @@ function buildLinkedBankModel(input: {
     rows: entries
       .slice()
       .sort(compareRowsNewestFirst)
-      .map(entry => ({...entry, amount: formatDisplayAmount(entry.amount)})),
+
   }
 }
 
 function buildEnvelopeActivityModel(input: {
   account: NormalizedAccount
   groupName: string
-  currentBalance: string
+  currentBalance: number | 'Multiple currencies'
+  currentBalanceCurrency: string | null
   period: AccountDetailPeriod
   postings: NormalizedPosting[]
   ledgerTransactionsById: Map<string, LedgerAccountDetailTransaction>
@@ -231,6 +241,7 @@ function buildEnvelopeActivityModel(input: {
         date: ledgerTransaction?.date ?? null,
         description: ledgerTransaction?.description ?? 'Ledger posting',
         amount,
+        chartAmount: amount / MONEY_FACTOR,
         currency: posting.currency,
         context: ledgerTransaction?.source ?? 'ledger',
       },
@@ -243,6 +254,7 @@ function buildEnvelopeActivityModel(input: {
     title: input.account.name,
     groupName: input.groupName,
     currentBalance: input.currentBalance,
+    currentBalanceCurrency: input.currentBalanceCurrency,
     mode: 'envelope_activity',
     period: input.period,
     chartType: 'bar',
@@ -253,17 +265,17 @@ function buildEnvelopeActivityModel(input: {
     rows: entries
       .slice()
       .sort(compareRowsNewestFirst)
-      .map(entry => ({...entry, amount: formatDisplayAmount(entry.amount)})),
+
   }
 }
 
 type NormalizedAccount = LedgerAccountDetailAccount & {linkedBankAccountId: string | null; status: string; sortOrder: number}
-type NormalizedPosting = LedgerAccountDetailPosting & {amount: string; sortOrder: number; bankTransactionId: string | null}
-type NormalizedBankTransaction = LedgerAccountDetailBankTransaction & {amount: string}
-type NumericEntry = {id: string; date: string | null; description: string; amount: number; currency: string; context: string}
+type NormalizedPosting = LedgerAccountDetailPosting & {amount: number; sortOrder: number; bankTransactionId: string | null}
+type NormalizedBankTransaction = LedgerAccountDetailBankTransaction
+type NumericEntry = {id: string; date: string | null; description: string; amount: number; chartAmount: number; currency: string; context: string}
 
 function signedBalanceChangeForPosting(posting: NormalizedPosting, account: NormalizedAccount) {
-  const amount = Number(posting.amount)
+  const amount = posting.amount
   return account.normalBalance === 'credit' ? -amount : amount
 }
 
@@ -276,7 +288,7 @@ function aggregateEntries(entries: NumericEntry[], period: AccountDetailPeriod) 
     if (!entry.date) continue
     const bucket = periodBucket(entry.date, period)
     const existing = buckets.get(bucket.key) ?? {label: bucket.label, value: 0}
-    buckets.set(bucket.key, {label: bucket.label, value: roundMoney(existing.value + entry.amount)})
+    buckets.set(bucket.key, {label: bucket.label, value: roundMoney(existing.value + entry.chartAmount)})
   }
   return [...buckets.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => ({key, ...value}))
 }
@@ -324,10 +336,6 @@ function compareRowsNewestFirst(left: NumericEntry, right: NumericEntry) {
 
 function roundMoney(value: number) {
   return Math.round(value * 100) / 100
-}
-
-function formatDisplayAmount(value: number) {
-  return value.toFixed(2)
 }
 
 function groupBy<T>(items: T[], key: (item: T) => string) {

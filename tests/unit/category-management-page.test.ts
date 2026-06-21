@@ -16,7 +16,7 @@ const queryRows = vi.hoisted(() => ({
     {id: 'other-team-category', teamId: 'team-2', groupId: 'other-team-group', name: 'Other team category', description: 'Hidden', type: 'expense', normalBalance: 'credit', status: 'active', sortOrder: 0, systemKey: null, linkedBankAccountId: null},
   ],
   postings: [
-    {id: 'posting-1', ledgerTransactionId: 'ledger-1', accountId: 'groceries', amount: '100.0000', currency: 'DKK', bankTransactionId: null, sortOrder: 0},
+    {id: 'posting-1', ledgerTransactionId: 'ledger-1', accountId: 'groceries', amount: 1_000_000, currency: 'DKK', bankTransactionId: null, sortOrder: 0},
   ],
 }))
 
@@ -114,7 +114,7 @@ describe('CategoryManagementPage', () => {
     expect(markup).toContain('Groceries')
     expect(markup).toContain('Food shops')
     expect(markup).toContain('Expense')
-    expect(markup).toContain('100.0000')
+    expect(markup).toContain('100.00 DKK')
     expect(markup).not.toContain('Checking')
     expect(markup).not.toContain('Other team group')
     expect(markup).not.toContain('Other team category')
@@ -141,7 +141,8 @@ describe('CategoryManagementPage', () => {
         description: 'Food shops',
         type: 'expense',
         typeLabel: 'Expense',
-        balance: '100.0000',
+        balance: 1_000_000,
+        balanceCurrency: 'DKK',
         postingCount: 1,
         locked: false,
         lockReason: null,

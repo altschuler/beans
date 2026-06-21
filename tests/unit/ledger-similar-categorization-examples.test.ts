@@ -12,6 +12,7 @@ import {
   teams,
   user,
 } from '@/db/schema'
+import {parseDecimalMoneyToAmount} from '@/lib/money'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 
 async function seedFixture() {
@@ -82,14 +83,14 @@ async function seedFixture() {
     {id: 'team-2-groceries', teamId: 'team-2', groupId: 'team-2-spending-group', linkedBankAccountId: null, systemKey: null, type: 'expense', normalBalance: 'credit', name: 'Other groceries', description: '', status: 'active', sortOrder: 1, createdAt: now, updatedAt: now},
   ])
   await db.insert(bankTransactions).values([
-    {id: 'target-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'target-bank', status: 'booked', bookingDate: '2026-06-19', valueDate: null, amount: '-100.00', currency: 'DKK', description: 'NETTO SUPERMARKET 1234', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
-    {id: 'user-exact-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'user-exact-bank', status: 'booked', bookingDate: '2026-06-12', valueDate: null, amount: '-101.00', currency: 'DKK', description: 'Netto supermarket Copenhagen', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
-    {id: 'ai-exact-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'ai-exact-bank', status: 'booked', bookingDate: '2026-06-11', valueDate: null, amount: '-100.50', currency: 'DKK', description: 'Netto supermarket Copenhagen', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
-    {id: 'weak-user-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'weak-user-bank', status: 'booked', bookingDate: '2026-06-10', valueDate: null, amount: '-20.00', currency: 'DKK', description: 'IKEA home goods', counterpartyName: 'IKEA', raw: {}, createdAt: now, updatedAt: now},
-    {id: 'needs-review-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'needs-review-bank', status: 'booked', bookingDate: '2026-06-09', valueDate: null, amount: '-99.00', currency: 'DKK', description: 'Netto unreviewed', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
-    {id: 'system-category-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'system-category-bank', status: 'booked', bookingDate: '2026-06-08', valueDate: null, amount: '-100.00', currency: 'DKK', description: 'Netto uncategorized', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
-    {id: 'archived-category-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'archived-category-bank', status: 'booked', bookingDate: '2026-06-07', valueDate: null, amount: '-100.00', currency: 'DKK', description: 'Netto archived', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
-    {id: 'team-2-bank', bankAccountId: 'team-2-bank-account', providerTransactionId: 'team-2-bank', status: 'booked', bookingDate: '2026-06-12', valueDate: null, amount: '-100.00', currency: 'DKK', description: 'Netto other team', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
+    {id: 'target-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'target-bank', status: 'booked', bookingDate: '2026-06-19', valueDate: null, amount: money('-100.00'), currency: 'DKK', description: 'NETTO SUPERMARKET 1234', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
+    {id: 'user-exact-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'user-exact-bank', status: 'booked', bookingDate: '2026-06-12', valueDate: null, amount: money('-101.00'), currency: 'DKK', description: 'Netto supermarket Copenhagen', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
+    {id: 'ai-exact-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'ai-exact-bank', status: 'booked', bookingDate: '2026-06-11', valueDate: null, amount: money('-100.50'), currency: 'DKK', description: 'Netto supermarket Copenhagen', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
+    {id: 'weak-user-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'weak-user-bank', status: 'booked', bookingDate: '2026-06-10', valueDate: null, amount: money('-20.00'), currency: 'DKK', description: 'IKEA home goods', counterpartyName: 'IKEA', raw: {}, createdAt: now, updatedAt: now},
+    {id: 'needs-review-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'needs-review-bank', status: 'booked', bookingDate: '2026-06-09', valueDate: null, amount: money('-99.00'), currency: 'DKK', description: 'Netto unreviewed', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
+    {id: 'system-category-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'system-category-bank', status: 'booked', bookingDate: '2026-06-08', valueDate: null, amount: money('-100.00'), currency: 'DKK', description: 'Netto uncategorized', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
+    {id: 'archived-category-bank', bankAccountId: 'bank-account-1', providerTransactionId: 'archived-category-bank', status: 'booked', bookingDate: '2026-06-07', valueDate: null, amount: money('-100.00'), currency: 'DKK', description: 'Netto archived', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
+    {id: 'team-2-bank', bankAccountId: 'team-2-bank-account', providerTransactionId: 'team-2-bank', status: 'booked', bookingDate: '2026-06-12', valueDate: null, amount: money('-100.00'), currency: 'DKK', description: 'Netto other team', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
   ])
   await db.insert(ledgerTransactions).values([
     {id: 'target-ledger', teamId: 'team-1', source: 'bank_import', status: 'needs_review', categorizedBy: null, date: '2026-06-19', description: 'NETTO SUPERMARKET 1234', createdAt: now, updatedAt: now},
@@ -132,9 +133,9 @@ function postingsFromMovements(input: LegacyMovement | LegacyMovement[]) {
     const bankTransactionId = bankTransactionIdForLedgerTransaction(movement.ledgerTransactionId)
     const bankAccountId = movement.creditAccountId.includes('bank-ledger-account') ? movement.creditAccountId : movement.debitAccountId
     const categoryAccountId = bankAccountId === movement.creditAccountId ? movement.debitAccountId : movement.creditAccountId
-    const amount = formatFourDecimals(movement.amount)
-    const bankAmount = bankAccountId === movement.creditAccountId ? `-${amount}` : amount
-    const categoryAmount = bankAmount.startsWith('-') ? amount : `-${amount}`
+    const amount = money(movement.amount)
+    const bankAmount = bankAccountId === movement.creditAccountId ? -amount : amount
+    const categoryAmount = -bankAmount
     return [
       {id: `${movement.id}-bank-posting`, ledgerTransactionId: movement.ledgerTransactionId, accountId: bankAccountId, amount: bankAmount, currency: movement.currency, bankTransactionId, sortOrder: 0, createdAt: movement.createdAt, updatedAt: movement.updatedAt},
       {id: `${movement.id}-category-posting`, ledgerTransactionId: movement.ledgerTransactionId, accountId: categoryAccountId, amount: categoryAmount, currency: movement.currency, bankTransactionId: null, sortOrder: movement.sortOrder + 1, createdAt: movement.createdAt, updatedAt: movement.updatedAt},
@@ -148,9 +149,8 @@ function bankTransactionIdForLedgerTransaction(ledgerTransactionId: string) {
   throw new Error(`No bank transaction mapping for ${ledgerTransactionId}`)
 }
 
-function formatFourDecimals(amount: string) {
-  const [whole, fractional = ''] = amount.split('.')
-  return `${whole}.${fractional.padEnd(4, '0').slice(0, 4)}`
+function money(amount: string) {
+  return parseDecimalMoneyToAmount(amount)
 }
 
 describe('loadSimilarCategorizationExamples', () => {
@@ -173,7 +173,7 @@ describe('loadSimilarCategorizationExamples', () => {
             teamId: 'team-1',
             date: '2026-06-19',
             description: 'NETTO SUPERMARKET 1234',
-            amount: '-100.00',
+            amount: money('-100.00'),
             currency: 'DKK',
             bankAccountName: 'Checking',
             counterpartyName: 'Netto',
@@ -214,7 +214,7 @@ describe('loadSimilarCategorizationExamples', () => {
             teamId: 'team-1',
             date: '2026-06-19',
             description: 'UNRELATED ELECTRONICS SHOP',
-            amount: '-999.00',
+            amount: money('-999.00'),
             currency: 'DKK',
             bankAccountName: 'Checking',
             counterpartyName: 'Electronics Shop',
@@ -240,7 +240,7 @@ describe('loadSimilarCategorizationExamples', () => {
             teamId: 'team-1',
             date: '2026-06-19',
             description: 'NETTO SUPERMARKET 1234',
-            amount: '-100.00',
+            amount: money('-100.00'),
             currency: 'DKK',
             bankAccountName: 'Checking',
             counterpartyName: 'Netto',
@@ -263,7 +263,7 @@ describe('loadSimilarCategorizationExamples', () => {
       status: 'booked',
       bookingDate: '2026-06-12',
       valueDate: null,
-      amount: '-101.00',
+      amount: money('-101.00'),
       currency: 'DKK',
       description: 'Netto supermarket Copenhagen',
       counterpartyName: 'Netto',
@@ -282,7 +282,7 @@ describe('loadSimilarCategorizationExamples', () => {
             teamId: 'team-1',
             date: '2026-06-19',
             description: 'NETTO SUPERMARKET 1234',
-            amount: '-100.00',
+            amount: money('-100.00'),
             currency: 'DKK',
             bankAccountName: 'Checking',
             counterpartyName: 'Netto',
@@ -305,7 +305,7 @@ describe('loadSimilarCategorizationExamples', () => {
         status: 'booked',
         bookingDate: '2026-06-30',
         valueDate: null,
-        amount: '-10.00',
+        amount: money('-10.00'),
         currency: 'DKK',
         description: `Noisy team one ${index}`,
         counterpartyName: `Noise ${index}`,
@@ -352,7 +352,7 @@ describe('loadSimilarCategorizationExamples', () => {
             teamId: 'team-1',
             date: '2026-06-19',
             description: 'NETTO SUPERMARKET 1234',
-            amount: '-100.00',
+            amount: money('-100.00'),
             currency: 'DKK',
             bankAccountName: 'Checking',
             counterpartyName: 'Netto',
@@ -362,7 +362,7 @@ describe('loadSimilarCategorizationExamples', () => {
             teamId: 'team-2',
             date: '2026-06-19',
             description: 'Netto other team',
-            amount: '-100.00',
+            amount: money('-100.00'),
             currency: 'DKK',
             bankAccountName: 'Other checking',
             counterpartyName: 'Netto',
@@ -382,7 +382,7 @@ describe('loadSimilarCategorizationExamples', () => {
       id: 'user-exact-household-split-posting',
       ledgerTransactionId: 'user-exact-ledger',
       accountId: 'household',
-      amount: '1.0000',
+      amount: 10_000,
       currency: 'DKK',
       bankTransactionId: null,
       sortOrder: 2,
@@ -399,7 +399,7 @@ describe('loadSimilarCategorizationExamples', () => {
             teamId: 'team-1',
             date: '2026-06-19',
             description: 'NETTO SUPERMARKET 1234',
-            amount: '-100.00',
+            amount: money('-100.00'),
             currency: 'DKK',
             bankAccountName: 'Checking',
             counterpartyName: 'Netto',
@@ -425,7 +425,7 @@ describe('loadSimilarCategorizationExamples', () => {
             teamId: 'team-1',
             date: '2026-06-19',
             description: 'NETTO SUPERMARKET 1234',
-            amount: '-100.00',
+            amount: money('-100.00'),
             currency: 'DKK',
             bankAccountName: 'Checking',
             counterpartyName: 'Netto',

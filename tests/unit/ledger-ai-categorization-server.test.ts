@@ -13,6 +13,7 @@ import {
   teams,
   user,
 } from '@/db/schema'
+import {parseDecimalMoneyToAmount} from '@/lib/money'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 import type {AiCategorizationModelInput, AiCategorizationSuggestion} from '@/ledger/ai-categorization.server'
 
@@ -198,7 +199,7 @@ async function seedAiCategorizationFixture() {
       status: 'booked',
       bookingDate: '2026-06-18',
       valueDate: null,
-      amount: '-100.00',
+      amount: money('-100.00'),
       currency: 'DKK',
       description: 'Netto supermarket',
       counterpartyName: 'Netto',
@@ -213,7 +214,7 @@ async function seedAiCategorizationFixture() {
       status: 'booked',
       bookingDate: '2026-06-17',
       valueDate: null,
-      amount: '-50.00',
+      amount: money('-50.00'),
       currency: 'DKK',
       description: 'Unknown shop',
       counterpartyName: null,
@@ -280,7 +281,7 @@ async function seedAdditionalNeedsReviewTransactions(count: number) {
       status: 'booked',
       bookingDate: `2026-05-${String(28 - (index % 20)).padStart(2, '0')}`,
       valueDate: null,
-      amount: '-10.00',
+      amount: money('-10.00'),
       currency: 'DKK',
       description: `Extra transaction ${index}`,
       counterpartyName: null,
@@ -325,7 +326,7 @@ async function seedConfirmedUserExampleForNetto() {
     status: 'booked',
     bookingDate: '2026-06-10',
     valueDate: null,
-    amount: '-99.95',
+    amount: money('-99.95'),
     currency: 'DKK',
     description: 'Netto supermarket Copenhagen',
     counterpartyName: 'Netto',
@@ -400,7 +401,7 @@ async function seedSecondTeamTransaction() {
     status: 'booked',
     bookingDate: '2026-06-19',
     valueDate: null,
-    amount: '-25.00',
+    amount: money('-25.00'),
     currency: 'DKK',
     description: 'Other team grocery',
     counterpartyName: 'Other Netto',
@@ -450,8 +451,9 @@ function postingsFromMovements(input: LegacyMovement | LegacyMovement[]) {
     const bankTransactionId = bankTransactionIdForLedgerTransaction(movement.ledgerTransactionId)
     const bankAccountId = movement.creditAccountId.includes('bank-ledger-account') ? movement.creditAccountId : movement.debitAccountId
     const categoryAccountId = bankAccountId === movement.creditAccountId ? movement.debitAccountId : movement.creditAccountId
-    const bankAmount = bankAccountId === movement.creditAccountId ? `-${formatFourDecimals(movement.amount)}` : formatFourDecimals(movement.amount)
-    const categoryAmount = bankAmount.startsWith('-') ? formatFourDecimals(movement.amount) : `-${formatFourDecimals(movement.amount)}`
+    const amount = money(movement.amount)
+    const bankAmount = bankAccountId === movement.creditAccountId ? -amount : amount
+    const categoryAmount = -bankAmount
     return [
       {
         id: `${movement.id}-bank-posting`,
@@ -488,9 +490,8 @@ function bankTransactionIdForLedgerTransaction(ledgerTransactionId: string) {
   throw new Error(`No bank transaction mapping for ${ledgerTransactionId}`)
 }
 
-function formatFourDecimals(amount: string) {
-  const [whole, fractional = ''] = amount.split('.')
-  return `${whole}.${fractional.padEnd(4, '0').slice(0, 4)}`
+function money(amount: string) {
+  return parseDecimalMoneyToAmount(amount)
 }
 
 async function currentAiInterpretationForBankTransaction(bankTransactionId: string) {
@@ -544,7 +545,7 @@ describe('aiCategorizeBankTransactions', () => {
     expect(bankTransaction?.aiProcessingStartedAt).toBeNull()
     expect(interpretation?.postings.find(posting => posting.bankTransactionId === null)).toMatchObject({
       accountId: 'groceries',
-      amount: '100.0000',
+      amount: 1_000_000,
       bankTransactionId: null,
     })
   })
@@ -570,8 +571,8 @@ describe('aiCategorizeBankTransactions', () => {
     const postings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId)).orderBy(ledgerPostings.sortOrder)
     expect(ledgerTransaction).toMatchObject({source: 'bank_import', status: 'needs_review', categorizedBy: 'ai', userConfirmedAt: null, userConfirmedBy: null})
     expect(postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId}))).toEqual([
-      {accountId: 'bank-ledger-account', amount: '-100.0000', bankTransactionId: 'bank-transaction-1'},
-      {accountId: 'groceries', amount: '100.0000', bankTransactionId: null},
+      {accountId: 'bank-ledger-account', amount: -1_000_000, bankTransactionId: 'bank-transaction-1'},
+      {accountId: 'groceries', amount: 1_000_000, bankTransactionId: null},
     ])
   })
 
@@ -703,7 +704,7 @@ describe('aiCategorizeBankTransactions', () => {
         id: 'manual-category-posting-1',
         ledgerTransactionId: 'ledger-transaction-1',
         accountId: 'household',
-        amount: '100.0000',
+        amount: 1_000_000,
         currency: 'DKK',
         bankTransactionId: null,
         sortOrder: 1,
@@ -727,7 +728,7 @@ describe('aiCategorizeBankTransactions', () => {
     expect(transaction?.status).toBe('confirmed')
     expect(currentInterpretation?.ledgerTransaction?.id).toBe('ledger-transaction-1')
     expect(bankTransaction?.aiConfidence).toBeNull()
-    expect(movement).toMatchObject({accountId: 'household', amount: '100.0000', bankTransactionId: null})
+    expect(movement).toMatchObject({accountId: 'household', amount: 1_000_000, bankTransactionId: null})
   })
 
   it('skips successful stale suggestions when a newer processing marker has taken over', async () => {
@@ -749,8 +750,8 @@ describe('aiCategorizeBankTransactions', () => {
 
     expect(result).toEqual({requested: 1, suggested: 1, applied: 0, confirmed: 0, stillNeedsReview: 0, skipped: 1})
     expect(interpretation?.ledgerTransaction).toMatchObject({id: 'ledger-transaction-1', status: 'needs_review'})
-    expect(interpretation?.bankPosting).toMatchObject({accountId: 'bank-ledger-account', amount: '-100.0000', bankTransactionId: 'bank-transaction-1'})
-    expect(categoryPosting).toMatchObject({accountId: 'uncategorized', amount: '100.0000', bankTransactionId: null})
+    expect(interpretation?.bankPosting).toMatchObject({accountId: 'bank-ledger-account', amount: -1_000_000, bankTransactionId: 'bank-transaction-1'})
+    expect(categoryPosting).toMatchObject({accountId: 'uncategorized', amount: 1_000_000, bankTransactionId: null})
     expect(bankTransaction?.aiConfidence).toBeNull()
     expect(bankTransaction?.aiReasoning).toBeNull()
     expect(bankTransaction?.aiProcessingStartedAt).toEqual(newerProcessingStartedAt)
@@ -777,7 +778,7 @@ describe('aiCategorizeBankTransactions', () => {
     expect(bankTransaction?.aiConfidence).toBe(0)
     expect(bankTransaction?.aiReasoning).toBe('Too ambiguous')
     expect(bankTransaction?.aiProcessingStartedAt).toBeNull()
-    expect(movement).toMatchObject({accountId: 'uncategorized', amount: '100.0000', bankTransactionId: null})
+    expect(movement).toMatchObject({accountId: 'uncategorized', amount: 1_000_000, bankTransactionId: null})
   })
 
   it('marks transactions processing before the model call and clears processing when the model fails', async () => {
@@ -802,7 +803,7 @@ describe('aiCategorizeBankTransactions', () => {
     expect(transaction?.status).toBe('needs_review')
     expect(bankTransaction?.aiConfidence).toBeNull()
     expect(bankTransaction?.aiProcessingStartedAt).toBeNull()
-    expect(movement).toMatchObject({accountId: 'uncategorized', amount: '100.0000', bankTransactionId: null})
+    expect(movement).toMatchObject({accountId: 'uncategorized', amount: 1_000_000, bankTransactionId: null})
   })
 
   it('caps batch categorization at 25 transactions server-side', async () => {
@@ -872,7 +873,7 @@ describe('aiCategorizeBankTransactions', () => {
 
     expect(transaction?.status).toBe('needs_review')
     expect(bankTransaction?.aiConfidence).toBeNull()
-    expect(movement).toMatchObject({accountId: 'uncategorized', amount: '100.0000', bankTransactionId: null})
+    expect(movement).toMatchObject({accountId: 'uncategorized', amount: 1_000_000, bankTransactionId: null})
   })
 
   it('uses an OpenAI-compatible structured output schema with all suggestion properties required', async () => {

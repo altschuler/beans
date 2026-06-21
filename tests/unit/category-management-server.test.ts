@@ -80,7 +80,7 @@ async function seedFixture() {
     id: 'posting-groceries',
     ledgerTransactionId: 'ledger-transaction-1',
     accountId: 'groceries',
-    amount: '10.0000',
+    amount: 100_000,
     currency: 'DKK',
     bankTransactionId: null,
     sortOrder: 0,

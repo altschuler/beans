@@ -11,7 +11,7 @@ const queryRows = vi.hoisted(() => ({
     bookingDate: string | null
     valueDate: string | null
     status: string
-    amount: string
+    amount: number
     currency: string
   }>,
 }))
@@ -112,7 +112,7 @@ describe('BankingDashboard', () => {
         bookingDate: '2026-06-15',
         valueDate: null,
         status: 'booked',
-        amount: '-42.00',
+        amount: -420_000,
         currency: 'DKK',
       },
       {
@@ -122,7 +122,7 @@ describe('BankingDashboard', () => {
         bookingDate: '2026-06-16',
         valueDate: null,
         status: 'booked',
-        amount: '100.00',
+        amount: 1_000_000,
         currency: 'DKK',
       },
     ]

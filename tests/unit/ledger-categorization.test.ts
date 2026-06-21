@@ -19,7 +19,7 @@ describe('buildBankLinkedCategorizationPostings', () => {
           id: 'bank-posting-1',
           ledgerTransactionId: 'ledger-1',
           accountId: 'checking',
-          amount: '-100.0000',
+          amount: -1_000_000,
           currency: 'DKK',
           bankTransactionId: 'bank-1',
         },
@@ -31,7 +31,7 @@ describe('buildBankLinkedCategorizationPostings', () => {
         id: 'bank-posting-1',
         ledgerTransactionId: 'ledger-1',
         accountId: 'checking',
-        amount: '-100.0000',
+        amount: -1_000_000,
         currency: 'DKK',
         bankTransactionId: 'bank-1',
         sortOrder: 0,
@@ -42,7 +42,7 @@ describe('buildBankLinkedCategorizationPostings', () => {
         id: 'category-posting-1',
         ledgerTransactionId: 'ledger-1',
         accountId: 'groceries',
-        amount: '100.0000',
+        amount: 1_000_000,
         currency: 'DKK',
         bankTransactionId: null,
         sortOrder: 1,
@@ -61,7 +61,7 @@ describe('buildBankLinkedCategorizationPostings', () => {
           id: 'bank-posting-1',
           ledgerTransactionId: 'ledger-1',
           accountId: 'checking',
-          amount: '-100.5000',
+          amount: -1_005_000,
           currency: 'DKK',
           bankTransactionId: 'bank-1',
         },
@@ -71,9 +71,9 @@ describe('buildBankLinkedCategorizationPostings', () => {
         ],
       }),
     ).toMatchObject([
-      {id: 'bank-posting-1', accountId: 'checking', amount: '-100.5000', bankTransactionId: 'bank-1', sortOrder: 0},
-      {id: 'posting-1', accountId: 'groceries', amount: '70.2500', bankTransactionId: null, sortOrder: 1},
-      {id: 'posting-2', accountId: 'household', amount: '30.2500', bankTransactionId: null, sortOrder: 2},
+      {id: 'bank-posting-1', accountId: 'checking', amount: -1_005_000, bankTransactionId: 'bank-1', sortOrder: 0},
+      {id: 'posting-1', accountId: 'groceries', amount: 702_500, bankTransactionId: null, sortOrder: 1},
+      {id: 'posting-2', accountId: 'household', amount: 302_500, bankTransactionId: null, sortOrder: 2},
     ])
   })
 
@@ -86,15 +86,15 @@ describe('buildBankLinkedCategorizationPostings', () => {
           id: 'bank-posting-1',
           ledgerTransactionId: 'ledger-1',
           accountId: 'checking',
-          amount: '125.0000',
+          amount: 1_250_000,
           currency: 'DKK',
           bankTransactionId: 'bank-1',
         },
         lines: [{accountId: 'salary', amount: '125.00'}],
       }),
     ).toMatchObject([
-      {accountId: 'checking', amount: '125.0000', bankTransactionId: 'bank-1', sortOrder: 0},
-      {accountId: 'salary', amount: '-125.0000', bankTransactionId: null, sortOrder: 1},
+      {accountId: 'checking', amount: 1_250_000, bankTransactionId: 'bank-1', sortOrder: 0},
+      {accountId: 'salary', amount: -1_250_000, bankTransactionId: null, sortOrder: 1},
     ])
   })
 
@@ -105,7 +105,7 @@ describe('buildBankLinkedCategorizationPostings', () => {
           id: 'bank-posting-1',
           ledgerTransactionId: 'ledger-1',
           accountId: 'checking',
-          amount: '-100.0000',
+          amount: -1_000_000,
           currency: 'DKK',
           bankTransactionId: 'bank-1',
         },
@@ -124,7 +124,7 @@ describe('buildBankLinkedCategorizationPostings', () => {
           id: 'bank-posting-1',
           ledgerTransactionId: 'ledger-1',
           accountId: 'checking',
-          amount: '-100.0000',
+          amount: -1_000_000,
           currency: 'DKK',
           bankTransactionId: 'bank-1',
         },
@@ -138,8 +138,8 @@ describe('validateLedgerPostingsBalance', () => {
   it('rejects postings that are not zero-sum per currency', () => {
     expect(() =>
       validateLedgerPostingsBalance([
-        {amount: '-100.0000', currency: 'DKK'},
-        {amount: '90.0000', currency: 'DKK'},
+        {amount: -1_000_000, currency: 'DKK'},
+        {amount: 900_000, currency: 'DKK'},
       ]),
     ).toThrow('Ledger postings must balance to zero per currency')
   })
@@ -166,14 +166,14 @@ describe('deriveLedgerAccountBalances', () => {
           {id: 'groceries', normalBalance: 'credit'},
         ],
         [
-          {accountId: 'bank', amount: '-100.0000', currency: 'DKK'},
-          {accountId: 'groceries', amount: '100.0000', currency: 'DKK'},
+          {accountId: 'bank', amount: -1_000_000, currency: 'DKK'},
+          {accountId: 'groceries', amount: 1_000_000, currency: 'DKK'},
         ],
       ),
     ).toEqual(
       new Map([
-        ['bank', '-100.0000'],
-        ['groceries', '-100.0000'],
+        ['bank', -1_000_000],
+        ['groceries', -1_000_000],
       ]),
     )
   })
@@ -182,8 +182,8 @@ describe('deriveLedgerAccountBalances', () => {
     const balances = deriveLedgerAccountBalances(
       [{id: 'groceries', normalBalance: 'credit'}],
       [
-        {accountId: 'groceries', amount: '100.0000', currency: 'DKK'},
-        {accountId: 'groceries', amount: '10.0000', currency: 'EUR'},
+        {accountId: 'groceries', amount: 1_000_000, currency: 'DKK'},
+        {accountId: 'groceries', amount: 100_000, currency: 'EUR'},
       ],
     )
 

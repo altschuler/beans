@@ -3,7 +3,6 @@ import '@tanstack/react-start/server-only'
 import {and, desc, eq, isNotNull, ne} from 'drizzle-orm'
 import {db} from '@/db/client'
 import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, ledgerPostings, teamMembers} from '@/db/schema'
-import {parseMoneyToScaledUnits} from '@/ledger/categorization'
 import {ensureLedgerAccountForBankAccount} from '@/ledger/repository.server'
 import type {GoCardlessAccountDetails} from './gocardless/types'
 import type {BankAccountSyncRepository} from './sync'
@@ -247,7 +246,7 @@ async function guardProviderFactsAfterReconciliation(
   if (!existing?.reconciledPostingId) return
 
   const bankAccountChanged = existing.bankAccountId !== bankAccount.id
-  const amountChanged = parseMoneyToScaledUnits(existing.amount) !== parseMoneyToScaledUnits(transaction.amount)
+  const amountChanged = existing.amount !== transaction.amount
   const currencyChanged = existing.currency !== transaction.currency
   if (bankAccountChanged || amountChanged || currencyChanged) {
     throw new Error('Imported bank transaction facts changed after reconciliation')

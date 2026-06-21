@@ -25,7 +25,7 @@ const queryRows = vi.hoisted(() => ({
     id: string
     ledgerTransactionId: string
     accountId: string
-    amount: string
+    amount: number
     currency: string
     bankTransactionId: string | null
     sortOrder: number
@@ -33,7 +33,7 @@ const queryRows = vi.hoisted(() => ({
   bankTransactions: [] as Array<{
     id: string
     bankAccountId: string
-    amount: string
+    amount: number
     currency: string
     bookingDate: string | null
     valueDate: string | null
@@ -146,7 +146,7 @@ describe('LedgerAccountDetail', () => {
         id: 'bank-posting-1',
         ledgerTransactionId: 'ledger-transaction-1',
         accountId: 'checking',
-        amount: '-100.0000',
+        amount: -1_000_000,
         currency: 'DKK',
         bankTransactionId: 'bank-transaction-1',
         sortOrder: 0,
@@ -155,7 +155,7 @@ describe('LedgerAccountDetail', () => {
         id: 'category-posting-1',
         ledgerTransactionId: 'ledger-transaction-1',
         accountId: 'takeaway',
-        amount: '100.0000',
+        amount: 1_000_000,
         currency: 'DKK',
         bankTransactionId: null,
         sortOrder: 1,
@@ -165,7 +165,7 @@ describe('LedgerAccountDetail', () => {
       {
         id: 'bank-transaction-1',
         bankAccountId: 'bank-account-1',
-        amount: '-100.00',
+        amount: -1_000_000,
         currency: 'DKK',
         bookingDate: '2026-03-03',
         valueDate: null,
@@ -183,7 +183,7 @@ describe('LedgerAccountDetail', () => {
     expect(markup).toContain('Take-away')
     expect(markup).toContain('Everyday spending')
     expect(markup).toContain('Current balance')
-    expect(markup).toContain('-100.0000')
+    expect(markup).toContain('-100.00 DKK')
     expect(markup).toContain('Weekly')
     expect(markup).toContain('Monthly')
     expect(markup).toContain('Spending history')

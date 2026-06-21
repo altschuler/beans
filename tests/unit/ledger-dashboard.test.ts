@@ -32,7 +32,7 @@ const queryRows = vi.hoisted(() => ({
     id: string
     ledgerTransactionId: string
     accountId: string
-    amount: string
+    amount: number
     currency: string
     bankTransactionId: string | null
     sortOrder: number
@@ -40,7 +40,7 @@ const queryRows = vi.hoisted(() => ({
   bankTransactions: [] as Array<{
     id: string
     bankAccountId: string
-    amount: string
+    amount: number
     currency: string
     bookingDate: string | null
     valueDate: string | null
@@ -354,7 +354,7 @@ describe('LedgerDashboard', () => {
         id: 'bank-posting-1',
         ledgerTransactionId: 'ledger-transaction-1',
         accountId: 'checking',
-        amount: '-100.0000',
+        amount: -1_000_000,
         currency: 'DKK',
         bankTransactionId: 'bank-transaction-1',
         sortOrder: 0,
@@ -363,7 +363,7 @@ describe('LedgerDashboard', () => {
         id: 'category-posting-1',
         ledgerTransactionId: 'ledger-transaction-1',
         accountId: 'groceries',
-        amount: '100.0000',
+        amount: 1_000_000,
         currency: 'DKK',
         bankTransactionId: null,
         sortOrder: 1,
@@ -373,7 +373,7 @@ describe('LedgerDashboard', () => {
       {
         id: 'bank-transaction-1',
         bankAccountId: 'bank-account-1',
-        amount: '-100.00',
+        amount: -1_000_000,
         currency: 'DKK',
         bookingDate: '2026-06-18',
         valueDate: null,
@@ -450,7 +450,7 @@ describe('LedgerDashboard', () => {
         id: 'bank-posting-2',
         ledgerTransactionId: 'ledger-transaction-2',
         accountId: 'checking',
-        amount: '-50.0000',
+        amount: -500_000,
         currency: 'DKK',
         bankTransactionId: 'bank-transaction-2',
         sortOrder: 0,
@@ -459,7 +459,7 @@ describe('LedgerDashboard', () => {
         id: 'category-posting-2',
         ledgerTransactionId: 'ledger-transaction-2',
         accountId: 'groceries',
-        amount: '50.0000',
+        amount: 500_000,
         currency: 'DKK',
         bankTransactionId: null,
         sortOrder: 1,
@@ -470,7 +470,7 @@ describe('LedgerDashboard', () => {
       {
         id: 'bank-transaction-2',
         bankAccountId: 'bank-account-2',
-        amount: '-50.00',
+        amount: -500_000,
         currency: 'DKK',
         bookingDate: '2026-06-19',
         valueDate: null,
