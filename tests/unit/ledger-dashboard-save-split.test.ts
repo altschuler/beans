@@ -8,7 +8,7 @@ describe('saveDashboardSplitTransaction', () => {
     const onError = vi.fn()
 
     await saveDashboardSplitTransaction({
-      ledgerTransactionId: 'ledger-transaction-1',
+      bankTransactionId: 'bank-transaction-1',
       bankAmount: '-100.00',
       lines: [
         {accountId: 'groceries', amount: '70.00'},
@@ -37,7 +37,7 @@ describe('saveDashboardSplitTransaction', () => {
     const onError = vi.fn()
 
     await saveDashboardSplitTransaction({
-      ledgerTransactionId: 'ledger-transaction-1',
+      bankTransactionId: 'bank-transaction-1',
       bankAmount: '-100.00',
       lines: [
         {accountId: 'groceries', amount: '70.00'},
@@ -49,6 +49,7 @@ describe('saveDashboardSplitTransaction', () => {
     })
 
     expect(mutate).toHaveBeenCalledOnce()
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({args: expect.objectContaining({bankTransactionId: 'bank-transaction-1'})}))
     expect(onSuccess).not.toHaveBeenCalled()
     expect(onError).toHaveBeenCalledWith(error, 'Could not save split')
   })

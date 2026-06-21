@@ -83,12 +83,9 @@ const baseLedgerTransactions = [
     id: 'ledger-1',
     source: 'bank_import',
     status: 'needs_review',
-    aiConfidence: null,
-    aiProcessingStartedAt: null,
     categorizedBy: null,
     userConfirmedAt: null,
     userConfirmedBy: null,
-    aiReasoning: null,
     date: '2026-06-18',
     description: 'First transaction',
   },
@@ -96,12 +93,9 @@ const baseLedgerTransactions = [
     id: 'ledger-2',
     source: 'bank_import',
     status: 'needs_review',
-    aiConfidence: null,
-    aiProcessingStartedAt: null,
     categorizedBy: null,
     userConfirmedAt: null,
     userConfirmedBy: null,
-    aiReasoning: null,
     date: '2026-06-19',
     description: 'Second transaction',
   },
@@ -116,6 +110,9 @@ const baseBankTransactions = [
     bookingDate: '2026-06-18',
     valueDate: null,
     description: 'Account A transaction',
+    aiConfidence: null,
+    aiProcessingStartedAt: null,
+    aiReasoning: null,
   },
   {
     id: 'bank-transaction-2',
@@ -125,6 +122,9 @@ const baseBankTransactions = [
     bookingDate: '2026-06-19',
     valueDate: null,
     description: 'Account B transaction',
+    aiConfidence: null,
+    aiProcessingStartedAt: null,
+    aiReasoning: null,
   },
 ]
 
@@ -134,6 +134,63 @@ const baseBankAccounts = [
 ]
 
 describe('buildLedgerDashboardModel', () => {
+
+  it('emits one transaction row per imported bank transaction even when unreconciled', () => {
+    const model = buildLedgerDashboardModel({
+      groups: baseGroups,
+      accounts: baseAccounts,
+      ledgerTransactions: [],
+      postings: [],
+      bankTransactions: baseBankTransactions,
+      bankAccounts: baseBankAccounts,
+    })
+
+    expect(model.transactionRows.map(row => ({
+      id: row.id,
+      bankTransactionId: row.bankTransactionId,
+      ledgerTransactionId: row.ledgerTransactionId,
+      bankAccountId: row.bankAccountId,
+      categoryLabel: row.categoryLabel,
+      canCategorize: row.canCategorize,
+      statusKind: row.statusIndicator.kind,
+    }))).toEqual([
+      {
+        id: 'bank-transaction-2',
+        bankTransactionId: 'bank-transaction-2',
+        ledgerTransactionId: null,
+        bankAccountId: 'bank-account-b',
+        categoryLabel: 'Choose category',
+        canCategorize: true,
+        statusKind: 'uncategorized',
+      },
+      {
+        id: 'bank-transaction-1',
+        bankTransactionId: 'bank-transaction-1',
+        ledgerTransactionId: null,
+        bankAccountId: 'bank-account-a',
+        categoryLabel: 'Choose category',
+        canCategorize: true,
+        statusKind: 'uncategorized',
+      },
+    ])
+  })
+
+  it('provides active bank-linked ledger accounts as transfer options', () => {
+    const model = buildLedgerDashboardModel({
+      groups: baseGroups,
+      accounts: baseAccounts,
+      ledgerTransactions: [],
+      postings: [],
+      bankTransactions: baseBankTransactions,
+      bankAccounts: baseBankAccounts,
+    })
+
+    expect(model.transferAccounts).toEqual([
+      {id: 'account-bank-a', bankAccountId: 'bank-account-a', name: 'Checking'},
+      {id: 'account-bank-b', bankAccountId: 'bank-account-b', name: 'Savings'},
+    ])
+  })
+
   it('includes bankAccountId on transaction rows from reconciled postings', () => {
     const model = buildLedgerDashboardModel({
       groups: baseGroups,
@@ -145,8 +202,8 @@ describe('buildLedgerDashboardModel', () => {
     })
 
     expect(model.transactionRows.map(row => ({id: row.id, ledgerTransactionId: row.ledgerTransactionId, bankAccountId: row.bankAccountId}))).toEqual([
-      {id: 'ledger-2:posting-bank-2', ledgerTransactionId: 'ledger-2', bankAccountId: 'bank-account-b'},
-      {id: 'ledger-1:posting-bank-1', ledgerTransactionId: 'ledger-1', bankAccountId: 'bank-account-a'},
+      {id: 'bank-transaction-2', ledgerTransactionId: 'ledger-2', bankAccountId: 'bank-account-b'},
+      {id: 'bank-transaction-1', ledgerTransactionId: 'ledger-1', bankAccountId: 'bank-account-a'},
     ])
   })
 
@@ -162,7 +219,7 @@ describe('buildLedgerDashboardModel', () => {
     })
 
     expect(model.transactionRows).toHaveLength(1)
-    expect(model.transactionRows[0]?.id).toBe('ledger-1:posting-bank-1')
+    expect(model.transactionRows[0]?.id).toBe('bank-transaction-1')
     expect(model.transactionRows[0]?.ledgerTransactionId).toBe('ledger-1')
     expect(model.transactionRows[0]?.bankAccountName).toBe('Checking')
   })
@@ -183,22 +240,54 @@ describe('buildLedgerDashboardModel', () => {
     expect(model.accountGroups[0]?.accounts.find(account => account.id === 'account-food')?.balance).toBe('Multiple currencies')
   })
 
-  it('creates one row per reconciled posting for future transfer-like transactions', () => {
+  it('labels bank-linked counter postings as transfers to or from the counter bank account', () => {
     const model = buildLedgerDashboardModel({
       groups: baseGroups,
       accounts: baseAccounts,
-      ledgerTransactions: [baseLedgerTransactions[0]!],
+      ledgerTransactions: [{...baseLedgerTransactions[0]!, status: 'confirmed', categorizedBy: 'user'}],
       postings: [
         {...basePostings[0]!, id: 'transfer-bank-a', amount: '-10.0000', bankTransactionId: 'bank-transaction-1'},
-        {...basePostings[2]!, ledgerTransactionId: 'ledger-1', id: 'transfer-bank-b', amount: '20.0000', bankTransactionId: 'bank-transaction-2'},
+        {...basePostings[2]!, ledgerTransactionId: 'ledger-1', id: 'transfer-bank-b', amount: '10.0000', bankTransactionId: 'bank-transaction-2'},
       ],
-      bankTransactions: baseBankTransactions,
+      bankTransactions: [baseBankTransactions[0]!, {...baseBankTransactions[1]!, amount: '10.0000'}],
       bankAccounts: baseBankAccounts,
     })
 
-    expect(model.transactionRows.map(row => ({id: row.id, ledgerTransactionId: row.ledgerTransactionId, bankAccountId: row.bankAccountId, canCategorize: row.canCategorize}))).toEqual([
-      {id: 'ledger-1:transfer-bank-b', ledgerTransactionId: 'ledger-1', bankAccountId: 'bank-account-b', canCategorize: false},
-      {id: 'ledger-1:transfer-bank-a', ledgerTransactionId: 'ledger-1', bankAccountId: 'bank-account-a', canCategorize: false},
+    expect(
+      model.transactionRows.map(row => ({
+        id: row.id,
+        ledgerTransactionId: row.ledgerTransactionId,
+        bankAccountId: row.bankAccountId,
+        categoryLabel: row.categoryLabel,
+        categoryAccountId: row.categoryAccountId,
+        isSplit: row.isSplit,
+        splitLines: row.splitLines,
+        canCategorize: row.canCategorize,
+        statusKind: row.statusIndicator.kind,
+      })),
+    ).toEqual([
+      {
+        id: 'bank-transaction-2',
+        ledgerTransactionId: 'ledger-1',
+        bankAccountId: 'bank-account-b',
+        categoryLabel: 'Transfer from: Checking',
+        categoryAccountId: null,
+        isSplit: false,
+        splitLines: [],
+        canCategorize: true,
+        statusKind: 'confirmed',
+      },
+      {
+        id: 'bank-transaction-1',
+        ledgerTransactionId: 'ledger-1',
+        bankAccountId: 'bank-account-a',
+        categoryLabel: 'Transfer to: Savings',
+        categoryAccountId: null,
+        isSplit: false,
+        splitLines: [],
+        canCategorize: true,
+        statusKind: 'confirmed',
+      },
     ])
   })
 })

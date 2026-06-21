@@ -1,2 +1,2 @@
 export {TransactionTable} from './transaction-table'
-export type {CategorizationAccountOption, SplitLine, TransactionTableRow} from './types'
+export type {CategorizationAccountOption, CategorySelection, SplitLine, TransactionTableRow, TransferAccountOption} from './types'

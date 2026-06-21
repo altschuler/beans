@@ -2,7 +2,7 @@ import {createServerFn} from '@tanstack/react-start'
 import {z} from 'zod'
 
 const aiCategorizeTransactionInput = z.object({
-  ledgerTransactionId: z.string().min(1),
+  bankTransactionId: z.string().min(1),
 })
 
 const aiCategorizeNeedsReviewBatchInput = z.object({

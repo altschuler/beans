@@ -11,12 +11,12 @@ describe('AI categorization server function handlers', () => {
     vi.clearAllMocks()
   })
 
-  it('runs single transaction categorization for the authenticated user', async () => {
+  it('runs single bank transaction categorization for the authenticated user', async () => {
     const {runAiCategorizeTransactionForUser} = await import('@/ledger/ai-categorization-fns.server')
 
-    const result = await runAiCategorizeTransactionForUser('user-1', {ledgerTransactionId: 'ledger-transaction-1'})
+    const result = await runAiCategorizeTransactionForUser('user-1', {bankTransactionId: 'bank-transaction-1'})
 
-    expect(aiCategorizeLedgerTransactions).toHaveBeenCalledWith({userId: 'user-1', ledgerTransactionIds: ['ledger-transaction-1']})
+    expect(aiCategorizeLedgerTransactions).toHaveBeenCalledWith({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']})
     expect(result).toEqual({requested: 1, suggested: 1, applied: 1, confirmed: 1, stillNeedsReview: 0, skipped: 0})
   })
 

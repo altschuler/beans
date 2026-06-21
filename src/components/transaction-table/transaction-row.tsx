@@ -1,30 +1,34 @@
 import {Fragment, useState} from 'react'
-import {GitBranch, Sparkles} from 'lucide-react'
+import {GitBranch, LoaderCircle, Sparkles} from 'lucide-react'
 import {Button} from '@/components/ui/button'
+import {CategorySelector} from './category-selector'
 import {SplitEditor} from './split-editor'
-import type {CategorizationAccountOption, SplitLine, TransactionTableRow as TransactionTableRowData} from './types'
+import type {CategorizationAccountOption, CategorySelection, SplitLine, TransactionTableRow as TransactionTableRowData, TransferAccountOption} from './types'
 
 type TransactionRowProps = {
   row: TransactionTableRowData
   categorizationAccounts: CategorizationAccountOption[]
+  transferAccounts: TransferAccountOption[]
   isAiRequestPending: boolean
-  onCategorizeTransaction: (ledgerTransactionId: string, accountId: string) => void
+  onCategorizeBankTransaction: (bankTransactionId: string, selection: CategorySelection) => void
   onConfirmTransaction: (ledgerTransactionId: string) => void
-  onAiCategorizeOne: (ledgerTransactionId: string) => void
+  onAiCategorizeOne: (bankTransactionId: string) => void
   onSaveSplit: (row: TransactionTableRowData, splitLines: SplitLine[]) => Promise<boolean>
 }
 
 export function TransactionRow({
   row,
   categorizationAccounts,
+  transferAccounts,
   isAiRequestPending,
-  onCategorizeTransaction,
+  onCategorizeBankTransaction,
   onConfirmTransaction,
   onAiCategorizeOne,
   onSaveSplit,
 }: TransactionRowProps) {
   const [isSplitEditorOpen, setIsSplitEditorOpen] = useState(false)
   const [splitLines, setSplitLines] = useState<SplitLine[]>([])
+  const ledgerTransactionId = row.ledgerTransactionId
 
   function openSplitEditor() {
     setSplitLines(getInitialSplitLines(row, categorizationAccounts))
@@ -47,23 +51,12 @@ export function TransactionRow({
         <td className="px-3 py-3 text-muted-foreground">{row.bankAccountName}</td>
         <td className="px-3 py-3">
           <div className="flex min-w-[14rem] items-center gap-2">
-            <select
-              id={`category-${row.id}`}
-              aria-label={`Category for ${row.description}`}
-              className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm"
-              value={row.isSplit ? '' : (row.categoryAccountId ?? '')}
-              disabled={!row.canCategorize}
-              onChange={event => onCategorizeTransaction(row.ledgerTransactionId, event.target.value)}
-            >
-              <option value="" disabled>
-                {row.isSplit ? 'Split transaction' : 'Choose category'}
-              </option>
-              {categorizationAccounts.map(account => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
+            <CategorySelector
+              row={row}
+              categorizationAccounts={categorizationAccounts}
+              transferAccounts={transferAccounts}
+              onSelect={onCategorizeBankTransaction}
+            />
             <Button
               type="button"
               variant="outline"
@@ -71,7 +64,7 @@ export function TransactionRow({
               title="AI categorize transaction"
               aria-label="AI categorize transaction"
               disabled={!row.canCategorize || !row.needsReview || isAiRequestPending || row.aiProcessing}
-              onClick={() => onAiCategorizeOne(row.ledgerTransactionId)}
+              onClick={() => onAiCategorizeOne(row.bankTransactionId)}
             >
               <Sparkles className="h-4 w-4" aria-hidden="true" />
             </Button>
@@ -81,25 +74,30 @@ export function TransactionRow({
           </div>
         </td>
         <td className="px-3 py-3 text-center">
-          {row.canCategorize && row.statusIndicator.canConfirm ? (
+          {row.statusIndicator.kind === 'processing' ? (
+            <span
+              title={row.statusIndicator.title}
+              aria-label={row.statusIndicator.ariaLabel}
+              role="status"
+              className="inline-flex h-4 w-4 items-center justify-center text-muted-foreground"
+            >
+              <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <span className="sr-only">{row.statusIndicator.ariaLabel}</span>
+            </span>
+          ) : ledgerTransactionId && row.canCategorize && row.statusIndicator.canConfirm ? (
             <Button
               type="button"
               variant="ghost"
               title={row.statusIndicator.title}
               aria-label={`Confirm category for ${row.description}. ${row.statusIndicator.ariaLabel}`}
               className="h-2.5 w-2.5 cursor-pointer rounded-full bg-transparent p-0 transition-[box-shadow] hover:bg-transparent hover:ring-2 hover:ring-ring/70 hover:ring-offset-2 hover:ring-offset-background"
-              onClick={() => onConfirmTransaction(row.ledgerTransactionId)}
+              onClick={() => onConfirmTransaction(ledgerTransactionId)}
             >
               <span className={`block h-2.5 w-2.5 rounded-full ${row.statusIndicator.className}`} aria-hidden="true" />
               <span className="sr-only">{row.statusIndicator.ariaLabel}</span>
             </Button>
           ) : (
-            <span
-              title={row.statusIndicator.title}
-              aria-label={row.statusIndicator.ariaLabel}
-              role={row.statusIndicator.kind === 'processing' ? 'status' : 'img'}
-              className={`inline-block h-2.5 w-2.5 rounded-full ${row.statusIndicator.className}`}
-            />
+            <span title={row.statusIndicator.title} aria-label={row.statusIndicator.ariaLabel} role="img" className={`inline-block h-2.5 w-2.5 rounded-full ${row.statusIndicator.className}`} />
           )}
         </td>
         <td className="px-3 py-3 text-right font-mono">

@@ -12,8 +12,9 @@ vi.mock('@/components/ui/button', async () => {
 })
 
 const row: TransactionTableRow = {
-  id: 'ledger-transaction-1:bank-posting-1',
+  id: 'bank-transaction-1',
   ledgerTransactionId: 'ledger-transaction-1',
+  bankTransactionId: 'bank-transaction-1',
   bankAccountId: 'bank-account-1',
   description: 'Netto',
   date: '2026-06-18',
@@ -51,8 +52,9 @@ describe('TransactionTable', () => {
       React.createElement(TransactionTable, {
         rows: [row],
         categorizationAccounts: [{id: 'groceries', name: 'Groceries'}],
+        transferAccounts: [],
         isAiRequestPending: false,
-        onCategorizeTransaction: vi.fn(),
+        onCategorizeBankTransaction: vi.fn(),
         onConfirmTransaction: vi.fn(),
         onAiCategorizeOne: vi.fn(),
         onSaveSplit: vi.fn(async () => true),
@@ -63,5 +65,73 @@ describe('TransactionTable', () => {
     expect(markup).toContain('sticky top-0 z-10 bg-muted')
     expect(markup).not.toContain('bg-muted/60')
     expect(markup).toContain('<tbody>')
+  })
+
+  it('renders a loading indicator instead of a status dot while AI is processing a row', () => {
+    const processingStatus = {
+      kind: 'processing' as const,
+      title: 'AI is currently categorizing this transaction',
+      ariaLabel: 'AI is currently categorizing this transaction',
+      className: 'bg-muted-foreground',
+      canConfirm: false,
+    }
+    const markup = renderToStaticMarkup(
+      React.createElement(TransactionTable, {
+        rows: [{...row, aiProcessing: true, statusIndicator: processingStatus, aiIndicator: processingStatus}],
+        categorizationAccounts: [{id: 'groceries', name: 'Groceries'}],
+        transferAccounts: [],
+        isAiRequestPending: false,
+        onCategorizeBankTransaction: vi.fn(),
+        onConfirmTransaction: vi.fn(),
+        onAiCategorizeOne: vi.fn(),
+        onSaveSplit: vi.fn(async () => true),
+      }),
+    )
+
+    expect(markup).toContain('role="status"')
+    expect(markup).toContain('aria-label="AI is currently categorizing this transaction"')
+    expect(markup).toContain('animate-spin')
+    expect(markup).not.toContain('inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground')
+  })
+
+  it('renders the category selector button instead of a native category select', () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(TransactionTable, {
+        rows: [{...row, ledgerTransactionId: null, categoryAccountId: null, categoryLabel: 'Choose category'}],
+        categorizationAccounts: [{id: 'groceries', name: 'Groceries'}, {id: 'restaurants', name: 'Restaurants'}],
+        transferAccounts: [{id: 'savings-ledger', bankAccountId: 'bank-account-2', name: 'Savings'}],
+        isAiRequestPending: false,
+        onCategorizeBankTransaction: vi.fn(),
+        onConfirmTransaction: vi.fn(),
+        onAiCategorizeOne: vi.fn(),
+        onSaveSplit: vi.fn(async () => true),
+      }),
+    )
+
+    expect(markup).toContain('aria-label="Category for Netto"')
+    expect(markup).toContain('data-slot="popover-trigger"')
+    expect(markup).toContain('Choose category')
+    expect(markup).not.toContain('<select')
+    expect(markup).toContain('aria-label="AI categorize transaction"')
+    expect(markup).not.toContain('aria-label="AI categorize transaction" disabled=""')
+  })
+
+  it('keeps transfer choices available through row props for selector filtering', () => {
+    const positiveRow: TransactionTableRow = {...row, id: 'bank-transaction-2', bankTransactionId: 'bank-transaction-2', ledgerTransactionId: null, amount: '100.00', categoryAccountId: null, categoryLabel: 'Choose category'}
+    const markup = renderToStaticMarkup(
+      React.createElement(TransactionTable, {
+        rows: [positiveRow],
+        categorizationAccounts: [],
+        transferAccounts: [{id: 'checking-ledger', bankAccountId: 'bank-account-1', name: 'Checking'}],
+        isAiRequestPending: false,
+        onCategorizeBankTransaction: vi.fn(),
+        onConfirmTransaction: vi.fn(),
+        onAiCategorizeOne: vi.fn(),
+        onSaveSplit: vi.fn(async () => true),
+      }),
+    )
+
+    expect(markup).toContain('Category for Netto')
+    expect(markup).not.toContain('<select')
   })
 })

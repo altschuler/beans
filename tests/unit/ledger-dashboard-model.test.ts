@@ -8,7 +8,11 @@ const baseAccounts = [
   {id: 'groceries', groupId: 'group-1', name: 'Groceries', type: 'expense', normalBalance: 'credit', status: 'active', sortOrder: 2, systemKey: null, linkedBankAccountId: null},
 ]
 
-function buildModelForTransaction(overrides: Record<string, unknown> = {}, categoryAccountId = 'groceries') {
+function buildModelForTransaction(
+  ledgerOverrides: Record<string, unknown> = {},
+  categoryAccountId = 'groceries',
+  bankOverrides: Record<string, unknown> = {},
+) {
   return buildLedgerDashboardModel({
     groups: baseGroups,
     accounts: baseAccounts,
@@ -17,15 +21,12 @@ function buildModelForTransaction(overrides: Record<string, unknown> = {}, categ
         id: 'ledger-transaction-1',
         source: 'bank_import',
         status: 'needs_review',
-        aiConfidence: null,
-        aiProcessingStartedAt: null,
         categorizedBy: null,
         userConfirmedAt: null,
         userConfirmedBy: null,
-        aiReasoning: null,
         date: '2026-06-18',
         description: 'Netto ledger fallback',
-        ...overrides,
+        ...ledgerOverrides,
       },
     ],
     postings: [
@@ -57,6 +58,10 @@ function buildModelForTransaction(overrides: Record<string, unknown> = {}, categ
         bookingDate: '2026-06-18',
         valueDate: null,
         description: 'Netto',
+        aiConfidence: null,
+        aiProcessingStartedAt: null,
+        aiReasoning: null,
+        ...bankOverrides,
       },
     ],
     bankAccounts: [{id: 'bank-account-1', name: 'Checking'}],
@@ -65,7 +70,7 @@ function buildModelForTransaction(overrides: Record<string, unknown> = {}, categ
 
 describe('buildLedgerDashboardModel', () => {
   it('groups balances and creates transaction rows with category state', () => {
-    const model = buildModelForTransaction({aiConfidence: 1, aiProcessingStartedAt: new Date()}, 'uncategorized')
+    const model = buildModelForTransaction({}, 'uncategorized', {aiConfidence: 1, aiProcessingStartedAt: new Date()})
 
     expect(model.reviewCount).toBe(1)
     expect(model.aiProcessingCount).toBe(1)
@@ -73,8 +78,9 @@ describe('buildLedgerDashboardModel', () => {
     expect(model.accountGroups[0]).toMatchObject({name: 'Everyday spending'})
     expect(model.accountGroups[0]?.accounts.find(account => account.id === 'uncategorized')?.balance).toBe('-100.0000')
     expect(model.transactionRows[0]).toMatchObject({
-      id: 'ledger-transaction-1:bank-posting-1',
+      id: 'bank-transaction-1',
       ledgerTransactionId: 'ledger-transaction-1',
+      bankTransactionId: 'bank-transaction-1',
       description: 'Netto',
       date: '2026-06-18',
       bankAccountName: 'Checking',
@@ -91,7 +97,7 @@ describe('buildLedgerDashboardModel', () => {
   })
 
   it('shows manual rows with a bright green status dot', () => {
-    const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'user', aiConfidence: null, userConfirmedAt: new Date('2026-06-19T10:00:00.000Z')})
+    const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'user', userConfirmedAt: new Date('2026-06-19T10:00:00.000Z')})
 
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'confirmed',
@@ -102,13 +108,15 @@ describe('buildLedgerDashboardModel', () => {
   })
 
   it('shows user-confirmed AI rows with a bright green status dot that preserves AI reasoning', () => {
-    const model = buildModelForTransaction({
-      status: 'confirmed',
-      categorizedBy: 'ai',
-      aiConfidence: 2,
-      userConfirmedAt: new Date('2026-06-19T10:00:00.000Z'),
-      aiReasoning: 'Matched past Netto grocery transactions.',
-    })
+    const model = buildModelForTransaction(
+      {
+        status: 'confirmed',
+        categorizedBy: 'ai',
+        userConfirmedAt: new Date('2026-06-19T10:00:00.000Z'),
+      },
+      'groceries',
+      {aiConfidence: 2, aiReasoning: 'Matched past Netto grocery transactions.'},
+    )
 
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'confirmed',
@@ -119,7 +127,7 @@ describe('buildLedgerDashboardModel', () => {
   })
 
   it('shows high-confidence AI rows with a softer green confirmable status dot and reasoning', () => {
-    const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'ai', aiConfidence: 2, aiReasoning: 'Matched past Netto grocery transactions.'})
+    const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'ai'}, 'groceries', {aiConfidence: 2, aiReasoning: 'Matched past Netto grocery transactions.'})
 
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'ai_confident',
@@ -130,7 +138,7 @@ describe('buildLedgerDashboardModel', () => {
   })
 
   it('shows medium-confidence AI rows as yellow and confirmable', () => {
-    const model = buildModelForTransaction({categorizedBy: 'ai', aiConfidence: 1, aiReasoning: 'Merchant looks like groceries.'})
+    const model = buildModelForTransaction({categorizedBy: 'ai'}, 'groceries', {aiConfidence: 1, aiReasoning: 'Merchant looks like groceries.'})
 
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'needs_review',
@@ -141,7 +149,7 @@ describe('buildLedgerDashboardModel', () => {
   })
 
   it('shows any effectively Uncategorized row as red even when AI confidence is high', () => {
-    const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'ai', aiConfidence: 2}, 'uncategorized')
+    const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'ai'}, 'uncategorized', {aiConfidence: 2})
 
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'uncategorized',
@@ -152,7 +160,7 @@ describe('buildLedgerDashboardModel', () => {
   })
 
   it('shows processing rows as gray before other status states', () => {
-    const model = buildModelForTransaction({aiProcessingStartedAt: new Date(), userConfirmedAt: new Date('2026-06-19T10:00:00.000Z')})
+    const model = buildModelForTransaction({userConfirmedAt: new Date('2026-06-19T10:00:00.000Z')}, 'groceries', {aiProcessingStartedAt: new Date()})
 
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'processing',

@@ -76,7 +76,7 @@ async function seedCategorizationFixture() {
   ])
   await db.insert(ledgerAccounts).values([
     account('bank-ledger-account', 'team-1', 'bank', 'debit', 'Checking', {linkedBankAccountId: 'bank-account-1', sortOrder: 0}),
-    account('bank-linked-category', 'team-1', 'expense', 'credit', 'Linked Category', {linkedBankAccountId: 'bank-account-2', sortOrder: 1}),
+    account('bank-ledger-account-2', 'team-1', 'bank', 'debit', 'Savings Bank', {linkedBankAccountId: 'bank-account-2', sortOrder: 1}),
     account('uncategorized', 'team-1', 'adjustment', 'credit', 'Uncategorized', {systemKey: 'uncategorized', sortOrder: 2}),
     account('groceries', 'team-1', 'expense', 'credit', 'Groceries', {sortOrder: 3}),
     account('household', 'team-1', 'expense', 'credit', 'Household', {sortOrder: 4}),
@@ -147,12 +147,9 @@ async function seedImportedLedgerTransaction(input: {
     teamId: 'team-1',
     source: 'bank_import',
     status: input.status ?? 'needs_review',
-    aiConfidence: null,
-    aiProcessingStartedAt: null,
     categorizedBy: null,
     userConfirmedAt: null,
     userConfirmedBy: null,
-    aiReasoning: null,
     date: '2026-06-18',
     description: input.description,
     createdAt: baseNow,
@@ -188,6 +185,38 @@ async function postingsFor(ledgerTransactionId: string) {
   return db.select().from(ledgerPostings).where(eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId)).orderBy(ledgerPostings.sortOrder)
 }
 
+async function insertUnreconciledBankTransaction(input: {
+  id: string
+  bankAccountId?: string
+  amount: string
+  currency?: string
+  description?: string
+  bookingDate?: string | null
+}) {
+  await db.insert(bankTransactions).values({
+    id: input.id,
+    bankAccountId: input.bankAccountId ?? 'bank-account-1',
+    providerTransactionId: `provider-${input.id}`,
+    status: 'booked',
+    bookingDate: input.bookingDate ?? '2026-06-20',
+    valueDate: null,
+    amount: input.amount,
+    currency: input.currency ?? 'DKK',
+    description: input.description ?? 'Imported transaction',
+    counterpartyName: null,
+    aiConfidence: null,
+    aiProcessingStartedAt: null,
+    aiReasoning: null,
+    raw: {},
+    createdAt: baseNow,
+    updatedAt: baseNow,
+  })
+}
+
+async function getPostings(ledgerTransactionId: string) {
+  return postingsFor(ledgerTransactionId)
+}
+
 describe('posting-based ledger categorization server functions', () => {
   beforeAll(() => migrateDatabase())
   beforeEach(async () => {
@@ -195,6 +224,236 @@ describe('posting-based ledger categorization server functions', () => {
     await seedCategorizationFixture()
   })
   afterAll(async () => closeDatabase())
+
+
+  it('creates a ledger transaction when categorizing an unreconciled bank transaction', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-transaction-lazy-1', amount: '-100.0000', description: 'Card purchase'})
+
+    await expect(
+      db.transaction(tx =>
+        categorizeBankTransaction(tx, {
+          userId: 'user-1',
+          bankTransactionId: 'bank-transaction-lazy-1',
+          selection: {kind: 'category', accountId: 'groceries'},
+        }),
+      ),
+    ).resolves.toBe(true)
+
+    const postings = await db
+      .select()
+      .from(ledgerPostings)
+      .innerJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerPostings.ledgerTransactionId))
+      .where(eq(ledgerPostings.bankTransactionId, 'bank-transaction-lazy-1'))
+
+    expect(postings).toHaveLength(1)
+    const ledgerTransactionId = postings[0]!.ledger_postings.ledgerTransactionId
+    const allPostings = await getPostings(ledgerTransactionId)
+    expect(allPostings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId, sortOrder: posting.sortOrder}))).toEqual([
+      {accountId: 'bank-ledger-account', amount: '-100.0000', bankTransactionId: 'bank-transaction-lazy-1', sortOrder: 0},
+      {accountId: 'groceries', amount: '100.0000', bankTransactionId: null, sortOrder: 1},
+    ])
+
+    const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, ledgerTransactionId))
+    expect(transaction).toMatchObject({source: 'bank_import', status: 'confirmed', categorizedBy: 'user', description: 'Card purchase', date: '2026-06-20'})
+  })
+
+  it('rejects transfer categorization when no counter bank transaction matches', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-source', amount: '-1000.0000', description: 'Transfer to savings'})
+
+    await expect(
+      db.transaction(tx =>
+        categorizeBankTransaction(tx, {
+          userId: 'user-1',
+          bankTransactionId: 'bank-transfer-source',
+          selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+        }),
+      ),
+    ).rejects.toThrow('No matching transfer was found')
+
+    await expect(db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-source'))).resolves.toHaveLength(0)
+  })
+
+  it('reconciles an exact opposite counter bank transaction when creating a transfer', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-source-match', bankAccountId: 'bank-account-1', amount: '-1000.0000', description: 'Transfer out', bookingDate: '2026-06-20'})
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-counter-match', bankAccountId: 'bank-account-2', amount: '1000.0000', description: 'Transfer in', bookingDate: '2026-06-21'})
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transfer-source-match',
+        selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+      }),
+    )
+
+    const postings = await db.select().from(ledgerPostings).orderBy(ledgerPostings.sortOrder)
+    const transferPostings = postings.filter(posting => posting.bankTransactionId === 'bank-transfer-source-match' || posting.bankTransactionId === 'bank-transfer-counter-match')
+    expect(transferPostings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId, sortOrder: posting.sortOrder}))).toEqual([
+      {accountId: 'bank-ledger-account', amount: '-1000.0000', bankTransactionId: 'bank-transfer-source-match', sortOrder: 0},
+      {accountId: 'bank-ledger-account-2', amount: '1000.0000', bankTransactionId: 'bank-transfer-counter-match', sortOrder: 1},
+    ])
+    expect(new Set(transferPostings.map(posting => posting.ledgerTransactionId)).size).toBe(1)
+  })
+
+  it('rejects exact counter transfer candidates outside the two-day date window', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-source-window', bankAccountId: 'bank-account-1', amount: '-600.0000', bookingDate: '2026-06-20'})
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-counter-outside-window', bankAccountId: 'bank-account-2', amount: '600.0000', bookingDate: '2026-06-23'})
+
+    await expect(
+      db.transaction(tx =>
+        categorizeBankTransaction(tx, {
+          userId: 'user-1',
+          bankTransactionId: 'bank-transfer-source-window',
+          selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+        }),
+      ),
+    ).rejects.toThrow('No matching transfer was found')
+
+    await expect(db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-source-window'))).resolves.toHaveLength(0)
+    await expect(db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-counter-outside-window'))).resolves.toHaveLength(0)
+  })
+
+  it('deterministically chooses one exact counter transfer match when several exist', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-source-many', bankAccountId: 'bank-account-1', amount: '-500.0000', bookingDate: '2026-06-20'})
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-counter-b', bankAccountId: 'bank-account-2', amount: '500.0000', bookingDate: '2026-06-22'})
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-counter-a', bankAccountId: 'bank-account-2', amount: '500.0000', bookingDate: '2026-06-21'})
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transfer-source-many',
+        selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+      }),
+    )
+
+    const matched = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-counter-a'))
+    const unmatched = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-counter-b'))
+    expect(matched).toHaveLength(1)
+    expect(unmatched).toHaveLength(0)
+  })
+
+  it('splits an unreconciled bank transaction by bank transaction id', async () => {
+    const {splitBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-split-lazy-1', amount: '-100.0000', description: 'Mixed shop'})
+
+    await db.transaction(tx =>
+      splitBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-split-lazy-1',
+        lines: [
+          {accountId: 'groceries', amount: '70.0000'},
+          {accountId: 'household', amount: '30.0000'},
+        ],
+      }),
+    )
+
+    const [sourcePosting] = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-split-lazy-1'))
+    const postings = await getPostings(sourcePosting!.ledgerTransactionId)
+    expect(postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId, sortOrder: posting.sortOrder}))).toEqual([
+      {accountId: 'bank-ledger-account', amount: '-100.0000', bankTransactionId: 'bank-split-lazy-1', sortOrder: 0},
+      {accountId: 'groceries', amount: '70.0000', bankTransactionId: null, sortOrder: 1},
+      {accountId: 'household', amount: '30.0000', bankTransactionId: null, sortOrder: 2},
+    ])
+  })
+
+  it('does not create a pending one-sided transfer interpretation for later attachment', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-delayed-source', bankAccountId: 'bank-account-1', amount: '-125.0000'})
+
+    await expect(
+      db.transaction(tx =>
+        categorizeBankTransaction(tx, {
+          userId: 'user-1',
+          bankTransactionId: 'bank-transfer-delayed-source',
+          selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+        }),
+      ),
+    ).rejects.toThrow('No matching transfer was found')
+
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-delayed-counter', bankAccountId: 'bank-account-2', amount: '125.0000'})
+
+    await expect(db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-delayed-source'))).resolves.toHaveLength(0)
+    await expect(db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-delayed-counter'))).resolves.toHaveLength(0)
+  })
+
+  it('requires the counter bank transaction to be unmatched before transfer categorization', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-existing-source', bankAccountId: 'bank-account-1', amount: '-75.0000'})
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-existing-counter', bankAccountId: 'bank-account-2', amount: '75.0000'})
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transfer-existing-counter',
+        selection: {kind: 'category', accountId: 'groceries'},
+      }),
+    )
+
+    await expect(
+      db.transaction(tx =>
+        categorizeBankTransaction(tx, {
+          userId: 'user-1',
+          bankTransactionId: 'bank-transfer-existing-source',
+          selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+        }),
+      ),
+    ).rejects.toThrow('No matching transfer was found')
+
+    const sourcePosting = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-existing-source'))
+    const counterPosting = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-existing-counter'))
+    expect(sourcePosting).toHaveLength(0)
+    expect(counterPosting).toHaveLength(1)
+  })
+
+  it('rejects replacing a bank transaction interpretation while AI processing is fresh', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await db.update(bankTransactions).set({aiProcessingStartedAt: new Date()}).where(eq(bankTransactions.id, 'bank-transaction-1'))
+
+    await expect(
+      db.transaction(tx =>
+        categorizeBankTransaction(tx, {
+          userId: 'user-1',
+          bankTransactionId: 'bank-transaction-1',
+          selection: {kind: 'category', accountId: 'groceries'},
+        }),
+      ),
+    ).rejects.toThrow('Bank transaction is already being categorized')
+  })
+
+  it('recategorizing one side of a matched transfer detaches the old counter bank transaction', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-recat-source', bankAccountId: 'bank-account-1', amount: '-250.0000'})
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-recat-counter', bankAccountId: 'bank-account-2', amount: '250.0000'})
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transfer-recat-source',
+        selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+      }),
+    )
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transfer-recat-source',
+        selection: {kind: 'category', accountId: 'groceries'},
+      }),
+    )
+
+    const sourcePostings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-recat-source'))
+    const counterPostings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-recat-counter'))
+    expect(sourcePostings).toHaveLength(1)
+    expect(counterPostings).toHaveLength(0)
+    const postings = await getPostings(sourcePostings[0]!.ledgerTransactionId)
+    expect(postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId}))).toEqual([
+      {accountId: 'bank-ledger-account', amount: '-250.0000', bankTransactionId: 'bank-transfer-recat-source'},
+      {accountId: 'groceries', amount: '250.0000', bankTransactionId: null},
+    ])
+  })
 
   it('replaces only non-reconciled postings, preserves the bank posting, balances to zero, and confirms', async () => {
     const {categorizeLedgerTransaction} = await import('@/ledger/categorization.server')
@@ -292,7 +551,7 @@ describe('posting-based ledger categorization server functions', () => {
     ])
   })
 
-  it.each(['uncategorized', 'bank-ledger-account', 'bank-linked-category', 'inactive-expense', 'corrections', 'other-team-expense'])(
+  it.each(['uncategorized', 'bank-ledger-account', 'bank-ledger-account-2', 'inactive-expense', 'corrections', 'other-team-expense'])(
     'rejects %s as a categorization account',
     async accountId => {
       const {categorizeLedgerTransaction} = await import('@/ledger/categorization.server')
@@ -363,7 +622,7 @@ describe('posting-based ledger categorization server functions', () => {
   it('rejects confirmation while AI processing is fresh', async () => {
     const {confirmLedgerTransaction} = await import('@/ledger/categorization.server')
     const processingStartedAt = new Date()
-    await db.update(ledgerTransactions).set({aiProcessingStartedAt: processingStartedAt}).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    await db.update(bankTransactions).set({aiProcessingStartedAt: processingStartedAt}).where(eq(bankTransactions.id, 'bank-transaction-1'))
     await db.delete(ledgerPostings).where(eq(ledgerPostings.id, 'ledger-transaction-1-uncat-posting'))
     await db.insert(ledgerPostings).values({
       id: 'posting-groceries-fresh-processing',
@@ -382,17 +641,19 @@ describe('posting-based ledger categorization server functions', () => {
     ).rejects.toThrow('Transaction is currently being categorized by AI')
 
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
     expect(transaction?.status).toBe('needs_review')
-    expect(transaction?.aiProcessingStartedAt).toEqual(processingStartedAt)
+    expect(bankTransaction?.aiProcessingStartedAt).toEqual(processingStartedAt)
     expect(transaction?.userConfirmedBy).toBeNull()
   })
 
   it('preserves AI categorizer metadata when the user confirms an AI category', async () => {
     const {confirmLedgerTransaction} = await import('@/ledger/categorization.server')
+    await db.update(ledgerTransactions).set({categorizedBy: 'ai', status: 'confirmed'}).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     await db
-      .update(ledgerTransactions)
-      .set({categorizedBy: 'ai', aiConfidence: 2, aiReasoning: 'Matched supermarket history.', status: 'confirmed'})
-      .where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+      .update(bankTransactions)
+      .set({aiConfidence: 2, aiReasoning: 'Matched supermarket history.'})
+      .where(eq(bankTransactions.id, 'bank-transaction-1'))
     await db.delete(ledgerPostings).where(eq(ledgerPostings.id, 'ledger-transaction-1-uncat-posting'))
     await db.insert(ledgerPostings).values({
       id: 'posting-groceries-ai-confirm',
@@ -409,17 +670,17 @@ describe('posting-based ledger categorization server functions', () => {
     await db.transaction(tx => confirmLedgerTransaction(tx, {userId: 'user-1', ledgerTransactionId: 'ledger-transaction-1'}))
 
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
     expect(transaction).toMatchObject({
       status: 'confirmed',
       categorizedBy: 'ai',
-      aiConfidence: 2,
-      aiReasoning: 'Matched supermarket history.',
       userConfirmedBy: 'user-1',
     })
+    expect(bankTransaction).toMatchObject({aiConfidence: 2, aiReasoning: 'Matched supermarket history.'})
     expect(transaction?.userConfirmedAt).toBeInstanceOf(Date)
   })
 
-  it('clears multi-reconciled transactions with one Uncategorized posting and counts transactions', async () => {
+  it('clears multi-reconciled transactions by deleting their ledger interpretation and counts transactions', async () => {
     const {clearLedgerCategorizations} = await import('@/ledger/categorization.server')
     await db.delete(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     await db.insert(bankTransactions).values([
@@ -459,12 +720,9 @@ describe('posting-based ledger categorization server functions', () => {
       teamId: 'team-1',
       source: 'bank_import',
       status: 'confirmed',
-      aiConfidence: 2,
-      aiProcessingStartedAt: null,
       categorizedBy: 'ai',
       userConfirmedAt: null,
       userConfirmedBy: null,
-      aiReasoning: 'Before clear.',
       date: '2026-06-18',
       description: 'Multi bank posting transaction',
       createdAt: baseNow,
@@ -480,16 +738,13 @@ describe('posting-based ledger categorization server functions', () => {
     const result = await db.transaction(tx => clearLedgerCategorizations(tx, {userId: 'user-1'}))
 
     const postings = await postingsFor('ledger-transaction-multi')
+    const bankPostings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transaction-multi-1'))
     expect(result).toEqual({cleared: 1})
-    expect(postings).toMatchObject([
-      {id: 'multi-bank-posting-1', accountId: 'bank-ledger-account', amount: '-40.0000', bankTransactionId: 'bank-transaction-multi-1'},
-      {id: 'multi-bank-posting-2', accountId: 'bank-ledger-account', amount: '-60.0000', bankTransactionId: 'bank-transaction-multi-2'},
-      {accountId: 'uncategorized', amount: '100.0000', bankTransactionId: null},
-    ])
-    expect(postings.map(posting => posting.amount)).toEqual(['-40.0000', '-60.0000', '100.0000'])
+    expect(postings).toEqual([])
+    expect(bankPostings).toEqual([])
   })
 
-  it('clears categorizations to Uncategorized while preserving bank postings and bank transactions', async () => {
+  it('clears categorizations by deleting ledger interpretations while preserving bank transactions', async () => {
     const {clearLedgerCategorizations} = await import('@/ledger/categorization.server')
     await db.delete(ledgerPostings).where(eq(ledgerPostings.id, 'ledger-transaction-1-uncat-posting'))
     await db.insert(ledgerPostings).values([
@@ -503,10 +758,7 @@ describe('posting-based ledger categorization server functions', () => {
     const postings = await postingsFor('ledger-transaction-1')
     const bankRowsAfter = await db.select().from(bankTransactions).orderBy(bankTransactions.id)
     expect(result).toEqual({cleared: 1})
-    expect(postings).toMatchObject([
-      {id: 'ledger-transaction-1-bank-posting', accountId: 'bank-ledger-account', amount: '-100.0000', bankTransactionId: 'bank-transaction-1'},
-      {accountId: 'uncategorized', amount: '100.0000', bankTransactionId: null},
-    ])
+    expect(postings).toEqual([])
     expect(bankRowsAfter).toEqual(bankRowsBefore)
   })
 
@@ -542,7 +794,7 @@ describe('posting-based ledger categorization server functions', () => {
 
   it('rejects categorization when the reconciled posting account is not linked to the bank transaction account', async () => {
     const {categorizeLedgerTransaction} = await import('@/ledger/categorization.server')
-    await db.update(ledgerPostings).set({accountId: 'bank-linked-category'}).where(eq(ledgerPostings.id, 'ledger-transaction-1-bank-posting'))
+    await db.update(ledgerPostings).set({accountId: 'bank-ledger-account-2'}).where(eq(ledgerPostings.id, 'ledger-transaction-1-bank-posting'))
 
     await expect(
       db.transaction(tx =>

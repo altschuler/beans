@@ -40,6 +40,28 @@ export type ReconciledBankPosting = {
   bankTransactionId: string
 }
 
+export type BankTransactionPostingSource = {
+  bankTransactionId: string
+  bankLedgerAccountId: string
+  amount: string
+  currency: string
+}
+
+export type BankTransactionInterpretationInput = {
+  ledgerTransactionId: string
+  source: BankTransactionPostingSource
+  lines: CategorizationLineInput[]
+  now?: Date
+}
+
+export type BankTransactionTransferInput = {
+  ledgerTransactionId: string
+  source: BankTransactionPostingSource
+  targetLedgerAccountId: string
+  counterBankTransactionId: string
+  now?: Date
+}
+
 export type BalanceAccount = {
   id: string
   normalBalance: string
@@ -123,6 +145,83 @@ export function buildBankLinkedCategorizationPostings(input: {
   }))
 
   const postings = [bankPosting, ...explanatoryPostings]
+  validateLedgerPostingsBalance(postings)
+  return postings
+}
+
+export function buildBankTransactionCategorizationPostings(input: BankTransactionInterpretationInput): BuiltLedgerPosting[] {
+  const sourceAmountUnits = parseMoneyToScaledUnits(input.source.amount)
+  if (sourceAmountUnits === 0n) {
+    throw new Error('Bank transaction amount must be non-zero')
+  }
+
+  const {lineUnits} = validateBankLinkedCategorizationLines({
+    bankAmount: input.source.amount,
+    lines: input.lines,
+  })
+  const now = input.now ?? new Date()
+  const explanatorySign = sourceAmountUnits > 0n ? -1n : 1n
+  const postings: BuiltLedgerPosting[] = [
+    {
+      id: crypto.randomUUID(),
+      ledgerTransactionId: input.ledgerTransactionId,
+      accountId: input.source.bankLedgerAccountId,
+      amount: formatScaledUnits(sourceAmountUnits),
+      currency: input.source.currency,
+      bankTransactionId: input.source.bankTransactionId,
+      sortOrder: 0,
+      createdAt: now,
+      updatedAt: now,
+    },
+    ...input.lines.map((line, index) => ({
+      id: crypto.randomUUID(),
+      ledgerTransactionId: input.ledgerTransactionId,
+      accountId: line.accountId,
+      amount: formatScaledUnits((lineUnits[index] ?? 0n) * explanatorySign),
+      currency: input.source.currency,
+      bankTransactionId: null,
+      sortOrder: index + 1,
+      createdAt: now,
+      updatedAt: now,
+    })),
+  ]
+
+  validateLedgerPostingsBalance(postings)
+  return postings
+}
+
+export function buildBankTransactionTransferPostings(input: BankTransactionTransferInput): BuiltLedgerPosting[] {
+  const sourceAmountUnits = parseMoneyToScaledUnits(input.source.amount)
+  if (sourceAmountUnits === 0n) {
+    throw new Error('Bank transaction amount must be non-zero')
+  }
+
+  const now = input.now ?? new Date()
+  const postings: BuiltLedgerPosting[] = [
+    {
+      id: crypto.randomUUID(),
+      ledgerTransactionId: input.ledgerTransactionId,
+      accountId: input.source.bankLedgerAccountId,
+      amount: formatScaledUnits(sourceAmountUnits),
+      currency: input.source.currency,
+      bankTransactionId: input.source.bankTransactionId,
+      sortOrder: 0,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: crypto.randomUUID(),
+      ledgerTransactionId: input.ledgerTransactionId,
+      accountId: input.targetLedgerAccountId,
+      amount: formatScaledUnits(-sourceAmountUnits),
+      currency: input.source.currency,
+      bankTransactionId: input.counterBankTransactionId,
+      sortOrder: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ]
+
   validateLedgerPostingsBalance(postings)
   return postings
 }

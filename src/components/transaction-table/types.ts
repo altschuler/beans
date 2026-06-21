@@ -2,6 +2,10 @@ export type SplitLine = {accountId: string; amount: string}
 
 export type CategorizationAccountOption = {id: string; name: string}
 
+export type TransferAccountOption = {id: string; bankAccountId: string; name: string}
+
+export type CategorySelection = {kind: 'category'; accountId: string} | {kind: 'transfer'; accountId: string}
+
 export type TransactionTableStatusIndicator = {
   kind: 'processing' | 'uncategorized' | 'confirmed' | 'ai_confident' | 'needs_review' | 'ai_failed'
   title: string
@@ -12,7 +16,8 @@ export type TransactionTableStatusIndicator = {
 
 export type TransactionTableRow = {
   id: string
-  ledgerTransactionId: string
+  ledgerTransactionId: string | null
+  bankTransactionId: string
   bankAccountId: string | null
   description: string
   date: string | null

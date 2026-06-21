@@ -2,11 +2,11 @@ import '@tanstack/react-start/server-only'
 
 import {openai} from '@ai-sdk/openai'
 import {generateObject} from 'ai'
-import {and, desc, eq, inArray, isNotNull, isNull, lt, or} from 'drizzle-orm'
+import {and, desc, eq, inArray, isNull, lt, or} from 'drizzle-orm'
 import {z} from 'zod'
 import {db, type Database} from '@/db/client'
 import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from '@/db/schema'
-import {categorizeLedgerTransaction, normalizeAiReasoning} from './categorization.server'
+import {categorizeBankTransaction, categorizeLedgerTransaction, normalizeAiReasoning} from './categorization.server'
 import {loadSimilarCategorizationExamples, type AiCategorizationSimilarExample} from './similar-categorization-examples.server'
 
 export const AI_CATEGORIZATION_MODEL = 'gpt-5.4-nano'
@@ -16,7 +16,7 @@ const AI_PROCESSING_STALE_AFTER_MS = 30 * 60 * 1000
 const aiConfidenceSchema = z.union([z.literal(0), z.literal(1), z.literal(2)])
 
 const suggestionSchema = z.object({
-  ledgerTransactionId: z.string().min(1),
+  bankTransactionId: z.string().min(1),
   categoryAccountId: z.string().min(1).nullable(),
   confidence: aiConfidenceSchema,
   reasoning: z.string().min(1).regex(/\S/),
@@ -66,7 +66,7 @@ type DrizzleTransaction = DatabaseTransaction
 
 type AiCategorizeLedgerTransactionsInput = {
   userId: string
-  ledgerTransactionIds?: string[]
+  bankTransactionIds?: string[]
   limit?: number
 }
 
@@ -92,7 +92,7 @@ export async function aiCategorizeLedgerTransactions(
   categorizeWithModel: CategorizeWithModel = categorizeWithOpenAI,
 ): Promise<AiCategorizationResult> {
   const work = await db.transaction(tx => claimAiCategorizationWork(tx, input))
-  const transactionIds = work.transactions.map(transaction => transaction.id)
+  const bankTransactionIds = work.transactions.map(transaction => transaction.id)
 
   try {
     const similarExamplesByTransactionId = await db.transaction(tx =>
@@ -141,7 +141,7 @@ export async function aiCategorizeLedgerTransactions(
 
     return {requested: work.transactions.length, suggested, applied, confirmed, stillNeedsReview, skipped}
   } finally {
-    await clearAiProcessingStartedAt(input.userId, transactionIds, work.processingStartedAt)
+    await clearAiProcessingStartedAt(input.userId, bankTransactionIds, work.processingStartedAt)
   }
 }
 
@@ -174,8 +174,8 @@ If confidence is 0, categoryAccountId must be null. If confidence is 1 or 2, cat
 }
 
 async function claimAiCategorizationWork(tx: DrizzleTransaction, input: AiCategorizeLedgerTransactionsInput): Promise<ClaimedAiCategorizationWork> {
-  const transactions = input.ledgerTransactionIds?.length
-    ? await loadRequestedTransactions(tx, input.userId, input.ledgerTransactionIds)
+  const transactions = input.bankTransactionIds?.length
+    ? await loadRequestedTransactions(tx, input.userId, input.bankTransactionIds)
     : await loadNeedsReviewBatch(tx, input.userId, input.limit)
 
   if (transactions.length === 0) {
@@ -185,15 +185,15 @@ async function claimAiCategorizationWork(tx: DrizzleTransaction, input: AiCatego
   const now = new Date()
   const [freshProcessingCutoff, transactionIds] = [aiProcessingFreshCutoff(now), transactions.map(transaction => transaction.id)]
   const claimedRows = await tx
-    .update(ledgerTransactions)
+    .update(bankTransactions)
     .set({aiProcessingStartedAt: now, updatedAt: now})
     .where(
       and(
-        inArray(ledgerTransactions.id, transactionIds),
-        or(isNull(ledgerTransactions.aiProcessingStartedAt), lt(ledgerTransactions.aiProcessingStartedAt, freshProcessingCutoff)),
+        inArray(bankTransactions.id, transactionIds),
+        or(isNull(bankTransactions.aiProcessingStartedAt), lt(bankTransactions.aiProcessingStartedAt, freshProcessingCutoff)),
       ),
     )
-    .returning({id: ledgerTransactions.id})
+    .returning({id: bankTransactions.id})
   const claimedIds = new Set(claimedRows.map(row => row.id))
   const claimedTransactions = transactions.filter(transaction => claimedIds.has(transaction.id))
 
@@ -223,7 +223,7 @@ async function applyAiCategorizationSuggestions(
   let skipped = 0
 
   for (const suggestion of suggestions) {
-    const transactionTeamId = context.transactionTeamsById.get(suggestion.ledgerTransactionId)
+    const transactionTeamId = context.transactionTeamsById.get(suggestion.bankTransactionId)
     const categoryTeamId = suggestion.categoryAccountId ? context.categoryTeamsById.get(suggestion.categoryAccountId) : undefined
 
     if (transactionTeamId !== teamId || (suggestion.confidence > 0 && categoryTeamId !== teamId)) {
@@ -231,21 +231,21 @@ async function applyAiCategorizationSuggestions(
       continue
     }
 
-    if (context.categorizedTransactionIds.has(suggestion.ledgerTransactionId)) {
+    if (context.categorizedTransactionIds.has(suggestion.bankTransactionId)) {
       skipped += 1
       continue
     }
 
-    const currentTransaction = await loadCurrentTransactionForAiApplication(tx, userId, suggestion.ledgerTransactionId)
-    if (!currentTransaction || currentTransaction.teamId !== transactionTeamId || currentTransaction.status !== 'needs_review') {
-      context.categorizedTransactionIds.add(suggestion.ledgerTransactionId)
+    const currentTransaction = await loadCurrentTransactionForAiApplication(tx, userId, suggestion.bankTransactionId)
+    if (!currentTransaction || currentTransaction.teamId !== transactionTeamId || currentTransaction.status === 'confirmed') {
+      context.categorizedTransactionIds.add(suggestion.bankTransactionId)
       skipped += 1
       continue
     }
 
     if (suggestion.confidence === 0) {
-      const didRecord = await recordAiConfidenceWithoutCategory(tx, userId, suggestion.ledgerTransactionId, 0, suggestion.reasoning)
-      context.categorizedTransactionIds.add(suggestion.ledgerTransactionId)
+      const didRecord = await recordAiConfidenceWithoutCategory(tx, userId, suggestion.bankTransactionId, 0, suggestion.reasoning)
+      context.categorizedTransactionIds.add(suggestion.bankTransactionId)
       if (!didRecord) {
         skipped += 1
         continue
@@ -260,18 +260,28 @@ async function applyAiCategorizationSuggestions(
     }
 
     const status = suggestion.confidence === 2 ? 'confirmed' : 'needs_review'
-    const didApply = await categorizeLedgerTransaction(tx, {
-      userId,
-      ledgerTransactionId: suggestion.ledgerTransactionId,
-      accountId: suggestion.categoryAccountId,
-      status,
-      aiConfidence: suggestion.confidence,
-      aiReasoning: suggestion.reasoning,
-      categorizedBy: 'ai',
-      requiredCurrentStatus: 'needs_review',
-    })
+    const didApply = currentTransaction.ledgerTransactionId
+      ? await categorizeLedgerTransaction(tx, {
+          userId,
+          ledgerTransactionId: currentTransaction.ledgerTransactionId,
+          accountId: suggestion.categoryAccountId,
+          status,
+          aiConfidence: suggestion.confidence,
+          aiReasoning: suggestion.reasoning,
+          categorizedBy: 'ai',
+          requiredCurrentStatus: 'needs_review',
+        })
+      : await categorizeBankTransaction(tx, {
+          userId,
+          bankTransactionId: suggestion.bankTransactionId,
+          selection: {kind: 'category', accountId: suggestion.categoryAccountId},
+          status,
+          aiConfidence: suggestion.confidence,
+          aiReasoning: suggestion.reasoning,
+          categorizedBy: 'ai',
+        })
 
-    context.categorizedTransactionIds.add(suggestion.ledgerTransactionId)
+    context.categorizedTransactionIds.add(suggestion.bankTransactionId)
     if (!didApply) {
       skipped += 1
       continue
@@ -285,60 +295,50 @@ async function applyAiCategorizationSuggestions(
   return {applied, confirmed, stillNeedsReview, skipped}
 }
 
-async function recordAiConfidenceWithoutCategory(tx: DrizzleTransaction, userId: string, ledgerTransactionId: string, aiConfidence: 0, aiReasoning: string) {
+async function recordAiConfidenceWithoutCategory(tx: DrizzleTransaction, userId: string, bankTransactionId: string, aiConfidence: 0, aiReasoning: string) {
   const now = new Date()
-  const authorizedIds = await selectAuthorizedLedgerTransactionIds(tx, userId, [ledgerTransactionId], 'needs_review')
+  const authorizedIds = await selectAuthorizedBankTransactionIds(tx, userId, [bankTransactionId])
   if (authorizedIds.length === 0) return false
 
   const [updatedTransaction] = await tx
-    .update(ledgerTransactions)
+    .update(bankTransactions)
     .set({
-      status: 'needs_review',
       aiConfidence,
       aiReasoning: normalizeAiReasoning(aiReasoning),
       aiProcessingStartedAt: null,
-      userConfirmedAt: null,
-      userConfirmedBy: null,
       updatedAt: now,
     })
-    .where(inArray(ledgerTransactions.id, authorizedIds))
-    .returning({id: ledgerTransactions.id})
+    .where(inArray(bankTransactions.id, authorizedIds))
+    .returning({id: bankTransactions.id})
 
   return Boolean(updatedTransaction)
 }
 
-async function clearAiProcessingStartedAt(userId: string, ledgerTransactionIds: string[], processingStartedAt: Date) {
-  if (ledgerTransactionIds.length === 0) return
+async function clearAiProcessingStartedAt(userId: string, bankTransactionIds: string[], processingStartedAt: Date) {
+  if (bankTransactionIds.length === 0) return
 
-  const authorizedIds = await selectAuthorizedLedgerTransactionIds(db, userId, ledgerTransactionIds)
+  const authorizedIds = await selectAuthorizedBankTransactionIds(db, userId, bankTransactionIds)
   if (authorizedIds.length === 0) return
 
   await db
-    .update(ledgerTransactions)
+    .update(bankTransactions)
     .set({aiProcessingStartedAt: null, updatedAt: new Date()})
-    .where(and(inArray(ledgerTransactions.id, authorizedIds), eq(ledgerTransactions.aiProcessingStartedAt, processingStartedAt)))
+    .where(and(inArray(bankTransactions.id, authorizedIds), eq(bankTransactions.aiProcessingStartedAt, processingStartedAt)))
 }
 
-async function selectAuthorizedLedgerTransactionIds(
+async function selectAuthorizedBankTransactionIds(
   tx: DrizzleTransaction | Database,
   userId: string,
-  ledgerTransactionIds: string[],
-  requiredStatus?: 'needs_review',
+  bankTransactionIds: string[],
 ) {
-  if (ledgerTransactionIds.length === 0) return []
-
-  const conditions = [
-    inArray(ledgerTransactions.id, ledgerTransactionIds),
-    eq(teamMembers.teamId, ledgerTransactions.teamId),
-    eq(teamMembers.userId, userId),
-  ]
-  if (requiredStatus) conditions.push(eq(ledgerTransactions.status, requiredStatus))
+  if (bankTransactionIds.length === 0) return []
 
   const rows = await tx
-    .select({id: ledgerTransactions.id})
-    .from(ledgerTransactions)
-    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
-    .where(and(...conditions))
+    .select({id: bankTransactions.id})
+    .from(bankTransactions)
+    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+    .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
+    .where(and(inArray(bankTransactions.id, bankTransactionIds), eq(teamMembers.userId, userId)))
 
   return rows.map(row => row.id)
 }
@@ -380,8 +380,8 @@ async function loadEligibleCategories(tx: DrizzleTransaction, userId: string, te
   }))
 }
 
-async function loadRequestedTransactions(tx: DrizzleTransaction, userId: string, ledgerTransactionIds: string[]): Promise<LoadedAiCategorizationTransaction[]> {
-  return loadTransactions(tx, userId, uniqueStrings(ledgerTransactionIds).slice(0, MAX_AI_CATEGORIZATION_BATCH_SIZE))
+async function loadRequestedTransactions(tx: DrizzleTransaction, userId: string, bankTransactionIds: string[]): Promise<LoadedAiCategorizationTransaction[]> {
+  return loadTransactions(tx, userId, uniqueStrings(bankTransactionIds).slice(0, MAX_AI_CATEGORIZATION_BATCH_SIZE))
 }
 
 async function loadNeedsReviewBatch(tx: DrizzleTransaction, userId: string, limit: number | undefined): Promise<LoadedAiCategorizationTransaction[]> {
@@ -392,46 +392,45 @@ async function loadNeedsReviewBatch(tx: DrizzleTransaction, userId: string, limi
 async function loadTransactions(
   tx: DrizzleTransaction,
   userId: string,
-  ledgerTransactionIds?: string[],
+  bankTransactionIds?: string[],
   limit = MAX_AI_CATEGORIZATION_BATCH_SIZE,
 ): Promise<LoadedAiCategorizationTransaction[]> {
   const baseConditions = [
     eq(teamMembers.userId, userId),
-    eq(ledgerTransactions.source, 'bank_import'),
-    eq(ledgerTransactions.status, 'needs_review'),
-    or(isNull(ledgerTransactions.aiProcessingStartedAt), lt(ledgerTransactions.aiProcessingStartedAt, aiProcessingFreshCutoff())),
-    eq(bankAccounts.teamId, ledgerTransactions.teamId),
+    or(isNull(bankTransactions.aiProcessingStartedAt), lt(bankTransactions.aiProcessingStartedAt, aiProcessingFreshCutoff())),
+    or(isNull(ledgerTransactions.id), eq(ledgerTransactions.status, 'needs_review')),
   ]
 
-  if (ledgerTransactionIds) {
-    if (ledgerTransactionIds.length === 0) return []
-    baseConditions.push(inArray(ledgerTransactions.id, ledgerTransactionIds))
+  if (bankTransactionIds) {
+    if (bankTransactionIds.length === 0) return []
+    baseConditions.push(inArray(bankTransactions.id, bankTransactionIds))
   }
 
   const rows = await tx
     .select({
-      id: ledgerTransactions.id,
-      teamId: ledgerTransactions.teamId,
-      date: ledgerTransactions.date,
-      description: ledgerTransactions.description,
+      id: bankTransactions.id,
+      teamId: bankAccounts.teamId,
+      bookingDate: bankTransactions.bookingDate,
+      valueDate: bankTransactions.valueDate,
+      description: bankTransactions.description,
       amount: bankTransactions.amount,
       currency: bankTransactions.currency,
       bankAccountName: bankAccounts.name,
       counterpartyName: bankTransactions.counterpartyName,
     })
-    .from(ledgerTransactions)
-    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
-    .innerJoin(ledgerPostings, and(eq(ledgerPostings.ledgerTransactionId, ledgerTransactions.id), isNotNull(ledgerPostings.bankTransactionId)))
-    .innerJoin(bankTransactions, eq(bankTransactions.id, ledgerPostings.bankTransactionId))
+    .from(bankTransactions)
     .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+    .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
+    .leftJoin(ledgerPostings, eq(ledgerPostings.bankTransactionId, bankTransactions.id))
+    .leftJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerPostings.ledgerTransactionId))
     .where(and(...baseConditions))
-    .orderBy(desc(ledgerTransactions.date), desc(ledgerTransactions.createdAt))
+    .orderBy(desc(bankTransactions.bookingDate), desc(bankTransactions.createdAt))
     .limit(limit)
 
   return rows.map(row => ({
     id: row.id,
     teamId: row.teamId,
-    date: row.date,
+    date: row.bookingDate ?? row.valueDate,
     description: row.description,
     amount: String(row.amount),
     currency: row.currency,
@@ -440,12 +439,15 @@ async function loadTransactions(
   }))
 }
 
-async function loadCurrentTransactionForAiApplication(tx: DrizzleTransaction, userId: string, ledgerTransactionId: string) {
+async function loadCurrentTransactionForAiApplication(tx: DrizzleTransaction, userId: string, bankTransactionId: string) {
   const [transaction] = await tx
-    .select({teamId: ledgerTransactions.teamId, status: ledgerTransactions.status})
-    .from(ledgerTransactions)
-    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
-    .where(and(eq(ledgerTransactions.id, ledgerTransactionId), eq(teamMembers.userId, userId)))
+    .select({teamId: bankAccounts.teamId, ledgerTransactionId: ledgerTransactions.id, status: ledgerTransactions.status})
+    .from(bankTransactions)
+    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+    .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
+    .leftJoin(ledgerPostings, eq(ledgerPostings.bankTransactionId, bankTransactions.id))
+    .leftJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerPostings.ledgerTransactionId))
+    .where(and(eq(bankTransactions.id, bankTransactionId), eq(teamMembers.userId, userId)))
     .limit(1)
 
   return transaction

@@ -1,7 +1,7 @@
 import '@tanstack/react-start/server-only'
 
 import {defineMutator, defineMutators} from '@rocicorp/zero'
-import {categorizeLedgerTransaction, clearLedgerCategorizations, confirmLedgerTransaction} from '@/ledger/categorization.server'
+import {categorizeBankTransaction, clearLedgerCategorizations, confirmLedgerTransaction, splitBankTransaction} from '@/ledger/categorization.server'
 import {requireUserID} from './context'
 import {categorizeTransactionInput, clearCategorizationsInput, confirmTransactionInput, mutators, splitTransactionInput} from './mutators'
 
@@ -9,17 +9,17 @@ export const serverMutators = defineMutators(mutators, {
   ledger: {
     categorizeTransaction: defineMutator(categorizeTransactionInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await categorizeLedgerTransaction(tx.dbTransaction.wrappedTransaction, {
+      await categorizeBankTransaction(tx.dbTransaction.wrappedTransaction, {
         userId: requireUserID(ctx),
-        ledgerTransactionId: args.ledgerTransactionId,
-        accountId: args.accountId,
+        bankTransactionId: args.bankTransactionId,
+        selection: args.selection,
       })
     }),
     splitTransaction: defineMutator(splitTransactionInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await categorizeLedgerTransaction(tx.dbTransaction.wrappedTransaction, {
+      await splitBankTransaction(tx.dbTransaction.wrappedTransaction, {
         userId: requireUserID(ctx),
-        ledgerTransactionId: args.ledgerTransactionId,
+        bankTransactionId: args.bankTransactionId,
         lines: args.lines,
       })
     }),

@@ -71,6 +71,13 @@
       "when": 1781964784258,
       "tag": "0009_outstanding_roughhouse",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781990947483,
+      "tag": "0010_needy_the_anarchist",
+      "breakpoints": true
     }
   ]
 }

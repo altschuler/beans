@@ -92,14 +92,14 @@ async function seedFixture() {
     {id: 'team-2-bank', bankAccountId: 'team-2-bank-account', providerTransactionId: 'team-2-bank', status: 'booked', bookingDate: '2026-06-12', valueDate: null, amount: '-100.00', currency: 'DKK', description: 'Netto other team', counterpartyName: 'Netto', raw: {}, createdAt: now, updatedAt: now},
   ])
   await db.insert(ledgerTransactions).values([
-    {id: 'target-ledger', teamId: 'team-1', source: 'bank_import', status: 'needs_review', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: null, date: '2026-06-19', description: 'NETTO SUPERMARKET 1234', createdAt: now, updatedAt: now},
-    {id: 'user-exact-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-12', description: 'Netto supermarket Copenhagen', createdAt: now, updatedAt: now},
-    {id: 'ai-exact-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', aiConfidence: 2, aiProcessingStartedAt: null, categorizedBy: 'ai', date: '2026-06-11', description: 'Netto supermarket Copenhagen', createdAt: now, updatedAt: now},
-    {id: 'weak-user-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-10', description: 'IKEA home goods', createdAt: now, updatedAt: now},
-    {id: 'needs-review-ledger', teamId: 'team-1', source: 'bank_import', status: 'needs_review', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: null, date: '2026-06-09', description: 'Netto unreviewed', createdAt: now, updatedAt: now},
-    {id: 'system-category-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-08', description: 'Netto uncategorized', createdAt: now, updatedAt: now},
-    {id: 'archived-category-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-07', description: 'Netto archived', createdAt: now, updatedAt: now},
-    {id: 'team-2-ledger', teamId: 'team-2', source: 'bank_import', status: 'confirmed', aiConfidence: null, aiProcessingStartedAt: null, categorizedBy: 'user', date: '2026-06-12', description: 'Netto other team', createdAt: now, updatedAt: now},
+    {id: 'target-ledger', teamId: 'team-1', source: 'bank_import', status: 'needs_review', categorizedBy: null, date: '2026-06-19', description: 'NETTO SUPERMARKET 1234', createdAt: now, updatedAt: now},
+    {id: 'user-exact-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', categorizedBy: 'user', date: '2026-06-12', description: 'Netto supermarket Copenhagen', createdAt: now, updatedAt: now},
+    {id: 'ai-exact-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', categorizedBy: 'ai', date: '2026-06-11', description: 'Netto supermarket Copenhagen', createdAt: now, updatedAt: now},
+    {id: 'weak-user-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', categorizedBy: 'user', date: '2026-06-10', description: 'IKEA home goods', createdAt: now, updatedAt: now},
+    {id: 'needs-review-ledger', teamId: 'team-1', source: 'bank_import', status: 'needs_review', categorizedBy: null, date: '2026-06-09', description: 'Netto unreviewed', createdAt: now, updatedAt: now},
+    {id: 'system-category-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', categorizedBy: 'user', date: '2026-06-08', description: 'Netto uncategorized', createdAt: now, updatedAt: now},
+    {id: 'archived-category-ledger', teamId: 'team-1', source: 'bank_import', status: 'confirmed', categorizedBy: 'user', date: '2026-06-07', description: 'Netto archived', createdAt: now, updatedAt: now},
+    {id: 'team-2-ledger', teamId: 'team-2', source: 'bank_import', status: 'confirmed', categorizedBy: 'user', date: '2026-06-12', description: 'Netto other team', createdAt: now, updatedAt: now},
   ])
   await db.insert(ledgerPostings).values(postingsFromMovements([
     {id: 'target-movement', ledgerTransactionId: 'target-ledger', debitAccountId: 'uncategorized', creditAccountId: 'bank-ledger-account', amount: '100.00', currency: 'DKK', sortOrder: 0, createdAt: now, updatedAt: now},
@@ -320,8 +320,6 @@ describe('loadSimilarCategorizationExamples', () => {
         teamId: 'team-1',
         source: 'bank_import',
         status: 'confirmed',
-        aiConfidence: null,
-        aiProcessingStartedAt: null,
         categorizedBy: 'user',
         date: '2026-06-30',
         description: `Noisy team one ${index}`,

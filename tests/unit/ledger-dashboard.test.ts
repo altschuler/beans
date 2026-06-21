@@ -45,6 +45,9 @@ const queryRows = vi.hoisted(() => ({
     bookingDate: string | null
     valueDate: string | null
     description: string
+    aiConfidence: number | null
+    aiProcessingStartedAt: Date | null
+    aiReasoning: string | null
   }>,
   bankAccounts: [] as Array<{id: string; name: string; syncStatus?: string}>,
 }))
@@ -375,6 +378,9 @@ describe('LedgerDashboard', () => {
         bookingDate: '2026-06-18',
         valueDate: null,
         description: 'Netto',
+        aiConfidence: 1,
+        aiProcessingStartedAt: null,
+        aiReasoning: 'Looks like a supermarket purchase.',
       },
     ]
     queryRows.bankAccounts = [{id: 'bank-account-1', name: 'Checking'}]
@@ -490,6 +496,9 @@ describe('LedgerDashboard', () => {
         bookingDate: '2026-06-19',
         valueDate: null,
         description: 'Other Shop',
+        aiConfidence: null,
+        aiProcessingStartedAt: null,
+        aiReasoning: null,
       },
     ]
     queryRows.bankAccounts = [...queryRows.bankAccounts, {id: 'bank-account-2', name: 'Savings'}]
@@ -556,6 +565,18 @@ describe('LedgerDashboard', () => {
     expect(findButtonByLabel('AI categorize transaction')?.disabled).toBe(true)
   })
 
+
+
+  it('enables batch AI when imported rows do not have ledger interpretations yet', () => {
+    queryRows.ledgerTransactions = []
+    queryRows.postings = []
+
+    renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    const autoCategorizeButton = renderedButtons.find(button => button.children === 'Auto-categorize')
+    expect(autoCategorizeButton?.disabled).toBe(false)
+  })
+
   it('ignores rapid duplicate batch AI clicks before React re-renders', async () => {
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 
@@ -567,10 +588,10 @@ describe('LedgerDashboard', () => {
     expect(aiCategorizeNeedsReviewBatch).toHaveBeenCalledOnce()
   })
 
-  it('shows a global AI running indicator when any transaction is processing', () => {
-    queryRows.ledgerTransactions = [
+  it('shows a global AI running indicator when any bank transaction is processing', () => {
+    queryRows.bankTransactions = [
       {
-        ...queryRows.ledgerTransactions[0]!,
+        ...queryRows.bankTransactions[0]!,
         aiConfidence: null,
         aiProcessingStartedAt: new Date(),
       },
@@ -596,14 +617,14 @@ describe('LedgerDashboard', () => {
     expect(toastSuccess).toHaveBeenCalledWith('AI categorization finished. Review any transactions still marked needs review.')
   })
 
-  it('runs the row AI server function with the ledger transaction id', async () => {
+  it('runs the row AI server function with the bank transaction id', async () => {
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     findButtonByLabel('AI categorize transaction')?.onClick?.()
     await flushPromises()
 
     expect(aiCategorizeTransaction).toHaveBeenCalledWith({
-      data: {ledgerTransactionId: 'ledger-transaction-1'},
+      data: {bankTransactionId: 'bank-transaction-1'},
     })
     expect(zeroMutate).not.toHaveBeenCalledWith(expect.objectContaining({type: 'aiCategorizeTransaction'}))
     expect(toastSuccess).toHaveBeenCalledWith('AI categorization finished. Review the transaction if it still needs review.')

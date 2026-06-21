@@ -4,7 +4,7 @@ import {useQuery, useZero} from '@rocicorp/zero/react'
 import {MoreHorizontal} from 'lucide-react'
 import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
 import {PageLayout} from '@/components/page-layout'
-import {TransactionTable, type SplitLine, type TransactionTableRow} from '@/components/transaction-table'
+import {TransactionTable, type CategorySelection, type SplitLine, type TransactionTableRow} from '@/components/transaction-table'
 import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
 import {Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from '@/components/ui/dialog'
@@ -55,13 +55,12 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   const categoryCount = model.accountGroups.reduce((count, group) => count + group.accounts.length, 0)
   const pageTitle = view === 'categories' ? 'Categories' : view === 'bankAccountTransactions' ? (selectedBankAccount?.name ?? 'Bank account') : 'Transactions'
 
-  async function categorizeTransaction(ledgerTransactionId: string, accountId: string) {
-    if (!accountId) return
+  async function categorizeBankTransaction(bankTransactionId: string, selection: CategorySelection) {
     try {
       await zero.mutate(
         mutators.ledger.categorizeTransaction({
-          ledgerTransactionId,
-          accountId,
+          bankTransactionId,
+          selection,
         }),
       )
     } catch (error) {
@@ -93,13 +92,13 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     }
   }
 
-  async function aiCategorizeOne(ledgerTransactionId: string) {
+  async function aiCategorizeOne(bankTransactionId: string) {
     if (isAiRequestPendingRef.current) return
 
     isAiRequestPendingRef.current = true
     setIsAiRequestPending(true)
     try {
-      await aiCategorizeTransaction({data: {ledgerTransactionId}})
+      await aiCategorizeTransaction({data: {bankTransactionId}})
       toast.success('AI categorization finished. Review the transaction if it still needs review.')
     } catch (error) {
       showErrorToast(error, 'AI could not categorize this transaction.')
@@ -128,7 +127,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     let didSave = false
 
     await saveDashboardSplitTransaction({
-      ledgerTransactionId: row.ledgerTransactionId,
+      bankTransactionId: row.bankTransactionId,
       bankAmount: row.amount,
       lines,
       mutate: (mutation) => zero.mutate(mutation),
@@ -141,6 +140,8 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     return didSave
   }
 
+  const aiEligibleReviewCount = model.transactionRows.filter(row => row.needsReview).length
+
   const dashboardClassName = view === 'transactions' || view === 'categories' ? 'flex h-full min-h-0 flex-col' : 'space-y-6'
   const transactionHeaderActions = showGlobalTransactionActions ? (
     <>
@@ -150,7 +151,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
       {model.aiProcessingCount > 0 ? (
         <div className="text-sm font-semibold text-muted-foreground">AI running · {model.aiProcessingCount} processing</div>
       ) : null}
-      <Button type="button" variant="outline" disabled={model.reviewCount === 0 || isAiRequestPending} onClick={() => void aiCategorizeBatch()}>
+      <Button type="button" variant="outline" disabled={aiEligibleReviewCount === 0 || isAiRequestPending} onClick={() => void aiCategorizeBatch()}>
         Auto-categorize
       </Button>
       <SyncAllBankAccountsButton accounts={bankAccounts} variant="outline" />
@@ -245,8 +246,9 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
               <TransactionTable
                 rows={model.transactionRows}
                 categorizationAccounts={model.categorizationAccounts}
+                transferAccounts={model.transferAccounts}
                 isAiRequestPending={isAiRequestPending}
-                onCategorizeTransaction={(ledgerTransactionId, accountId) => void categorizeTransaction(ledgerTransactionId, accountId)}
+                onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
                 onConfirmTransaction={(ledgerTransactionId) => void confirmTransaction(ledgerTransactionId)}
                 onAiCategorizeOne={(ledgerTransactionId) => void aiCategorizeOne(ledgerTransactionId)}
                 onSaveSplit={saveSplit}
@@ -264,8 +266,9 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
                     <TransactionTable
                       rows={model.transactionRows}
                       categorizationAccounts={model.categorizationAccounts}
+                      transferAccounts={model.transferAccounts}
                       isAiRequestPending={isAiRequestPending}
-                      onCategorizeTransaction={(ledgerTransactionId, accountId) => void categorizeTransaction(ledgerTransactionId, accountId)}
+                      onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
                       onConfirmTransaction={(ledgerTransactionId) => void confirmTransaction(ledgerTransactionId)}
                       onAiCategorizeOne={(ledgerTransactionId) => void aiCategorizeOne(ledgerTransactionId)}
                       onSaveSplit={saveSplit}

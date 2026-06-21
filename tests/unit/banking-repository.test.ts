@@ -124,10 +124,38 @@ describe('drizzleBankingSyncRepository.upsertTransactions', () => {
       ]),
     ).resolves.toBe(1)
 
-    expect(ensureGeneratedLedgerTransactionForBankTransaction).toHaveBeenCalledWith(
-      mockTx,
-      expect.objectContaining({bankTransactionId: 'bank-transaction-1', amount: '100.00', currency: 'DKK'}),
+    expect(ensureGeneratedLedgerTransactionForBankTransaction).not.toHaveBeenCalled()
+    expect(requireSystemLedgerAccountId).not.toHaveBeenCalled()
+  })
+
+
+
+  it('upserts imported bank transactions without creating ledger transactions', async () => {
+    const {drizzleBankingSyncRepository} = await import('@/banking/repository.server')
+    selectResults.push(
+      [{id: 'bank-account-1', teamId: 'team-1', name: 'Checking', provider: 'gocardless', ledgerAccountId: 'checking-ledger'}],
+      [],
     )
+
+    await expect(
+      drizzleBankingSyncRepository.upsertTransactions('bank-account-1', [
+        {
+          providerTransactionId: 'provider-transaction-1',
+          status: 'booked',
+          bookingDate: '2026-06-20',
+          valueDate: undefined,
+          amount: '-100.00',
+          currency: 'DKK',
+          description: 'Card purchase',
+          counterpartyName: 'Shop',
+          raw: {transactionAmount: {amount: '-100.00', currency: 'DKK'}},
+        },
+      ]),
+    ).resolves.toBe(1)
+
+    expect(ensureLedgerAccountForBankAccount).not.toHaveBeenCalled()
+    expect(ensureGeneratedLedgerTransactionForBankTransaction).not.toHaveBeenCalled()
+    expect(requireSystemLedgerAccountId).not.toHaveBeenCalled()
   })
 
   it('rejects changed amounts after a bank transaction has a reconciled posting', async () => {

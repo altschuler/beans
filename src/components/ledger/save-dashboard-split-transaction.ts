@@ -5,7 +5,7 @@ type SplitTransactionMutation = ReturnType<typeof mutators.ledger.splitTransacti
 type MutationResult = Promise<unknown> | {server: Promise<unknown>}
 
 type SaveDashboardSplitTransactionInput = {
-  ledgerTransactionId: string
+  bankTransactionId: string
   bankAmount: string
   lines: CategorizationLineInput[]
   mutate: (mutation: SplitTransactionMutation) => MutationResult
@@ -14,7 +14,7 @@ type SaveDashboardSplitTransactionInput = {
 }
 
 export async function saveDashboardSplitTransaction({
-  ledgerTransactionId,
+  bankTransactionId,
   bankAmount,
   lines,
   mutate,
@@ -23,7 +23,7 @@ export async function saveDashboardSplitTransaction({
 }: SaveDashboardSplitTransactionInput) {
   try {
     validateBankLinkedCategorizationLines({bankAmount, lines})
-    await waitForMutation(mutate(mutators.ledger.splitTransaction({ledgerTransactionId, lines})))
+    await waitForMutation(mutate(mutators.ledger.splitTransaction({bankTransactionId, lines})))
     onSuccess()
   } catch (error) {
     onError(error, 'Could not save split')

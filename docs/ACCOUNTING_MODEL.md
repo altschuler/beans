@@ -83,14 +83,9 @@ Splits do not create multiple bank-linked postings. A split has one bank-linked 
 
 ### Imported transaction before categorization
 
-A card purchase of `-100 DKK` from Checking is imported. Penge immediately creates a balanced ledger transaction using Uncategorized:
+A card purchase of `-100 DKK` from Checking is imported. Before the user categorizes it, Penge stores only the imported bank transaction as external evidence. No ledger transaction or postings are created yet.
 
-```txt
-Checking        -100 DKK   reconciles imported bank transaction
-Uncategorized   100 DKK
-```
-
-This keeps the ledger balanced and makes the transaction visible as needing review.
+The Transactions page still shows the bank transaction as needing a category. Once the user chooses a category, split, or transfer destination, Penge creates the internal ledger interpretation.
 
 ### Categorized card purchase
 
@@ -216,13 +211,14 @@ The model relies on these invariants:
 1. Imported bank transactions are immutable external evidence.
 2. A ledger transaction has at least two postings.
 3. Postings in a ledger transaction sum to zero per currency.
-4. An imported bank transaction reconciles at most one ledger posting.
-5. A reconciled posting matches the bank transaction's amount, currency, and corresponding ledger account.
-6. A split transaction has one bank-linked posting and multiple opposite postings.
-7. Transfers between two imported accounts can reconcile two bank transactions in one ledger transaction.
-8. Manual accounts are reconciled by ledger postings, not external bank transactions.
-9. Balances are derived from postings, not stored as editable account fields.
-10. Display rules may differ by account kind, but they do not change the underlying postings.
+4. An imported bank transaction may be unreconciled until the user or automation creates an internal ledger interpretation.
+5. An imported bank transaction reconciles at most one ledger posting.
+6. A reconciled posting matches the bank transaction's amount, currency, and corresponding ledger account.
+7. A split transaction has one bank-linked posting and multiple opposite postings.
+8. Transfers between two imported accounts can reconcile two bank transactions in one ledger transaction.
+9. Manual accounts are reconciled by ledger postings, not external bank transactions.
+10. Balances are derived from postings, not stored as editable account fields.
+11. Display rules may differ by account kind, but they do not change the underlying postings.
 
 ## User-facing principle
 

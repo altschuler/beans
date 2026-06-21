@@ -1,27 +1,29 @@
 import {TransactionRow} from './transaction-row'
-import type {CategorizationAccountOption, SplitLine, TransactionTableRow as TransactionTableRowData} from './types'
+import type {CategorizationAccountOption, CategorySelection, SplitLine, TransactionTableRow as TransactionTableRowData, TransferAccountOption} from './types'
 
 type TransactionTableProps = {
   rows: TransactionTableRowData[]
   categorizationAccounts: CategorizationAccountOption[]
+  transferAccounts: TransferAccountOption[]
   isAiRequestPending: boolean
-  onCategorizeTransaction: (ledgerTransactionId: string, accountId: string) => void
+  onCategorizeBankTransaction: (bankTransactionId: string, selection: CategorySelection) => void
   onConfirmTransaction: (ledgerTransactionId: string) => void
-  onAiCategorizeOne: (ledgerTransactionId: string) => void
+  onAiCategorizeOne: (bankTransactionId: string) => void
   onSaveSplit: (row: TransactionTableRowData, splitLines: SplitLine[]) => Promise<boolean>
 }
 
 export function TransactionTable({
   rows,
   categorizationAccounts,
+  transferAccounts,
   isAiRequestPending,
-  onCategorizeTransaction,
+  onCategorizeBankTransaction,
   onConfirmTransaction,
   onAiCategorizeOne,
   onSaveSplit,
 }: TransactionTableProps) {
   if (rows.length === 0) {
-    return <p className="text-sm text-muted-foreground">No imported ledger transactions yet.</p>
+    return <p className="text-sm text-muted-foreground">No imported bank transactions yet.</p>
   }
 
   return (
@@ -43,8 +45,9 @@ export function TransactionTable({
               key={row.id}
               row={row}
               categorizationAccounts={categorizationAccounts}
+              transferAccounts={transferAccounts}
               isAiRequestPending={isAiRequestPending}
-              onCategorizeTransaction={onCategorizeTransaction}
+              onCategorizeBankTransaction={onCategorizeBankTransaction}
               onConfirmTransaction={onConfirmTransaction}
               onAiCategorizeOne={onAiCategorizeOne}
               onSaveSplit={onSaveSplit}

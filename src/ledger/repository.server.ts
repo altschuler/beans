@@ -2,13 +2,7 @@ import '@tanstack/react-start/server-only'
 
 import {and, eq} from 'drizzle-orm'
 import type {Database} from '@/db/client'
-import {
-  ledgerAccountGroups,
-  ledgerAccounts,
-  ledgerPostings,
-  ledgerTransactions,
-} from '@/db/schema'
-import {buildBankImportLedgerDraft, type LedgerTransactionStatus} from './bank-import'
+import {ledgerAccountGroups, ledgerAccounts} from '@/db/schema'
 import {buildDefaultLedgerChartForTeam, SYSTEM_LEDGER_ACCOUNT_KEYS} from './default-chart'
 
 type DrizzleExecutor = Pick<Database, 'select' | 'insert' | 'update' | 'delete'>
@@ -139,71 +133,6 @@ async function uniqueLedgerAccountNameForBankAccount(
   }
 
   throw new Error('Could not choose a unique ledger account name')
-}
-
-export async function ensureGeneratedLedgerTransactionForBankTransaction(
-  tx: DrizzleExecutor,
-  input: {
-    teamId: string
-    bankTransactionId: string
-    bankLedgerAccountId: string
-    oppositeAccountId: string
-    amount: string
-    currency: string
-    description: string
-    date: string | null
-    status?: LedgerTransactionStatus
-    aiConfidence?: 0 | 1 | 2 | null
-    categorizedBy?: 'user' | 'ai' | null
-  },
-) {
-  const [existing] = await tx
-    .select({ledgerTransactionId: ledgerPostings.ledgerTransactionId})
-    .from(ledgerPostings)
-    .where(eq(ledgerPostings.bankTransactionId, input.bankTransactionId))
-    .limit(1)
-
-  if (existing) {
-    return existing.ledgerTransactionId
-  }
-
-  const draft = buildBankImportLedgerDraft({
-    teamId: input.teamId,
-    bankTransactionId: input.bankTransactionId,
-    bankLedgerAccountId: input.bankLedgerAccountId,
-    oppositeAccountId: input.oppositeAccountId,
-    amount: input.amount,
-    currency: input.currency,
-    description: input.description,
-    date: input.date,
-    status: input.status ?? 'needs_review',
-    aiConfidence: input.aiConfidence ?? null,
-    categorizedBy: input.categorizedBy ?? null,
-  })
-
-  await tx.insert(ledgerTransactions).values(draft.transaction)
-  const insertedPostings = await tx
-    .insert(ledgerPostings)
-    .values(draft.postings)
-    .onConflictDoNothing({target: ledgerPostings.bankTransactionId})
-    .returning({ledgerTransactionId: ledgerPostings.ledgerTransactionId, bankTransactionId: ledgerPostings.bankTransactionId})
-
-  if (!insertedPostings.some(posting => posting.bankTransactionId === input.bankTransactionId)) {
-    await tx.delete(ledgerTransactions).where(eq(ledgerTransactions.id, draft.transaction.id))
-    const [existingAfterRace] = await tx
-      .select({ledgerTransactionId: ledgerPostings.ledgerTransactionId})
-      .from(ledgerPostings)
-      .where(eq(ledgerPostings.bankTransactionId, input.bankTransactionId))
-      .limit(1)
-
-    if (existingAfterRace) {
-      return existingAfterRace.ledgerTransactionId
-    }
-
-    throw new Error('Could not create ledger transaction for bank transaction')
-  }
-
-  return draft.transaction.id
 }
 
 export {SYSTEM_LEDGER_ACCOUNT_KEYS}

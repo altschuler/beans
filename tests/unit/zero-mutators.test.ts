@@ -1,19 +1,61 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
-const categorizeLedgerTransaction = vi.hoisted(() => vi.fn(async () => undefined))
+const categorizeBankTransaction = vi.hoisted(() => vi.fn(async () => undefined))
+const splitBankTransaction = vi.hoisted(() => vi.fn(async () => undefined))
 const confirmLedgerTransaction = vi.hoisted(() => vi.fn(async () => undefined))
 const clearLedgerCategorizations = vi.hoisted(() => vi.fn(async () => ({cleared: 2})))
 
-vi.mock('@/ledger/categorization.server', () => ({categorizeLedgerTransaction, confirmLedgerTransaction, clearLedgerCategorizations}))
+vi.mock('@/ledger/categorization.server', () => ({categorizeBankTransaction, splitBankTransaction, confirmLedgerTransaction, clearLedgerCategorizations}))
+
+describe('ledger mutator input schemas', () => {
+  it('accepts bank-transaction category and transfer selections', async () => {
+    const {categorizeTransactionInput} = await import('@/zero/mutators')
+
+    expect(categorizeTransactionInput.safeParse({
+      bankTransactionId: 'bank-transaction-1',
+      selection: {kind: 'category', accountId: 'groceries'},
+    }).success).toBe(true)
+    expect(categorizeTransactionInput.safeParse({
+      bankTransactionId: 'bank-transaction-1',
+      selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+    }).success).toBe(true)
+    expect(categorizeTransactionInput.safeParse({
+      ledgerTransactionId: 'ledger-transaction-1',
+      accountId: 'groceries',
+    }).success).toBe(false)
+  })
+
+  it('accepts split lines by bank transaction id', async () => {
+    const {splitTransactionInput} = await import('@/zero/mutators')
+
+    expect(splitTransactionInput.safeParse({
+      bankTransactionId: 'bank-transaction-1',
+      lines: [
+        {accountId: 'groceries', amount: '70.0000'},
+        {accountId: 'household', amount: '30.0000'},
+      ],
+    }).success).toBe(true)
+    expect(splitTransactionInput.safeParse({
+      ledgerTransactionId: 'ledger-transaction-1',
+      lines: [
+        {accountId: 'groceries', amount: '70.0000'},
+        {accountId: 'household', amount: '30.0000'},
+      ],
+    }).success).toBe(false)
+  })
+})
 
 describe('ledger Zero mutators', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('runs single-category categorization on the server transaction', async () => {
+  it('runs single-choice categorization on the server transaction', async () => {
     const {serverMutators} = await import('@/zero/mutators.server')
-    const request = serverMutators.ledger.categorizeTransaction({ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries'})
+    const request = serverMutators.ledger.categorizeTransaction({
+      bankTransactionId: 'bank-transaction-1',
+      selection: {kind: 'category', accountId: 'groceries'},
+    })
 
     await request.mutator.fn({
       args: request.args,
@@ -21,17 +63,17 @@ describe('ledger Zero mutators', () => {
       tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never,
     })
 
-    expect(categorizeLedgerTransaction).toHaveBeenCalledWith('wrapped-tx', {
+    expect(categorizeBankTransaction).toHaveBeenCalledWith('wrapped-tx', {
       userId: 'user-1',
-      ledgerTransactionId: 'ledger-transaction-1',
-      accountId: 'groceries',
+      bankTransactionId: 'bank-transaction-1',
+      selection: {kind: 'category', accountId: 'groceries'},
     })
   })
 
   it('runs split categorization on the server transaction', async () => {
     const {serverMutators} = await import('@/zero/mutators.server')
     const request = serverMutators.ledger.splitTransaction({
-      ledgerTransactionId: 'ledger-transaction-1',
+      bankTransactionId: 'bank-transaction-1',
       lines: [
         {accountId: 'groceries', amount: '70.00'},
         {accountId: 'household', amount: '30.00'},
@@ -44,9 +86,9 @@ describe('ledger Zero mutators', () => {
       tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never,
     })
 
-    expect(categorizeLedgerTransaction).toHaveBeenCalledWith('wrapped-tx', {
+    expect(splitBankTransaction).toHaveBeenCalledWith('wrapped-tx', {
       userId: 'user-1',
-      ledgerTransactionId: 'ledger-transaction-1',
+      bankTransactionId: 'bank-transaction-1',
       lines: [
         {accountId: 'groceries', amount: '70.00'},
         {accountId: 'household', amount: '30.00'},
@@ -85,7 +127,10 @@ describe('ledger Zero mutators', () => {
 
   it('does not run server-only persistence during optimistic client execution', async () => {
     const {mutators} = await import('@/zero/mutators')
-    const request = mutators.ledger.categorizeTransaction({ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries'})
+    const request = mutators.ledger.categorizeTransaction({
+      bankTransactionId: 'bank-transaction-1',
+      selection: {kind: 'category', accountId: 'groceries'},
+    })
     const clearRequest = mutators.ledger.clearCategorizations({})
 
     await request.mutator.fn({
@@ -99,7 +144,8 @@ describe('ledger Zero mutators', () => {
       tx: {location: 'client'} as never,
     })
 
-    expect(categorizeLedgerTransaction).not.toHaveBeenCalled()
+    expect(categorizeBankTransaction).not.toHaveBeenCalled()
+    expect(splitBankTransaction).not.toHaveBeenCalled()
     expect(confirmLedgerTransaction).not.toHaveBeenCalled()
     expect(clearLedgerCategorizations).not.toHaveBeenCalled()
   })

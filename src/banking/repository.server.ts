@@ -4,12 +4,7 @@ import {and, desc, eq, isNotNull, ne} from 'drizzle-orm'
 import {db} from '@/db/client'
 import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, ledgerPostings, teamMembers} from '@/db/schema'
 import {parseMoneyToScaledUnits} from '@/ledger/categorization'
-import {
-  ensureGeneratedLedgerTransactionForBankTransaction,
-  ensureLedgerAccountForBankAccount,
-  requireSystemLedgerAccountId,
-  SYSTEM_LEDGER_ACCOUNT_KEYS,
-} from '@/ledger/repository.server'
+import {ensureLedgerAccountForBankAccount} from '@/ledger/repository.server'
 import type {GoCardlessAccountDetails} from './gocardless/types'
 import type {BankAccountSyncRepository} from './sync'
 import type {NormalizedBankTransaction} from './transactions'
@@ -297,12 +292,7 @@ export const drizzleBankingSyncRepository: BankAccountSyncRepository = {
           bankAccountId: bankAccount.id,
           name: bankAccount.name,
         }))
-
-      const uncategorizedAccountId = await requireSystemLedgerAccountId(
-        tx,
-        bankAccount.teamId,
-        SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized,
-      )
+      void bankLedgerAccountId
 
       const now = new Date()
       for (const transaction of transactions) {
@@ -340,18 +330,7 @@ export const drizzleBankingSyncRepository: BankAccountSyncRepository = {
             },
           })
           .returning({id: bankTransactions.id})
-
-        await ensureGeneratedLedgerTransactionForBankTransaction(tx, {
-          teamId: bankAccount.teamId,
-          bankTransactionId: bankTransaction.id,
-          bankLedgerAccountId,
-          oppositeAccountId: uncategorizedAccountId,
-          amount: transaction.amount,
-          currency: transaction.currency,
-          description: transaction.description,
-          date: transaction.bookingDate ?? transaction.valueDate ?? null,
-          status: 'needs_review',
-        })
+        void bankTransaction
       }
 
       return transactions.length
