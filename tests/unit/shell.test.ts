@@ -43,7 +43,8 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
     DropdownMenuItem: ({children, onSelect}: {children?: React.ReactNode; onSelect?: () => void}) =>
       ReactModule.createElement('button', {type: 'button', onClick: onSelect}, children),
     DropdownMenuLabel: ({children, className}: {children?: React.ReactNode; className?: string}) => ReactModule.createElement('div', {className}, children),
-    DropdownMenuRadioGroup: ({children, value}: {children?: React.ReactNode; value?: string}) => ReactModule.createElement('div', {'data-value': value}, children),
+    DropdownMenuRadioGroup: ({children, value, 'aria-label': ariaLabel}: {children?: React.ReactNode; value?: string; 'aria-label'?: string}) =>
+      ReactModule.createElement('div', {'aria-label': ariaLabel, 'data-value': value}, children),
     DropdownMenuRadioItem: ({children, value, onSelect}: {children?: React.ReactNode; value?: string; onSelect?: () => void}) =>
       ReactModule.createElement('button', {type: 'button', 'data-value': value, onClick: onSelect}, children),
     DropdownMenuSeparator: () => ReactModule.createElement('hr'),
@@ -107,6 +108,7 @@ describe('Shell', () => {
     expect(markup).toContain('data-testid="session-email"')
     expect(markup).toContain('Test User')
     expect(markup).toContain('Theme')
+    expect(markup).toContain('aria-label="Theme"')
     expect(markup).toContain('data-value="light"')
     expect(markup).toContain('Light')
     expect(markup).toContain('data-value="dark"')

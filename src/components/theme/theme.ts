@@ -25,7 +25,8 @@ export function getAppliedTheme(theme: ThemePreference, systemDark: boolean): Ap
 }
 
 export function applyThemeClass(root: Element, appliedTheme: AppliedTheme) {
-  root.classList.toggle('dark', appliedTheme === 'dark')
+  root.classList.remove('light', 'dark')
+  root.classList.add(appliedTheme)
 }
 
 export function useTheme() {

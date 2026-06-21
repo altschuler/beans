@@ -24,10 +24,12 @@ describe('theme provider helpers', () => {
     expect(isThemePreference(null)).toBe(false)
   })
 
-  it('applies the dark class only when the applied theme is dark', () => {
-    const classList = new Set<string>()
+  it('replaces existing theme classes with the applied theme', () => {
+    const classList = new Set<string>(['dark', 'custom'])
     const root = {
       classList: {
+        add: (...classNames: string[]) => classNames.forEach((className) => classList.add(className)),
+        remove: (...classNames: string[]) => classNames.forEach((className) => classList.delete(className)),
         toggle: (className: string, force?: boolean) => {
           if (force) classList.add(className)
           else classList.delete(className)
@@ -36,10 +38,8 @@ describe('theme provider helpers', () => {
       },
     } as Element
 
-    applyThemeClass(root, 'dark')
-    expect(classList.has('dark')).toBe(true)
-
     applyThemeClass(root, 'light')
-    expect(classList.has('dark')).toBe(false)
+
+    expect([...classList].sort()).toEqual(['custom', 'light'])
   })
 })

@@ -166,6 +166,7 @@ export function AppSidebar({userEmail, userName}: AppSidebarProps) {
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>Theme</DropdownMenuLabel>
                   <DropdownMenuRadioGroup
+                    aria-label="Theme"
                     value={theme}
                     onValueChange={(value) => {
                       if (isThemePreference(value)) setTheme(value)
