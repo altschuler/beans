@@ -573,6 +573,7 @@ describe('LedgerDashboard', () => {
 
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 
+    expect(findButtonByLabelPrefix('Confirm category for')).toBeUndefined()
     const autoCategorizeButton = renderedButtons.find(button => button.children === 'Auto-categorize')
     expect(autoCategorizeButton?.disabled).toBe(false)
   })
@@ -638,7 +639,7 @@ describe('LedgerDashboard', () => {
 
     expect(zeroMutate).toHaveBeenCalledWith({
       type: 'confirmTransaction',
-      input: {ledgerTransactionId: 'ledger-transaction-1'},
+      input: {bankTransactionId: 'bank-transaction-1'},
     })
   })
 
@@ -646,7 +647,7 @@ describe('LedgerDashboard', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     expect(markup).toContain('Clear categorizations')
-    expect(markup).toContain('Imported bank transactions will be kept.')
+    expect(markup).toContain('Imported bank transactions will be kept. This removes their categories, splits, confirmations, and AI metadata so they need review again.')
     expect(zeroMutate).not.toHaveBeenCalled()
 
     findButton('Clear all categorizations')?.onClick?.()

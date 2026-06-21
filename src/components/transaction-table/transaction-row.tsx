@@ -11,7 +11,7 @@ type TransactionRowProps = {
   transferAccounts: TransferAccountOption[]
   isAiRequestPending: boolean
   onCategorizeBankTransaction: (bankTransactionId: string, selection: CategorySelection) => void
-  onConfirmTransaction: (ledgerTransactionId: string) => void
+  onConfirmTransaction: (bankTransactionId: string) => void
   onAiCategorizeOne: (bankTransactionId: string) => void
   onSaveSplit: (row: TransactionTableRowData, splitLines: SplitLine[]) => Promise<boolean>
   rowRef?: (node: HTMLTableRowElement | null) => void
@@ -97,7 +97,7 @@ export function TransactionRow({
               title={row.statusIndicator.title}
               aria-label={`Confirm category for ${row.description}. ${row.statusIndicator.ariaLabel}`}
               className="h-2.5 w-2.5 cursor-pointer rounded-full bg-transparent p-0 transition-[box-shadow] hover:bg-transparent hover:ring-2 hover:ring-ring/70 hover:ring-offset-2 hover:ring-offset-background"
-              onClick={() => onConfirmTransaction(ledgerTransactionId)}
+              onClick={() => onConfirmTransaction(row.bankTransactionId)}
             >
               <span className={`block h-2.5 w-2.5 rounded-full ${row.statusIndicator.className}`} aria-hidden="true" />
               <span className="sr-only">{row.statusIndicator.ariaLabel}</span>

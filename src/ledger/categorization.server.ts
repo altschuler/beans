@@ -6,7 +6,6 @@ import type {Database} from '@/db/client'
 import {bankAccounts, bankTransactions, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from '@/db/schema'
 import {SYSTEM_LEDGER_ACCOUNT_KEYS} from './default-chart'
 import {
-  buildBankLinkedCategorizationPostings,
   buildBankTransactionCategorizationPostings,
   buildBankTransactionTransferPostings,
   isRealCategorizationAccount,
@@ -24,15 +23,21 @@ type LedgerTransactionFinalStatus = 'confirmed' | 'needs_review'
 type LedgerTransactionAiConfidence = 0 | 1 | 2
 type LedgerTransactionCategorizedBy = 'user' | 'ai'
 
-type CategorizeLedgerTransactionInput = {
+type BankTransactionInterpretation =
+  | {kind: 'category'; accountId: string}
+  | {kind: 'split'; lines: CategorizationLineInput[]}
+  | {kind: 'transfer'; accountId: string}
+
+type ApplyBankTransactionInterpretationInput = {
   userId: string
-  ledgerTransactionId: string
+  bankTransactionId: string
+  interpretation: BankTransactionInterpretation
   status?: LedgerTransactionFinalStatus
   aiConfidence?: LedgerTransactionAiConfidence | null
   aiReasoning?: string | null
   categorizedBy?: LedgerTransactionCategorizedBy | null
-  requiredCurrentStatus?: LedgerTransactionFinalStatus
-} & ({accountId: string; lines?: never} | {accountId?: never; lines: CategorizationLineInput[]})
+  requiredExistingStatus?: LedgerTransactionFinalStatus
+}
 
 type CategorizeBankTransactionInput = {
   userId: string
@@ -42,6 +47,7 @@ type CategorizeBankTransactionInput = {
   aiConfidence?: LedgerTransactionAiConfidence | null
   aiReasoning?: string | null
   categorizedBy?: LedgerTransactionCategorizedBy | null
+  requiredExistingStatus?: LedgerTransactionFinalStatus
 }
 
 type SplitBankTransactionInput = {
@@ -50,9 +56,9 @@ type SplitBankTransactionInput = {
   lines: CategorizationLineInput[]
 }
 
-type ConfirmLedgerTransactionInput = {
+type ConfirmBankTransactionInterpretationInput = {
   userId: string
-  ledgerTransactionId: string
+  bankTransactionId: string
 }
 
 type ClearLedgerCategorizationsInput = {
@@ -96,20 +102,66 @@ export function normalizeAiReasoning(reasoning: string) {
 
 
 export async function categorizeBankTransaction(tx: DrizzleTransaction, input: CategorizeBankTransactionInput) {
+  return applyBankTransactionInterpretation(tx, {
+    userId: input.userId,
+    bankTransactionId: input.bankTransactionId,
+    interpretation: input.selection,
+    status: input.status,
+    aiConfidence: input.aiConfidence,
+    aiReasoning: input.aiReasoning,
+    categorizedBy: input.categorizedBy,
+    requiredExistingStatus: input.requiredExistingStatus,
+  })
+}
+
+export async function splitBankTransaction(tx: DrizzleTransaction, input: SplitBankTransactionInput) {
+  return applyBankTransactionInterpretation(tx, {
+    userId: input.userId,
+    bankTransactionId: input.bankTransactionId,
+    interpretation: {kind: 'split', lines: input.lines},
+  })
+}
+
+async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input: ApplyBankTransactionInterpretationInput) {
   const loaded = await loadBankTransactionForCategorization(tx, input.userId, input.bankTransactionId)
+  const existing = await loadExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
+
+  if (input.requiredExistingStatus && existing && existing.ledgerTransaction.status !== input.requiredExistingStatus) {
+    return false
+  }
+
   const isAiCategorization = input.categorizedBy === 'ai'
+  if (isAiCategorization && input.interpretation.kind === 'transfer') {
+    throw new Error('AI categorization cannot create transfers')
+  }
   const normalizedAiReasoning = isAiCategorization ? requireAiReasoning(input.aiReasoning) : null
   if (!isAiCategorization && isRecentlyProcessing(loaded.bankTransaction.aiProcessingStartedAt)) {
     throw new Error('Bank transaction is already being categorized')
   }
 
-  if (input.selection.kind === 'transfer') {
-    const transferAccount = await loadTransferLedgerAccount(tx, loaded.teamId, input.selection.accountId)
+  const now = new Date()
+  const ledgerTransactionId = crypto.randomUUID()
+  const commonInsert = {
+    ledgerTransactionId,
+    teamId: loaded.teamId,
+    userId: input.userId,
+    date: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
+    description: loaded.bankTransaction.description,
+    status: input.status ?? 'confirmed',
+    categorizedBy: input.categorizedBy ?? 'user',
+    now,
+  }
+
+  if (input.interpretation.kind === 'transfer') {
+    const transferAccount = await loadTransferLedgerAccount(tx, loaded.teamId, input.interpretation.accountId)
     if (transferAccount.linkedBankAccountId === loaded.bankTransaction.bankAccountId) {
       throw new Error('Cannot transfer to the same bank account')
     }
 
-    await deleteExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
+    if (existing) {
+      const deleted = await deleteLoadedInterpretation(tx, existing, input.requiredExistingStatus)
+      if (input.requiredExistingStatus && !deleted) return false
+    }
 
     const counterBankTransaction = await findExactCounterBankTransaction({
       tx,
@@ -124,8 +176,6 @@ export async function categorizeBankTransaction(tx: DrizzleTransaction, input: C
       throw new Error('No matching transfer was found')
     }
 
-    const now = new Date()
-    const ledgerTransactionId = crypto.randomUUID()
     const postings = buildBankTransactionTransferPostings({
       ledgerTransactionId,
       source: {
@@ -139,24 +189,22 @@ export async function categorizeBankTransaction(tx: DrizzleTransaction, input: C
       now,
     })
 
-    await insertBankImportLedgerInterpretation(tx, {
-      ledgerTransactionId,
-      teamId: loaded.teamId,
-      userId: input.userId,
-      date: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
-      description: loaded.bankTransaction.description,
-      postings,
-      now,
-    })
+    await insertBankImportLedgerInterpretation(tx, {...commonInsert, postings})
     await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
     return true
   }
 
-  await validateCategorizationAccounts(tx, loaded.teamId, [input.selection.accountId])
-  await deleteExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
+  const lines =
+    input.interpretation.kind === 'category'
+      ? [{accountId: input.interpretation.accountId, amount: absoluteMoneyString(loaded.bankTransaction.amount)}]
+      : input.interpretation.lines
 
-  const now = new Date()
-  const ledgerTransactionId = crypto.randomUUID()
+  await validateCategorizationAccounts(tx, loaded.teamId, lines.map(line => line.accountId))
+  if (existing) {
+    const deleted = await deleteLoadedInterpretation(tx, existing, input.requiredExistingStatus)
+    if (input.requiredExistingStatus && !deleted) return false
+  }
+
   const postings = buildBankTransactionCategorizationPostings({
     ledgerTransactionId,
     source: {
@@ -165,118 +213,15 @@ export async function categorizeBankTransaction(tx: DrizzleTransaction, input: C
       amount: loaded.bankTransaction.amount,
       currency: loaded.bankTransaction.currency,
     },
-    lines: [{accountId: input.selection.accountId, amount: absoluteMoneyString(loaded.bankTransaction.amount)}],
+    lines,
     now,
   })
 
-  await insertBankImportLedgerInterpretation(tx, {
-    ledgerTransactionId,
-    teamId: loaded.teamId,
-    userId: input.userId,
-    date: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
-    description: loaded.bankTransaction.description,
-    postings,
-    status: input.status ?? 'confirmed',
-    categorizedBy: input.categorizedBy ?? 'user',
-    now,
-  })
+  await insertBankImportLedgerInterpretation(tx, {...commonInsert, postings})
   if (isAiCategorization) {
     await recordBankTransactionAiResult(tx, loaded.bankTransaction.id, input.aiConfidence ?? null, normalizedAiReasoning, now)
   } else {
     await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
-  }
-  return true
-}
-
-export async function splitBankTransaction(tx: DrizzleTransaction, input: SplitBankTransactionInput) {
-  const loaded = await loadBankTransactionForCategorization(tx, input.userId, input.bankTransactionId)
-  if (isRecentlyProcessing(loaded.bankTransaction.aiProcessingStartedAt)) {
-    throw new Error('Bank transaction is already being categorized')
-  }
-  await validateCategorizationAccounts(tx, loaded.teamId, input.lines.map(line => line.accountId))
-  await deleteExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
-
-  const now = new Date()
-  const ledgerTransactionId = crypto.randomUUID()
-  const postings = buildBankTransactionCategorizationPostings({
-    ledgerTransactionId,
-    source: {
-      bankTransactionId: loaded.bankTransaction.id,
-      bankLedgerAccountId: loaded.sourceLedgerAccount.id,
-      amount: loaded.bankTransaction.amount,
-      currency: loaded.bankTransaction.currency,
-    },
-    lines: input.lines,
-    now,
-  })
-
-  await insertBankImportLedgerInterpretation(tx, {
-    ledgerTransactionId,
-    teamId: loaded.teamId,
-    userId: input.userId,
-    date: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
-    description: loaded.bankTransaction.description,
-    postings,
-    now,
-  })
-  await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
-  return true
-}
-
-export async function categorizeLedgerTransaction(tx: DrizzleTransaction, input: CategorizeLedgerTransactionInput) {
-  const loaded = await loadSingleReconciledPostingForLedgerTransaction(tx, input.userId, input.ledgerTransactionId)
-  const {ledgerTransaction, bankPosting} = loaded
-
-  const lines: CategorizationLineInput[] =
-    input.accountId !== undefined ? [{accountId: input.accountId, amount: absoluteMoneyString(bankPosting.amount)}] : input.lines
-  await validateCategorizationAccounts(tx, ledgerTransaction.teamId, lines.map(line => line.accountId))
-
-  const allPostings = buildBankLinkedCategorizationPostings({bankPosting, lines})
-  const categoryPostings = allPostings.slice(1)
-
-  const now = new Date()
-  const isAiCategorization = input.categorizedBy === 'ai'
-  const normalizedAiReasoning = isAiCategorization ? requireAiReasoning(input.aiReasoning) : null
-  const nextTransactionValues = isAiCategorization
-    ? {
-        status: input.status ?? 'confirmed',
-        categorizedBy: 'ai',
-        userConfirmedAt: null,
-        userConfirmedBy: null,
-        updatedAt: now,
-      }
-    : {
-        status: input.status ?? 'confirmed',
-        categorizedBy: input.categorizedBy ?? 'user',
-        userConfirmedAt: now,
-        userConfirmedBy: input.userId,
-        updatedAt: now,
-      }
-
-  if (input.requiredCurrentStatus) {
-    const [updatedTransaction] = await tx
-      .update(ledgerTransactions)
-      .set(nextTransactionValues)
-      .where(and(eq(ledgerTransactions.id, ledgerTransaction.id), eq(ledgerTransactions.status, input.requiredCurrentStatus)))
-      .returning({id: ledgerTransactions.id})
-
-    if (!updatedTransaction) return false
-  }
-
-  await tx
-    .delete(ledgerPostings)
-    .where(and(eq(ledgerPostings.ledgerTransactionId, ledgerTransaction.id), isNull(ledgerPostings.bankTransactionId)))
-  await tx.insert(ledgerPostings).values(categoryPostings)
-  await validatePersistedTransactionBalance(tx, ledgerTransaction.id)
-
-  if (!input.requiredCurrentStatus) {
-    await tx.update(ledgerTransactions).set(nextTransactionValues).where(eq(ledgerTransactions.id, ledgerTransaction.id))
-  }
-
-  if (isAiCategorization) {
-    await recordBankTransactionAiResult(tx, bankPosting.bankTransactionId, input.aiConfidence ?? null, normalizedAiReasoning, now)
-  } else {
-    await clearBankTransactionAiState(tx, bankPosting.bankTransactionId, now)
   }
   return true
 }
@@ -307,8 +252,8 @@ export async function clearLedgerCategorizations(tx: DrizzleTransaction, input: 
   return {cleared: transactionIds.length}
 }
 
-export async function confirmLedgerTransaction(tx: DrizzleTransaction, input: ConfirmLedgerTransactionInput) {
-  const loaded = await loadSingleReconciledPostingForLedgerTransaction(tx, input.userId, input.ledgerTransactionId)
+export async function confirmBankTransactionInterpretation(tx: DrizzleTransaction, input: ConfirmBankTransactionInterpretationInput) {
+  const loaded = await loadSingleReconciledPostingForBankTransaction(tx, input.userId, input.bankTransactionId)
   const {ledgerTransaction} = loaded
 
   if (ledgerTransaction.source !== 'bank_import') {
@@ -319,7 +264,7 @@ export async function confirmLedgerTransaction(tx: DrizzleTransaction, input: Co
     throw new Error('Transaction is currently being categorized by AI')
   }
 
-  await validateConfirmableCategoryPostings(tx, ledgerTransaction.teamId, ledgerTransaction.id)
+  await validateConfirmableInterpretationPostings(tx, ledgerTransaction.teamId, ledgerTransaction.id)
   await validatePersistedTransactionBalance(tx, ledgerTransaction.id)
 
   const now = new Date()
@@ -365,6 +310,7 @@ async function loadBankTransactionForCategorization(
     .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
     .where(and(eq(bankTransactions.id, bankTransactionId), eq(teamMembers.userId, userId)))
     .limit(1)
+    .for('update', {of: bankTransactions})
 
   if (!row) throw new Error('Bank transaction not found')
   if (row.sourceLedgerAccount.teamId !== row.teamId || row.sourceLedgerAccount.linkedBankAccountId !== row.bankTransaction.bankAccountId) {
@@ -373,7 +319,7 @@ async function loadBankTransactionForCategorization(
   return row
 }
 
-async function deleteExistingInterpretationForBankTransaction(tx: DrizzleTransaction, teamId: string, bankTransactionId: string) {
+async function loadExistingInterpretationForBankTransaction(tx: DrizzleTransaction, teamId: string, bankTransactionId: string) {
   const [existing] = await tx
     .select({
       ledgerTransaction: {
@@ -409,7 +355,7 @@ async function deleteExistingInterpretationForBankTransaction(tx: DrizzleTransac
     .where(eq(ledgerPostings.bankTransactionId, bankTransactionId))
     .limit(1)
 
-  if (!existing) return false
+  if (!existing) return null
   if (existing.ledgerTransaction.teamId !== teamId) {
     throw new Error('Reconciled posting account must belong to the transaction team')
   }
@@ -421,6 +367,26 @@ async function deleteExistingInterpretationForBankTransaction(tx: DrizzleTransac
     bankTransaction: existing.bankTransaction,
     postingAccount: existing.postingAccount,
   })
+
+  return {
+    ledgerTransaction: existing.ledgerTransaction,
+    bankPosting: {...existing.bankPosting, bankTransactionId: existingBankTransactionId},
+    bankTransaction: existing.bankTransaction,
+  }
+}
+
+async function deleteLoadedInterpretation(
+  tx: DrizzleTransaction,
+  existing: {ledgerTransaction: {id: string}},
+  requiredExistingStatus?: LedgerTransactionFinalStatus,
+) {
+  if (requiredExistingStatus) {
+    const [deleted] = await tx
+      .delete(ledgerTransactions)
+      .where(and(eq(ledgerTransactions.id, existing.ledgerTransaction.id), eq(ledgerTransactions.status, requiredExistingStatus)))
+      .returning({id: ledgerTransactions.id})
+    return Boolean(deleted)
+  }
 
   await tx.delete(ledgerTransactions).where(eq(ledgerTransactions.id, existing.ledgerTransaction.id))
   return true
@@ -534,12 +500,12 @@ async function insertBankImportLedgerInterpretation(
   await validatePersistedTransactionBalance(tx, input.ledgerTransactionId)
 }
 
-async function loadSingleReconciledPostingForLedgerTransaction(
+async function loadSingleReconciledPostingForBankTransaction(
   tx: DrizzleTransaction,
   userId: string,
-  ledgerTransactionId: string,
+  bankTransactionId: string,
 ): Promise<LoadedImportedLedgerTransaction> {
-  const rows = await tx
+  const [row] = await tx
     .select({
       ledgerTransaction: {
         id: ledgerTransactions.id,
@@ -567,36 +533,22 @@ async function loadSingleReconciledPostingForLedgerTransaction(
         linkedBankAccountId: ledgerAccounts.linkedBankAccountId,
       },
     })
-    .from(ledgerTransactions)
-    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
-    .innerJoin(ledgerPostings, and(eq(ledgerPostings.ledgerTransactionId, ledgerTransactions.id), isNotNull(ledgerPostings.bankTransactionId)))
-    .innerJoin(ledgerAccounts, eq(ledgerAccounts.id, ledgerPostings.accountId))
-    .innerJoin(bankTransactions, eq(bankTransactions.id, ledgerPostings.bankTransactionId))
+    .from(bankTransactions)
     .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
-    .where(and(eq(ledgerTransactions.id, ledgerTransactionId), eq(teamMembers.userId, userId), eq(bankAccounts.teamId, ledgerTransactions.teamId)))
+    .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
+    .innerJoin(ledgerPostings, eq(ledgerPostings.bankTransactionId, bankTransactions.id))
+    .innerJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerPostings.ledgerTransactionId))
+    .innerJoin(ledgerAccounts, eq(ledgerAccounts.id, ledgerPostings.accountId))
+    .where(and(eq(bankTransactions.id, bankTransactionId), eq(teamMembers.userId, userId), eq(bankAccounts.teamId, ledgerTransactions.teamId)))
+    .limit(1)
 
-  if (rows.length === 0) {
-    const [authorizedTransaction] = await tx
-      .select({id: ledgerTransactions.id})
-      .from(ledgerTransactions)
-      .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
-      .where(and(eq(ledgerTransactions.id, ledgerTransactionId), eq(teamMembers.userId, userId)))
-      .limit(1)
-    if (!authorizedTransaction) throw new Error('Ledger transaction not found')
-    throw new Error('Only bank-import ledger transactions can be categorized')
-  }
-
-  if (rows.length > 1) {
-    throw new Error('Expected exactly one reconciled posting for this ledger transaction')
-  }
-
-  const [row] = rows
-  const bankTransactionId = row.bankPosting.bankTransactionId
-  if (!bankTransactionId) throw new Error('Linked bank transaction not found')
+  if (!row) throw new Error('Bank transaction interpretation not found')
+  const linkedBankTransactionId = row.bankPosting.bankTransactionId
+  if (!linkedBankTransactionId) throw new Error('Linked bank transaction not found')
 
   const loaded = {
     ledgerTransaction: row.ledgerTransaction,
-    bankPosting: {...row.bankPosting, bankTransactionId},
+    bankPosting: {...row.bankPosting, bankTransactionId: linkedBankTransactionId},
     bankTransaction: row.bankTransaction,
     postingAccount: row.postingAccount,
   }
@@ -656,10 +608,13 @@ async function validateCategorizationAccounts(tx: DrizzleTransaction, teamId: st
   }
 }
 
-async function validateConfirmableCategoryPostings(tx: DrizzleTransaction, teamId: string, ledgerTransactionId: string) {
-  const categoryPostings = await tx
+async function validateConfirmableInterpretationPostings(tx: DrizzleTransaction, teamId: string, ledgerTransactionId: string) {
+  const postings = await tx
     .select({
+      bankTransactionId: ledgerPostings.bankTransactionId,
       accountId: ledgerPostings.accountId,
+      amount: ledgerPostings.amount,
+      currency: ledgerPostings.currency,
       teamId: ledgerAccounts.teamId,
       type: ledgerAccounts.type,
       status: ledgerAccounts.status,
@@ -668,20 +623,67 @@ async function validateConfirmableCategoryPostings(tx: DrizzleTransaction, teamI
     })
     .from(ledgerPostings)
     .innerJoin(ledgerAccounts, eq(ledgerAccounts.id, ledgerPostings.accountId))
-    .where(and(eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId), isNull(ledgerPostings.bankTransactionId)))
+    .where(eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId))
 
-  if (categoryPostings.length === 0) {
+  const categoryPostings = postings.filter(posting => posting.bankTransactionId === null)
+  if (categoryPostings.length > 0) {
+    const hasUncategorized = categoryPostings.some(posting => posting.systemKey === SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized)
+    if (hasUncategorized) {
+      throw new Error('Uncategorized transactions cannot be confirmed')
+    }
+
+    const hasInvalidCategory = categoryPostings.some(posting => posting.teamId !== teamId || !isRealCategorizationAccount(posting))
+    if (hasInvalidCategory) {
+      throw new Error('Transaction must have a real category before it can be confirmed')
+    }
+    return
+  }
+
+  if (postings.length !== 2) {
     throw new Error('Transaction must have a category before it can be confirmed')
   }
 
-  const hasUncategorized = categoryPostings.some(posting => posting.systemKey === SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized)
-  if (hasUncategorized) {
-    throw new Error('Uncategorized transactions cannot be confirmed')
+  const bankLinkedPostings = postings.flatMap(posting => (posting.bankTransactionId === null ? [] : [{...posting, bankTransactionId: posting.bankTransactionId}]))
+  if (bankLinkedPostings.length !== 2) {
+    throw new Error('Transaction must have a category before it can be confirmed')
   }
 
-  const hasInvalidCategory = categoryPostings.some(posting => posting.teamId !== teamId || !isRealCategorizationAccount(posting))
-  if (hasInvalidCategory) {
-    throw new Error('Transaction must have a real category before it can be confirmed')
+  const bankTransactionRows = await tx
+    .select({
+      id: bankTransactions.id,
+      bankAccountId: bankTransactions.bankAccountId,
+      amount: bankTransactions.amount,
+      currency: bankTransactions.currency,
+      teamId: bankAccounts.teamId,
+    })
+    .from(bankTransactions)
+    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+    .where(inArray(bankTransactions.id, bankLinkedPostings.map(posting => posting.bankTransactionId)))
+  const bankTransactionsById = new Map(bankTransactionRows.map(bankTransaction => [bankTransaction.id, bankTransaction]))
+
+  if (bankTransactionsById.size !== bankLinkedPostings.length) {
+    throw new Error('Transaction must have a category before it can be confirmed')
+  }
+
+  const hasInvalidTransferPosting = bankLinkedPostings.some(posting => {
+    const bankTransaction = bankTransactionsById.get(posting.bankTransactionId)
+    return (
+      !bankTransaction ||
+      posting.teamId !== teamId ||
+      !posting.linkedBankAccountId ||
+      posting.linkedBankAccountId !== bankTransaction.bankAccountId ||
+      bankTransaction.teamId !== teamId ||
+      !moneyAmountsEqual(posting.amount, bankTransaction.amount) ||
+      posting.currency !== bankTransaction.currency
+    )
+  })
+  if (hasInvalidTransferPosting) {
+    throw new Error('Transaction must have a category before it can be confirmed')
+  }
+
+  const linkedBankAccountIds = new Set(bankLinkedPostings.map(posting => posting.linkedBankAccountId))
+  if (linkedBankAccountIds.size !== 2) {
+    throw new Error('Transaction must have a category before it can be confirmed')
   }
 }
 
@@ -723,6 +725,14 @@ function requireAiReasoning(reasoning: string | null | undefined) {
 
 function absoluteMoneyString(amount: string) {
   return amount.trim().replace(/^[+-]/, '')
+}
+
+function moneyAmountsEqual(left: string, right: string) {
+  try {
+    return parseMoneyToScaledUnits(left) === parseMoneyToScaledUnits(right)
+  } catch {
+    return false
+  }
 }
 
 function isRecentlyProcessing(value: Date | string | number | null) {

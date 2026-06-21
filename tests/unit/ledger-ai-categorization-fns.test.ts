@@ -1,10 +1,10 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
-const aiCategorizeLedgerTransactions = vi.hoisted(() =>
+const aiCategorizeBankTransactions = vi.hoisted(() =>
   vi.fn(async () => ({requested: 1, suggested: 1, applied: 1, confirmed: 1, stillNeedsReview: 0, skipped: 0})),
 )
 
-vi.mock('@/ledger/ai-categorization.server', () => ({aiCategorizeLedgerTransactions}))
+vi.mock('@/ledger/ai-categorization.server', () => ({aiCategorizeBankTransactions}))
 
 describe('AI categorization server function handlers', () => {
   beforeEach(() => {
@@ -16,7 +16,7 @@ describe('AI categorization server function handlers', () => {
 
     const result = await runAiCategorizeTransactionForUser('user-1', {bankTransactionId: 'bank-transaction-1'})
 
-    expect(aiCategorizeLedgerTransactions).toHaveBeenCalledWith({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']})
+    expect(aiCategorizeBankTransactions).toHaveBeenCalledWith({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']})
     expect(result).toEqual({requested: 1, suggested: 1, applied: 1, confirmed: 1, stillNeedsReview: 0, skipped: 0})
   })
 
@@ -25,6 +25,6 @@ describe('AI categorization server function handlers', () => {
 
     await runAiCategorizeNeedsReviewBatchForUser('user-1', {limit: 100})
 
-    expect(aiCategorizeLedgerTransactions).toHaveBeenCalledWith({userId: 'user-1', limit: 100})
+    expect(aiCategorizeBankTransactions).toHaveBeenCalledWith({userId: 'user-1', limit: 100})
   })
 })

@@ -68,9 +68,9 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     }
   }
 
-  async function confirmTransaction(ledgerTransactionId: string) {
+  async function confirmTransaction(bankTransactionId: string) {
     try {
-      await zero.mutate(mutators.ledger.confirmTransaction({ledgerTransactionId}))
+      await zero.mutate(mutators.ledger.confirmTransaction({bankTransactionId}))
     } catch (error) {
       showErrorToast(error, 'Could not confirm transaction')
     }
@@ -179,8 +179,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
           <DialogHeader>
             <DialogTitle>Clear all ledger categorizations?</DialogTitle>
             <DialogDescription>
-              Imported bank transactions will be kept. This clears categories, splits, confirmations, and AI metadata for all imported ledger transactions, then
-              moves them back to Uncategorized.
+              Imported bank transactions will be kept. This removes their categories, splits, confirmations, and AI metadata so they need review again.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -249,8 +248,8 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
                 transferAccounts={model.transferAccounts}
                 isAiRequestPending={isAiRequestPending}
                 onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
-                onConfirmTransaction={(ledgerTransactionId) => void confirmTransaction(ledgerTransactionId)}
-                onAiCategorizeOne={(ledgerTransactionId) => void aiCategorizeOne(ledgerTransactionId)}
+                onConfirmTransaction={(bankTransactionId) => void confirmTransaction(bankTransactionId)}
+                onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
                 onSaveSplit={saveSplit}
               />
             ) : (
@@ -269,8 +268,8 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
                       transferAccounts={model.transferAccounts}
                       isAiRequestPending={isAiRequestPending}
                       onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
-                      onConfirmTransaction={(ledgerTransactionId) => void confirmTransaction(ledgerTransactionId)}
-                      onAiCategorizeOne={(ledgerTransactionId) => void aiCategorizeOne(ledgerTransactionId)}
+                      onConfirmTransaction={(bankTransactionId) => void confirmTransaction(bankTransactionId)}
+                      onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
                       onSaveSplit={saveSplit}
                     />
                   )}

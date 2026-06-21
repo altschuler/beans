@@ -493,7 +493,21 @@ function formatFourDecimals(amount: string) {
   return `${whole}.${fractional.padEnd(4, '0').slice(0, 4)}`
 }
 
-describe('aiCategorizeLedgerTransactions', () => {
+async function currentAiInterpretationForBankTransaction(bankTransactionId: string) {
+  const [bankPosting] = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, bankTransactionId))
+  if (!bankPosting) return null
+
+  const [ledgerTransaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, bankPosting.ledgerTransactionId))
+  const postings = await db
+    .select()
+    .from(ledgerPostings)
+    .where(eq(ledgerPostings.ledgerTransactionId, bankPosting.ledgerTransactionId))
+    .orderBy(ledgerPostings.sortOrder)
+
+  return {bankPosting, ledgerTransaction, postings}
+}
+
+describe('aiCategorizeBankTransactions', () => {
   beforeAll(() => migrateDatabase())
   beforeEach(async () => {
     await resetDatabase()
@@ -502,12 +516,12 @@ describe('aiCategorizeLedgerTransactions', () => {
   afterAll(async () => closeDatabase())
 
   it('sends only same-team eligible categories to the model and confirms high-confidence suggestions', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => [
       {bankTransactionId: 'bank-transaction-1', categoryAccountId: 'groceries', confidence: 2, reasoning: 'Known supermarket'},
     ])
 
-    const result = await aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
+    const result = await aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
 
     expect(categorizeWithModel).toHaveBeenCalledOnce()
     expect(categorizeWithModel.mock.calls[0]?.[0].categories.map(category => category.id)).toEqual(['groceries', 'household'])
@@ -516,30 +530,33 @@ describe('aiCategorizeLedgerTransactions', () => {
     expect(result).toEqual({requested: 1, suggested: 1, applied: 1, confirmed: 1, stillNeedsReview: 0, skipped: 0})
 
     const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
-    const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
-    const [movement] = await db
-      .select()
-      .from(ledgerPostings)
-      .where(and(eq(ledgerPostings.ledgerTransactionId, 'ledger-transaction-1'), isNull(ledgerPostings.bankTransactionId)))
+    const interpretation = await currentAiInterpretationForBankTransaction('bank-transaction-1')
 
-    expect(transaction?.status).toBe('confirmed')
-    expect(transaction?.categorizedBy).toBe('ai')
-    expect(transaction?.userConfirmedAt).toBeNull()
-    expect(transaction?.userConfirmedBy).toBeNull()
+    expect(interpretation?.ledgerTransaction).toMatchObject({
+      status: 'confirmed',
+      categorizedBy: 'ai',
+      userConfirmedAt: null,
+      userConfirmedBy: null,
+    })
+    expect(interpretation?.ledgerTransaction?.id).not.toBe('ledger-transaction-1')
     expect(bankTransaction?.aiConfidence).toBe(2)
     expect(bankTransaction?.aiReasoning).toBe('Known supermarket')
     expect(bankTransaction?.aiProcessingStartedAt).toBeNull()
-    expect(movement).toMatchObject({accountId: 'groceries', amount: '100.0000', bankTransactionId: null})
+    expect(interpretation?.postings.find(posting => posting.bankTransactionId === null)).toMatchObject({
+      accountId: 'groceries',
+      amount: '100.0000',
+      bankTransactionId: null,
+    })
   })
 
   it('creates a reviewable ledger transaction when AI categorizes an unreconciled bank transaction', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     await db.delete(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => [
       {bankTransactionId: 'bank-transaction-1', categoryAccountId: 'groceries', confidence: 1, reasoning: 'Plausible supermarket'},
     ])
 
-    const result = await aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
+    const result = await aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
 
     const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
     const bankPostings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transaction-1'))
@@ -559,13 +576,13 @@ describe('aiCategorizeLedgerTransactions', () => {
   })
 
   it('records confidence 0 on the bank transaction without creating a ledger transaction', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     await db.delete(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => [
       {bankTransactionId: 'bank-transaction-1', categoryAccountId: 'groceries', confidence: 0, reasoning: 'Too ambiguous'},
     ])
 
-    const result = await aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
+    const result = await aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
 
     const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
     const bankPostings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transaction-1'))
@@ -576,10 +593,10 @@ describe('aiCategorizeLedgerTransactions', () => {
 
   it('includes similar confirmed examples in each model transaction', async () => {
     await seedConfirmedUserExampleForNetto()
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => [])
 
-    await aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
+    await aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
 
     const modelTransaction = categorizeWithModel.mock.calls[0]?.[0].transactions[0]
     expect(modelTransaction?.similarConfirmedExamples).toEqual([
@@ -595,12 +612,12 @@ describe('aiCategorizeLedgerTransactions', () => {
 
   it('groups multi-team batches and sends only matching team categories with each transaction set', async () => {
     await seedSecondTeamTransaction()
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async input =>
       input.transactions.map(transaction => ({bankTransactionId: transaction.id, categoryAccountId: input.categories[0]?.id ?? '', confidence: 2, reasoning: 'Matched supplied examples.'})),
     )
 
-    const result = await aiCategorizeLedgerTransactions({userId: 'user-1', limit: 25}, categorizeWithModel)
+    const result = await aiCategorizeBankTransactions({userId: 'user-1', limit: 25}, categorizeWithModel)
 
     expect(categorizeWithModel).toHaveBeenCalledTimes(2)
     const modelInputs = categorizeWithModel.mock.calls.map(call => call[0])
@@ -614,21 +631,23 @@ describe('aiCategorizeLedgerTransactions', () => {
   })
 
   it('applies low-confidence suggestions but keeps them in review', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => [
       {bankTransactionId: 'bank-transaction-1', categoryAccountId: 'groceries', confidence: 1, reasoning: 'Plausible supermarket match'},
     ])
 
-    const result = await aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
+    const result = await aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
 
-    const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    const interpretation = await currentAiInterpretationForBankTransaction('bank-transaction-1')
     const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
 
     expect(result).toEqual({requested: 1, suggested: 1, applied: 1, confirmed: 0, stillNeedsReview: 1, skipped: 0})
-    expect(transaction?.status).toBe('needs_review')
-    expect(transaction?.categorizedBy).toBe('ai')
-    expect(transaction?.userConfirmedAt).toBeNull()
-    expect(transaction?.userConfirmedBy).toBeNull()
+    expect(interpretation?.ledgerTransaction).toMatchObject({
+      status: 'needs_review',
+      categorizedBy: 'ai',
+      userConfirmedAt: null,
+      userConfirmedBy: null,
+    })
     expect(bankTransaction?.aiConfidence).toBe(1)
     expect(bankTransaction?.aiReasoning).toBe('Plausible supermarket match')
     expect(bankTransaction?.aiProcessingStartedAt).toBeNull()
@@ -636,7 +655,7 @@ describe('aiCategorizeLedgerTransactions', () => {
 
   it('skips cross-team invalid and duplicate suggestions without aborting the batch', async () => {
     await seedSecondTeamTransaction()
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async input => {
       if (input.transactions.some(transaction => transaction.id === 'bank-transaction-1')) {
         return [
@@ -648,25 +667,23 @@ describe('aiCategorizeLedgerTransactions', () => {
       return []
     })
 
-    const result = await aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1', 'team-2-bank-transaction']}, categorizeWithModel)
+    const result = await aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1', 'team-2-bank-transaction']}, categorizeWithModel)
 
-    const [movement] = await db
-      .select()
-      .from(ledgerPostings)
-      .where(and(eq(ledgerPostings.ledgerTransactionId, 'ledger-transaction-1'), isNull(ledgerPostings.bankTransactionId)))
+    const interpretation = await currentAiInterpretationForBankTransaction('bank-transaction-1')
+    const categoryPosting = interpretation?.postings.find(posting => posting.bankTransactionId === null)
 
     expect(result).toEqual({requested: 2, suggested: 3, applied: 1, confirmed: 1, stillNeedsReview: 0, skipped: 2})
-    expect(movement).toMatchObject({accountId: 'groceries', bankTransactionId: null})
+    expect(categoryPosting).toMatchObject({accountId: 'groceries', bankTransactionId: null})
   })
 
   it('ignores suggestions with unknown transaction ids or category ids', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => [
       {bankTransactionId: 'missing-transaction', categoryAccountId: 'groceries', confidence: 2, reasoning: 'Invalid transaction'},
       {bankTransactionId: 'bank-transaction-1', categoryAccountId: 'uncategorized', confidence: 2, reasoning: 'Invalid category'},
     ])
 
-    const result = await aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
+    const result = await aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
 
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
@@ -677,7 +694,7 @@ describe('aiCategorizeLedgerTransactions', () => {
   })
 
   it('skips stale transactions that are no longer in review after the model call', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => {
       const now = new Date('2026-06-18T12:30:00.000Z')
       await db.update(ledgerTransactions).set({status: 'confirmed', updatedAt: now}).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
@@ -696,9 +713,10 @@ describe('aiCategorizeLedgerTransactions', () => {
       return [{bankTransactionId: 'bank-transaction-1', categoryAccountId: 'groceries', confidence: 2, reasoning: 'Stale suggestion'}]
     })
 
-    const result = await aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
+    const result = await aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
 
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    const currentInterpretation = await currentAiInterpretationForBankTransaction('bank-transaction-1')
     const [movement] = await db
       .select()
       .from(ledgerPostings)
@@ -707,17 +725,44 @@ describe('aiCategorizeLedgerTransactions', () => {
     const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
     expect(result).toEqual({requested: 1, suggested: 1, applied: 0, confirmed: 0, stillNeedsReview: 0, skipped: 1})
     expect(transaction?.status).toBe('confirmed')
+    expect(currentInterpretation?.ledgerTransaction?.id).toBe('ledger-transaction-1')
     expect(bankTransaction?.aiConfidence).toBeNull()
     expect(movement).toMatchObject({accountId: 'household', amount: '100.0000', bankTransactionId: null})
   })
 
+  it('skips successful stale suggestions when a newer processing marker has taken over', async () => {
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
+    const newerProcessingStartedAt = new Date('2026-06-18T12:45:00.000Z')
+    const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => {
+      await db
+        .update(bankTransactions)
+        .set({aiProcessingStartedAt: newerProcessingStartedAt, updatedAt: newerProcessingStartedAt})
+        .where(eq(bankTransactions.id, 'bank-transaction-1'))
+      return [{bankTransactionId: 'bank-transaction-1', categoryAccountId: 'groceries', confidence: 2, reasoning: 'Stale but valid suggestion'}]
+    })
+
+    const result = await aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
+
+    const interpretation = await currentAiInterpretationForBankTransaction('bank-transaction-1')
+    const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
+    const categoryPosting = interpretation?.postings.find(posting => posting.bankTransactionId === null)
+
+    expect(result).toEqual({requested: 1, suggested: 1, applied: 0, confirmed: 0, stillNeedsReview: 0, skipped: 1})
+    expect(interpretation?.ledgerTransaction).toMatchObject({id: 'ledger-transaction-1', status: 'needs_review'})
+    expect(interpretation?.bankPosting).toMatchObject({accountId: 'bank-ledger-account', amount: '-100.0000', bankTransactionId: 'bank-transaction-1'})
+    expect(categoryPosting).toMatchObject({accountId: 'uncategorized', amount: '100.0000', bankTransactionId: null})
+    expect(bankTransaction?.aiConfidence).toBeNull()
+    expect(bankTransaction?.aiReasoning).toBeNull()
+    expect(bankTransaction?.aiProcessingStartedAt).toEqual(newerProcessingStartedAt)
+  })
+
   it('records confidence 0 without applying the suggested category', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => [
       {bankTransactionId: 'bank-transaction-1', categoryAccountId: 'groceries', confidence: 0, reasoning: 'Too ambiguous'},
     ])
 
-    const result = await aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
+    const result = await aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)
 
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
@@ -736,14 +781,14 @@ describe('aiCategorizeLedgerTransactions', () => {
   })
 
   it('marks transactions processing before the model call and clears processing when the model fails', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => {
       const [duringModelCall] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
       expect(duringModelCall?.aiProcessingStartedAt).toBeInstanceOf(Date)
       throw new Error('model unavailable')
     })
 
-    await expect(aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)).rejects.toThrow(
+    await expect(aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)).rejects.toThrow(
       'model unavailable',
     )
 
@@ -762,10 +807,10 @@ describe('aiCategorizeLedgerTransactions', () => {
 
   it('caps batch categorization at 25 transactions server-side', async () => {
     await seedAdditionalNeedsReviewTransactions(24)
-    const {aiCategorizeLedgerTransactions, MAX_AI_CATEGORIZATION_BATCH_SIZE} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions, MAX_AI_CATEGORIZATION_BATCH_SIZE} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => [])
 
-    const result = await aiCategorizeLedgerTransactions({userId: 'user-1', limit: 100}, categorizeWithModel)
+    const result = await aiCategorizeBankTransactions({userId: 'user-1', limit: 100}, categorizeWithModel)
 
     expect(MAX_AI_CATEGORIZATION_BATCH_SIZE).toBe(25)
     expect(categorizeWithModel).toHaveBeenCalledOnce()
@@ -774,14 +819,14 @@ describe('aiCategorizeLedgerTransactions', () => {
   })
 
   it('does not clear a newer processing marker from a concurrent AI attempt', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const newerProcessingStartedAt = new Date('2026-06-18T12:45:00.000Z')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => {
       await db.update(bankTransactions).set({aiProcessingStartedAt: newerProcessingStartedAt}).where(eq(bankTransactions.id, 'bank-transaction-1'))
       throw new Error('model unavailable')
     })
 
-    await expect(aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)).rejects.toThrow(
+    await expect(aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel)).rejects.toThrow(
       'model unavailable',
     )
 
@@ -791,12 +836,12 @@ describe('aiCategorizeLedgerTransactions', () => {
   })
 
   it('clears processing when no eligible categories are available after claiming work', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
 
     await db.update(ledgerAccounts).set({status: 'archived'}).where(eq(ledgerAccounts.id, 'groceries'))
     await db.update(ledgerAccounts).set({status: 'archived'}).where(eq(ledgerAccounts.id, 'household'))
 
-    await expect(aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']})).rejects.toThrow(
+    await expect(aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']})).rejects.toThrow(
       'No categories available for AI categorization',
     )
 
@@ -809,13 +854,13 @@ describe('aiCategorizeLedgerTransactions', () => {
   })
 
   it('leaves transactions unchanged when the model call fails', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => {
       throw new Error('model unavailable')
     })
 
     await expect(
-      aiCategorizeLedgerTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel),
+      aiCategorizeBankTransactions({userId: 'user-1', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel),
     ).rejects.toThrow('model unavailable')
 
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
@@ -865,11 +910,11 @@ describe('aiCategorizeLedgerTransactions', () => {
   })
 
   it('rejects users outside the transaction team', async () => {
-    const {aiCategorizeLedgerTransactions} = await import('@/ledger/ai-categorization.server')
+    const {aiCategorizeBankTransactions} = await import('@/ledger/ai-categorization.server')
     const categorizeWithModel = vi.fn<CategorizeWithModel>(async () => [])
 
     await expect(
-      aiCategorizeLedgerTransactions({userId: 'user-2', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel),
+      aiCategorizeBankTransactions({userId: 'user-2', bankTransactionIds: ['bank-transaction-1']}, categorizeWithModel),
     ).rejects.toThrow('No transactions available for AI categorization')
   })
 })

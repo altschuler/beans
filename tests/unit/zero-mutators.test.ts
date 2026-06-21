@@ -2,10 +2,10 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 
 const categorizeBankTransaction = vi.hoisted(() => vi.fn(async () => undefined))
 const splitBankTransaction = vi.hoisted(() => vi.fn(async () => undefined))
-const confirmLedgerTransaction = vi.hoisted(() => vi.fn(async () => undefined))
+const confirmBankTransactionInterpretation = vi.hoisted(() => vi.fn(async () => undefined))
 const clearLedgerCategorizations = vi.hoisted(() => vi.fn(async () => ({cleared: 2})))
 
-vi.mock('@/ledger/categorization.server', () => ({categorizeBankTransaction, splitBankTransaction, confirmLedgerTransaction, clearLedgerCategorizations}))
+vi.mock('@/ledger/categorization.server', () => ({categorizeBankTransaction, splitBankTransaction, confirmBankTransactionInterpretation, clearLedgerCategorizations}))
 
 describe('ledger mutator input schemas', () => {
   it('accepts bank-transaction category and transfer selections', async () => {
@@ -42,6 +42,13 @@ describe('ledger mutator input schemas', () => {
         {accountId: 'household', amount: '30.0000'},
       ],
     }).success).toBe(false)
+  })
+
+  it('accepts confirmation by bank transaction id', async () => {
+    const {confirmTransactionInput} = await import('@/zero/mutators')
+
+    expect(confirmTransactionInput.safeParse({bankTransactionId: 'bank-transaction-1'}).success).toBe(true)
+    expect(confirmTransactionInput.safeParse({ledgerTransactionId: 'ledger-transaction-1'}).success).toBe(false)
   })
 })
 
@@ -96,9 +103,9 @@ describe('ledger Zero mutators', () => {
     })
   })
 
-  it('confirms the current category on the server transaction', async () => {
+  it('confirms the current category on the server transaction by bank transaction id', async () => {
     const {serverMutators} = await import('@/zero/mutators.server')
-    const request = serverMutators.ledger.confirmTransaction({ledgerTransactionId: 'ledger-transaction-1'})
+    const request = serverMutators.ledger.confirmTransaction({bankTransactionId: 'bank-transaction-1'})
 
     await request.mutator.fn({
       args: request.args,
@@ -106,9 +113,9 @@ describe('ledger Zero mutators', () => {
       tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never,
     })
 
-    expect(confirmLedgerTransaction).toHaveBeenCalledWith('wrapped-tx', {
+    expect(confirmBankTransactionInterpretation).toHaveBeenCalledWith('wrapped-tx', {
       userId: 'user-1',
-      ledgerTransactionId: 'ledger-transaction-1',
+      bankTransactionId: 'bank-transaction-1',
     })
   })
 
@@ -146,7 +153,7 @@ describe('ledger Zero mutators', () => {
 
     expect(categorizeBankTransaction).not.toHaveBeenCalled()
     expect(splitBankTransaction).not.toHaveBeenCalled()
-    expect(confirmLedgerTransaction).not.toHaveBeenCalled()
+    expect(confirmBankTransactionInterpretation).not.toHaveBeenCalled()
     expect(clearLedgerCategorizations).not.toHaveBeenCalled()
   })
 

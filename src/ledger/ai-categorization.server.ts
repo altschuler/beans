@@ -6,7 +6,7 @@ import {and, desc, eq, inArray, isNull, lt, or} from 'drizzle-orm'
 import {z} from 'zod'
 import {db, type Database} from '@/db/client'
 import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from '@/db/schema'
-import {categorizeBankTransaction, categorizeLedgerTransaction, normalizeAiReasoning} from './categorization.server'
+import {categorizeBankTransaction, normalizeAiReasoning} from './categorization.server'
 import {loadSimilarCategorizationExamples, type AiCategorizationSimilarExample} from './similar-categorization-examples.server'
 
 export const AI_CATEGORIZATION_MODEL = 'gpt-5.4-nano'
@@ -64,7 +64,7 @@ export type AiCategorizationResult = {
 type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 type DrizzleTransaction = DatabaseTransaction
 
-type AiCategorizeLedgerTransactionsInput = {
+type AiCategorizeBankTransactionsInput = {
   userId: string
   bankTransactionIds?: string[]
   limit?: number
@@ -85,10 +85,11 @@ type ApplySuggestionContext = {
   categoryTeamsById: Map<string, string>
   transactionTeamsById: Map<string, string>
   categorizedTransactionIds: Set<string>
+  processingStartedAt: Date
 }
 
-export async function aiCategorizeLedgerTransactions(
-  input: AiCategorizeLedgerTransactionsInput,
+export async function aiCategorizeBankTransactions(
+  input: AiCategorizeBankTransactionsInput,
   categorizeWithModel: CategorizeWithModel = categorizeWithOpenAI,
 ): Promise<AiCategorizationResult> {
   const work = await db.transaction(tx => claimAiCategorizationWork(tx, input))
@@ -131,6 +132,7 @@ export async function aiCategorizeLedgerTransactions(
           categoryTeamsById,
           transactionTeamsById,
           categorizedTransactionIds,
+          processingStartedAt: work.processingStartedAt,
         }),
       )
       applied += applyResult.applied
@@ -173,7 +175,7 @@ If confidence is 0, categoryAccountId must be null. If confidence is 1 or 2, cat
   return object.suggestions
 }
 
-async function claimAiCategorizationWork(tx: DrizzleTransaction, input: AiCategorizeLedgerTransactionsInput): Promise<ClaimedAiCategorizationWork> {
+async function claimAiCategorizationWork(tx: DrizzleTransaction, input: AiCategorizeBankTransactionsInput): Promise<ClaimedAiCategorizationWork> {
   const transactions = input.bankTransactionIds?.length
     ? await loadRequestedTransactions(tx, input.userId, input.bankTransactionIds)
     : await loadNeedsReviewBatch(tx, input.userId, input.limit)
@@ -243,6 +245,12 @@ async function applyAiCategorizationSuggestions(
       continue
     }
 
+    if (!isSameProcessingMarker(currentTransaction.aiProcessingStartedAt, context.processingStartedAt)) {
+      context.categorizedTransactionIds.add(suggestion.bankTransactionId)
+      skipped += 1
+      continue
+    }
+
     if (suggestion.confidence === 0) {
       const didRecord = await recordAiConfidenceWithoutCategory(tx, userId, suggestion.bankTransactionId, 0, suggestion.reasoning)
       context.categorizedTransactionIds.add(suggestion.bankTransactionId)
@@ -260,26 +268,16 @@ async function applyAiCategorizationSuggestions(
     }
 
     const status = suggestion.confidence === 2 ? 'confirmed' : 'needs_review'
-    const didApply = currentTransaction.ledgerTransactionId
-      ? await categorizeLedgerTransaction(tx, {
-          userId,
-          ledgerTransactionId: currentTransaction.ledgerTransactionId,
-          accountId: suggestion.categoryAccountId,
-          status,
-          aiConfidence: suggestion.confidence,
-          aiReasoning: suggestion.reasoning,
-          categorizedBy: 'ai',
-          requiredCurrentStatus: 'needs_review',
-        })
-      : await categorizeBankTransaction(tx, {
-          userId,
-          bankTransactionId: suggestion.bankTransactionId,
-          selection: {kind: 'category', accountId: suggestion.categoryAccountId},
-          status,
-          aiConfidence: suggestion.confidence,
-          aiReasoning: suggestion.reasoning,
-          categorizedBy: 'ai',
-        })
+    const didApply = await categorizeBankTransaction(tx, {
+      userId,
+      bankTransactionId: suggestion.bankTransactionId,
+      selection: {kind: 'category', accountId: suggestion.categoryAccountId},
+      status,
+      aiConfidence: suggestion.confidence,
+      aiReasoning: suggestion.reasoning,
+      categorizedBy: 'ai',
+      requiredExistingStatus: 'needs_review',
+    })
 
     context.categorizedTransactionIds.add(suggestion.bankTransactionId)
     if (!didApply) {
@@ -441,7 +439,7 @@ async function loadTransactions(
 
 async function loadCurrentTransactionForAiApplication(tx: DrizzleTransaction, userId: string, bankTransactionId: string) {
   const [transaction] = await tx
-    .select({teamId: bankAccounts.teamId, ledgerTransactionId: ledgerTransactions.id, status: ledgerTransactions.status})
+    .select({teamId: bankAccounts.teamId, status: ledgerTransactions.status, aiProcessingStartedAt: bankTransactions.aiProcessingStartedAt})
     .from(bankTransactions)
     .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
     .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
@@ -449,6 +447,7 @@ async function loadCurrentTransactionForAiApplication(tx: DrizzleTransaction, us
     .leftJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerPostings.ledgerTransactionId))
     .where(and(eq(bankTransactions.id, bankTransactionId), eq(teamMembers.userId, userId)))
     .limit(1)
+    .for('update', {of: bankTransactions})
 
   return transaction
 }
@@ -478,6 +477,10 @@ function toModelTransaction(transaction: LoadedAiCategorizationTransaction, simi
 
 function aiProcessingFreshCutoff(now = new Date()) {
   return new Date(now.getTime() - AI_PROCESSING_STALE_AFTER_MS)
+}
+
+function isSameProcessingMarker(current: Date | null, expected: Date) {
+  return current?.getTime() === expected.getTime()
 }
 
 function uniqueStrings(values: string[]) {

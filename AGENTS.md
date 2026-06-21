@@ -8,11 +8,8 @@ Read the relevant doc before doing any work in that area. These are authoritativ
 
 Read entire relevant source files before reasoning or editing. Do not rely on excerpts/ranges unless the file is generated, vendored, or extremely large.
 
-<!--
-List all docs files with a short explanation of what it documents and when to read it
--->
-
 - Architecture map: `docs/ARCHITECTURE.md`
+- Vocabulary (internal/domain terms vs UI/product language): `docs/VOCABULARY.md`
 - Frontend (SSR, data loading patterns): `docs/FRONTEND.md`
 - Design system (tokens, UI rules, component guidance): `docs/DESIGN.md` — read before changing UI
 - Internationalization / Paraglide messages: `docs/I18N.md`
@@ -34,6 +31,12 @@ List all docs files with a short explanation of what it documents and when to re
 <!--
 How can agents verify their own work? How to run tests (unit/integration/e2e), do builds, automated usage of the application, etc
 -->
+
+## Git
+
+Never change branches, create worktrees, stash or commit anything unless explicitly told to do so. If the worktree is dirty, just ask for confirmation before implementing something.
+
+The user might stage or unstage files while implementation is running, do not change it.
 
 ## INBOX
 

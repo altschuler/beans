@@ -24,7 +24,7 @@ export const splitTransactionInput = z.object({
 })
 
 export const confirmTransactionInput = z.object({
-  ledgerTransactionId: z.string().min(1),
+  bankTransactionId: z.string().min(1),
 })
 
 export const clearCategorizationsInput = z.object({})

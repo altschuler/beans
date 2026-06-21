@@ -1,7 +1,7 @@
 import '@tanstack/react-start/server-only'
 
 import {defineMutator, defineMutators} from '@rocicorp/zero'
-import {categorizeBankTransaction, clearLedgerCategorizations, confirmLedgerTransaction, splitBankTransaction} from '@/ledger/categorization.server'
+import {categorizeBankTransaction, clearLedgerCategorizations, confirmBankTransactionInterpretation, splitBankTransaction} from '@/ledger/categorization.server'
 import {requireUserID} from './context'
 import {categorizeTransactionInput, clearCategorizationsInput, confirmTransactionInput, mutators, splitTransactionInput} from './mutators'
 
@@ -25,9 +25,9 @@ export const serverMutators = defineMutators(mutators, {
     }),
     confirmTransaction: defineMutator(confirmTransactionInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await confirmLedgerTransaction(tx.dbTransaction.wrappedTransaction, {
+      await confirmBankTransactionInterpretation(tx.dbTransaction.wrappedTransaction, {
         userId: requireUserID(ctx),
-        ledgerTransactionId: args.ledgerTransactionId,
+        bankTransactionId: args.bankTransactionId,
       })
     }),
     clearCategorizations: defineMutator(clearCategorizationsInput, async ({ctx, tx}) => {

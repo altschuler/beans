@@ -1,5 +1,9 @@
 # TODO
 
+## Categories
+
+- Implement deletion/archival for non-empty categories. Current editable-category work should only allow hard deletion when a category has zero ledger postings; categories with historical postings need an archival/deactivation flow instead.
+
 ## Auth review
 
 - Clear or intentionally retain Zero local data on logout. Current sign-out only calls Better Auth and navigates away; Zero docs note synced IndexedDB data remains unless `zero.delete()` is called.

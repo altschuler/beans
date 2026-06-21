@@ -9,7 +9,7 @@ type TransactionTableProps = {
   transferAccounts: TransferAccountOption[]
   isAiRequestPending: boolean
   onCategorizeBankTransaction: (bankTransactionId: string, selection: CategorySelection) => void
-  onConfirmTransaction: (ledgerTransactionId: string) => void
+  onConfirmTransaction: (bankTransactionId: string) => void
   onAiCategorizeOne: (bankTransactionId: string) => void
   onSaveSplit: (row: TransactionTableRowData, splitLines: SplitLine[]) => Promise<boolean>
 }
