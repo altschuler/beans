@@ -497,8 +497,9 @@ describe('LedgerDashboard', () => {
     expect(markup).not.toContain('Auto-categorize')
     expect(markup).not.toContain('Clear categorizations')
     expect(markup).not.toContain('Sync all accounts')
-    expect(findButtonByLabel('AI categorize transaction')?.disabled).toBe(false)
-    expect(findButtonByLabel('Split transaction')?.disabled).toBeFalsy()
+    expect(markup).toContain('aria-label="Category for Netto"')
+    expect(markup).not.toContain('aria-label="AI categorize transaction"')
+    expect(markup).not.toContain('aria-label="Split transaction"')
   })
 
   it('shows bank account not found when the bank account list is empty on a bank account route', () => {
@@ -532,16 +533,9 @@ describe('LedgerDashboard', () => {
     expect(confirmDot?.className).toContain('cursor-pointer')
     expect(confirmDot?.className).toContain('hover:bg-transparent')
     expect(confirmDot?.className).toContain('hover:ring-2')
-    expect(findButtonByLabel('AI categorize transaction')?.disabled).toBe(false)
-    expect(findButtonByLabel('Split transaction')?.disabled).toBeFalsy()
-  })
-
-  it('disables row AI action for confirmed transactions', () => {
-    queryRows.ledgerTransactions = [{...queryRows.ledgerTransactions[0]!, status: 'confirmed'}]
-
-    renderToStaticMarkup(React.createElement(LedgerDashboard))
-
-    expect(findButtonByLabel('AI categorize transaction')?.disabled).toBe(true)
+    expect(markup).toContain('aria-label="Category for Netto"')
+    expect(markup).not.toContain('aria-label="AI categorize transaction"')
+    expect(markup).not.toContain('aria-label="Split transaction"')
   })
 
 
@@ -597,19 +591,6 @@ describe('LedgerDashboard', () => {
     expect(toastSuccess).toHaveBeenCalledWith('AI categorization finished. Review any transactions still marked needs review.')
   })
 
-  it('runs the row AI server function with the bank transaction id', async () => {
-    renderToStaticMarkup(React.createElement(LedgerDashboard))
-
-    findButtonByLabel('AI categorize transaction')?.onClick?.()
-    await flushPromises()
-
-    expect(aiCategorizeTransaction).toHaveBeenCalledWith({
-      data: {bankTransactionId: 'bank-transaction-1'},
-    })
-    expect(zeroMutate).not.toHaveBeenCalledWith(expect.objectContaining({type: 'aiCategorizeTransaction'}))
-    expect(toastSuccess).toHaveBeenCalledWith('AI categorization finished. Review the transaction if it still needs review.')
-  })
-
   it('confirms the current transaction category through a narrow Zero mutator', async () => {
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 
@@ -642,10 +623,6 @@ describe('LedgerDashboard', () => {
 
 function findButton(text: string) {
   return renderedButtons.find((button) => textFromNode(button.children) === text)
-}
-
-function findButtonByLabel(label: string) {
-  return renderedButtons.find((button) => button.ariaLabel === label)
 }
 
 function findButtonByLabelPrefix(labelPrefix: string) {

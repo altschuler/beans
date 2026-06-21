@@ -61,7 +61,6 @@ export function TransactionTable({
               <TransactionRow
                 key={row.id}
                 row={row}
-                rowRef={rowVirtualizer.measureElement}
                 rowStyle={{position: 'absolute', transform: `translateY(${virtualRow.start}px)`, width: '100%'}}
                 rowIndex={virtualRow.index}
                 categorizationAccounts={categorizationAccounts}

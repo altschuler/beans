@@ -71,7 +71,7 @@ describe('TransactionTable', () => {
 
     expect(markup).toContain('min-h-0 flex-1 overflow-auto')
     expect(markup).toContain('sticky top-0 z-10 bg-muted')
-    expect(markup).not.toContain('bg-muted/60')
+    expect(markup).not.toContain('Split transaction')
     expect(markup).toContain('<tbody class="relative grid"')
   })
 
@@ -132,7 +132,7 @@ describe('TransactionTable', () => {
     expect(markup).not.toContain('Transaction 39')
   })
 
-  it('renders the category selector button instead of a native category select', () => {
+  it('renders category actions through the category selector instead of separate row buttons', () => {
     const markup = renderToStaticMarkup(
       React.createElement(TransactionTable, {
         rows: [{...row, ledgerTransactionId: null, categoryAccountId: null, categoryLabel: 'Choose category'}],
@@ -150,8 +150,8 @@ describe('TransactionTable', () => {
     expect(markup).toContain('data-slot="popover-trigger"')
     expect(markup).toContain('Choose category')
     expect(markup).not.toContain('<select')
-    expect(markup).toContain('aria-label="AI categorize transaction"')
-    expect(markup).not.toContain('aria-label="AI categorize transaction" disabled=""')
+    expect(markup).not.toContain('aria-label="AI categorize transaction"')
+    expect(markup).not.toContain('aria-label="Split transaction"')
   })
 
   it('keeps transfer choices available through row props for selector filtering', () => {

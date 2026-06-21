@@ -4,6 +4,15 @@
 
 - Implement deletion/archival for non-empty categories. Current editable-category work should only allow hard deletion when a category has zero ledger postings; categories with historical postings need an archival/deactivation flow instead.
 
+## Category management cleanup
+
+- Replace custom category-management form controls with shadcn components: use shadcn `Textarea` for description, `Select` for group selection, `RadioGroup`/`RadioGroupItem` for category type, and `Badge` for the category type pill instead of hand-styled native controls/spans.
+- Simplify category management dialog mounting. `src/components/ledger/category-management-page.tsx` currently mounts all dialogs and uses `key` resets plus repeated `dialog.kind` guards; render only the active dialog or make form resets explicit.
+- Derive category/group dialog titles and descriptions from dialog mode instead of passing repeated `mode`, `title`, and `description` props at each call site.
+- Drop low-value category-management Zero mutator dispatch tests in `tests/unit/zero-mutators.test.ts`; schema tests plus `tests/unit/category-management-server.test.ts` cover the meaningful behavior.
+- Inline `normalizeName` in `src/ledger/category-management.server.ts`; it only wraps `requireNonEmpty` without adding domain meaning.
+- Keep `tests/unit/category-management-page.test.ts` focused on page-level behavior; move useful dialog-internal assertions to a focused dialog test or drop static markup checks that do not protect behavior.
+
 ## Transaction categorization
 
 - Give transfer confirmation failures their own error message. `validateConfirmableInterpretationPostings` (`src/ledger/categorization.server.ts`) throws `'Transaction must have a category before it can be confirmed'` for every transfer-branch failure (wrong posting count, amount/currency mismatch, not two distinct accounts), which is nonsensical for a transfer. Use a transfer-specific message.
@@ -21,6 +30,11 @@
   5. Add a test asserting `ledgerTransaction.id` is unchanged after re-categorizing a bank transaction (category → different category, and category → split).
 
   Tradeoff: this re-introduces an `existing ? update : insert` branch into the unified function — lighter than the old `categorizeLedgerTransaction` (postings are still fully rebuilt; only the row + id + createdAt are preserved). Stabilizing posting ids too (e.g. the reconciled bank posting) is more work and more of a regression toward the removed in-place code; skip unless there's a concrete need.
+
+## Review follow-up
+
+- Add missing authorization coverage for the bank-transaction categorization paths, especially split categorization and fresh-import categorization by bank transaction id.
+- Drop or replace the low-value transfer selector test in `tests/unit/transaction-table.test.ts`; meaningful coverage belongs in focused category-selector tests for transfer option filtering, direction labels, and selection callback payloads.
 
 ## Auth review
 
