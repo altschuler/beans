@@ -37,6 +37,23 @@ Imported bank transactions reconcile through `ledger_postings.bank_transaction_i
 
 When adding a new app/domain table, it is not complete until it is represented in both Drizzle and Zero generation config, and the generated Zero schema has been updated.
 
+## Client mutations
+
+Writes go through Zero custom mutators: Zod input schemas in `src/zero/mutators.ts`, server logic in `src/zero/mutators.server.ts` (and the `*.server.ts` command files it calls). The client mutators are currently no-ops, so writes are server-authoritative with no optimistic update — the UI reflects a change only after the server round-trip syncs back (see the empty-client-mutators item in `docs/TODO.md`).
+
+Always run mutations through `runZeroMutation` (`src/lib/run-mutation.ts`); never `await zero.mutate(...)` directly. A mutator call returns `{client, server}` promises that **resolve** with a result detail — they do not reject on failure. A server-side error resolves `.server` with `{type: 'error', ...}` and Zero only logs it to the console, so awaiting the mutation alone silently swallows the error. `runZeroMutation` inspects the resolved detail, shows an error toast, and returns a success boolean:
+
+```ts
+// Fire-and-forget: the error toast still fires in the background.
+void runZeroMutation(zero.mutate(mutators.ledger.categorizeTransaction({...})), 'Could not save category')
+
+// Gate success-only follow-ups (closing a dialog, a success toast) on the result.
+const ok = await runZeroMutation(zero.mutate(mutators.ledger.clearCategorizations({})), 'Could not clear')
+if (ok) { /* ... */ }
+```
+
+When mocking a failing mutation in tests, resolve `.server` with `{type: 'error', error: {...}}` — do not reject it; rejection does not match Zero's real behavior.
+
 ## Tables not synced with Zero
 
 Zero must not be used for authentication, session, account credential, verification, or other security-sensitive storage.

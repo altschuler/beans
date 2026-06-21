@@ -5,7 +5,7 @@ import {Currency} from '@/components/currency'
 import {PageLayout} from '@/components/page-layout'
 import {Button} from '@/components/ui/button'
 import {DEFAULT_CURRENCY} from '@/lib/money'
-import {showErrorToast} from '@/lib/show-error-toast'
+import {runZeroMutation} from '@/lib/run-mutation'
 import {mutators} from '@/zero/mutators'
 import {queries} from '@/zero/queries'
 import {buildCategoryManagementModel, type CategoryManagementAccount, type CategoryManagementGroup} from './category-management-model'
@@ -35,14 +35,9 @@ export function CategoryManagementPage() {
 
   async function runMutation(mutation: Parameters<typeof zero.mutate>[0], close: () => void) {
     setPending(true)
-    try {
-      await waitForMutation(zero.mutate(mutation) as MutationResult)
-      close()
-    } catch (error) {
-      showErrorToast(error, 'Could not save category changes')
-    } finally {
-      setPending(false)
-    }
+    const ok = await runZeroMutation(zero.mutate(mutation), 'Could not save category changes')
+    if (ok) close()
+    setPending(false)
   }
 
   function createGroup(values: GroupFormValues) {
@@ -174,15 +169,4 @@ export function CategoryManagementPage() {
       />
     </PageLayout>
   )
-}
-
-type MutationResult = Promise<unknown> | {server: Promise<unknown>}
-
-async function waitForMutation(result: MutationResult) {
-  if ('server' in result) {
-    await result.server
-    return
-  }
-
-  await result
 }

@@ -4,17 +4,13 @@ This document is the source of truth for how tests should be written in Penge.
 
 ## Purpose
 
-Tests should help us change the code with confidence. They should be easy to read, focused on meaningful behavior, and cheap to maintain.
-
-The goal is not to maximize test count. The goal is to cover the behavior that matters.
+Tests should give us confidence to change code. Prefer a few readable, high-signal tests over many low-value ones. Every test should protect behavior we care about.
 
 ## Core Rules
 
 ### Test behavior, not implementation
 
-This is the most important rule.
-
-Prefer assertions about:
+Prefer assertions about observable behavior:
 
 - returned results
 - rendered UI
@@ -22,68 +18,47 @@ Prefer assertions about:
 - meaningful side effects
 - allowed or blocked outcomes
 
-Avoid assertions about:
+Avoid assertions about implementation details:
 
-- which helper called which helper
-- exact internal argument plumbing when that is not the behavior under test
-- ORM or SDK call choreography
-- framework wiring that only restates the code
-- exporting functions solely to make them testable
+- helper-to-helper calls
+- internal argument plumbing
+- ORM, SDK, SQL-builder, or framework choreography
+- exact CSS classes unless they have behavioral consequences
+- functions exported only for tests
 
-When a full end-to-end assertion is not practical, assert the closest meaningful boundary. For server-function and query tests, that usually means asserting behavior through the shared data-source client seams or the returned result, not through low-level internal implementation details.
+If a full end-to-end assertion is impractical, test the closest meaningful boundary. For server functions and queries, that is usually the returned result, persisted state, or shared data-source/client seam.
 
-Use the cheapest meaningful boundary for the behavior under test. Heavy rendering through child components, providers, routes, or dialogs is useful when the integration itself is the behavior, but avoid it when the parent only owns a small public contract with that child. In those cases, assert the boundary contract narrowly and leave the heavy child behavior to the child's own tests.
+Use heavy rendering, providers, routes, dialogs, and child components only when that integration is the behavior. Otherwise assert the parent-owned public contract and test the child in its own file.
 
-Keep these boundary assertions limited to stable public contract fields that the caller owns. Do not assert every derived prop, internal dialog label, generated description, CSS class, or child render detail from the caller test. Test dialog internals in the dialog's own test file, preferably by rendering the real dialog and asserting visible behavior.
+If meaningful coverage is not practical, say so explicitly instead of adding a weak test.
 
-If a behavior is genuinely impractical to test in a meaningful way, flag that explicitly and do not write a weak test just for the sake of having one. Every test must earn its place by protecting something valuable.
+### Keep tests high-signal
 
-Do not export functions solely for use in tests. If a test only becomes possible by exposing an internal helper that production code would not otherwise need, that is usually a sign that the test is targeting implementation details instead of behavior.
+- Remove tests for removed functionality.
+- Do not rewrite old tests only to assert removed behavior is absent.
+- Avoid tests that only check constants, trivial shapes, pass-through wrappers, or simple mappings without business rules.
+- Avoid splitting one behavior across many tiny tests.
+- Keep test data realistic, minimal, and obvious.
+- Do not hide business behavior inside magical fixtures or global setup.
 
-### Prefer quality over quantity
+## Project Guidance
 
-Keep tests succinct and high-signal.
+- Test authorization through observable outcomes: allowed access, filtered data, or forbidden results.
+- Test Zero queries and mutators with authenticated context and team-membership boundaries.
+- Test server-side domain commands through returned results and persisted rows when persistence is the behavior.
+- Prefer pure model tests for ledger, accounting, and view-model calculations before component tests.
+- Add Drizzle schema and Zero schema exposure tests when changing tables or `drizzle-zero.config.ts`.
+- Mock external providers, AI/model calls, and browser-only APIs at the boundary, then assert the app outcome.
 
-When functionality is removed, remove tests that existed solely for that functionality. Do not rewrite those tests just to assert that the removed behavior is now absent.
+## UI Component Tests
 
-Prefer a small number of meaningful tests over many tiny tests that each prove almost nothing. A test should justify its existence by protecting behavior we actually care about.
+When components use shared `@/components/ui` primitives, prefer rendering the real components and behavior.
 
-Avoid:
+- Do not fully mock `@/components/ui` by default; that can hide Radix/shadcn integration and accessibility regressions.
+- Mock only browser APIs or external boundaries that make the test impractical.
+- If a mock is unavoidable, keep it narrow and document why in the test file.
 
-- tiny tests that only check constants or trivial object shapes
-- splitting one behavior across many low-value tests
-- duplicating nearby tests with minor wording changes but no added coverage value
-
-## DO / DON'T
-
-### DO
-
-- DO test authorization through the observable result: allowed access, filtered data, or a forbidden outcome.
-- DO test Zero queries and mutators with authenticated context and team-membership boundaries.
-- DO test server-side domain commands through returned results and persisted rows when persistence is the behavior.
-- DO prefer pure model tests for ledger, accounting, and view-model calculations before reaching for component tests.
-- DO add Drizzle schema and Zero schema exposure tests when changing tables or `drizzle-zero.config.ts`.
-- DO mock external providers, AI/model calls, and browser-only APIs at the boundary, then assert the app outcome.
-- DO use realistic, minimal test data that makes the scenario obvious to the reader.
-
-### DON'T
-
-- DON'T test that CSS classes are applied unless it has functional/behavioral consequences
-- DON'T test Drizzle clause structure, SQL-builder chaining, or SDK call choreography unless that structure itself is the behavior being implemented.
-- DON'T add tests whose only value is increasing the test count.
-- DON'T add a slew of tiny tests that restate constants, pass-through wrappers, or simple mappings with no meaningful business rule behind them.
-- DON'T hide business behavior inside magical fixtures or global setup.
-- DON'T export internal helpers only so tests can call them directly.
-
-## UI Component Testing Preference
-
-When testing components that use our shared `@/components/ui` primitives, prefer rendering with the real components and real behavior.
-
-- Use minimal mocking only when a browser API or external boundary makes the test impractical.
-- Do not fully mock `@/components/ui` by default; this can hide integration and accessibility regressions from Radix/shadcn behavior.
-- If a mock is unavoidable, keep it narrowly scoped and document why it is needed in the test file.
-
-## Shared Test Support Direction
+## Shared Test Support
 
 Use shared helpers instead of repeating setup noise:
 
@@ -94,15 +69,11 @@ Use shared helpers instead of repeating setup noise:
 - `tests/helpers/assertions.ts` for shared Vitest assertions.
 - `e2e/helpers/auth.ts` and `e2e/helpers/assertions.ts` for Playwright flows.
 
-## Shared Mock Boundaries
-
-Mock external providers and browser-only boundaries when needed. Keep app/domain behavior visible through returned results, persisted state, rendered UI, or Zero query/mutator seams.
-
 ## Builders And Scenarios
 
 Builders should provide minimal valid defaults with cheap shallow overrides.
 
-Scenarios should stay thin and readable. They should compose builders to describe a meaningful state, not become a second hidden implementation layer.
+Scenarios should stay thin and readable. They should compose builders to describe meaningful state, not become a second hidden implementation layer.
 
 ## Running Tests
 
@@ -114,4 +85,3 @@ just check
 
 Focused Vitest runs can use `pnpm test path/to/file.test.ts`.
 Focused Playwright runs can use `pnpm test:e2e path/to/file.spec.ts`.
-

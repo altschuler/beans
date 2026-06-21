@@ -10,6 +10,7 @@ import {Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Dia
 import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from '@/components/ui/dropdown-menu'
 import {toast} from 'sonner'
 import {showErrorToast} from '@/lib/show-error-toast'
+import {runZeroMutation} from '@/lib/run-mutation'
 import {aiCategorizeNeedsReviewBatch, aiCategorizeTransaction} from '@/ledger/ai-categorization-fns'
 import {mutators} from '@/zero/mutators'
 import {queries} from '@/zero/queries'
@@ -50,25 +51,12 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   const showGlobalTransactionActions = view === 'transactions'
   const pageTitle = view === 'bankAccountTransactions' ? (selectedBankAccount?.name ?? 'Bank account') : 'Transactions'
 
-  async function categorizeBankTransaction(bankTransactionId: string, selection: CategorySelection) {
-    try {
-      await zero.mutate(
-        mutators.ledger.categorizeTransaction({
-          bankTransactionId,
-          selection,
-        }),
-      )
-    } catch (error) {
-      showErrorToast(error, 'Could not save category')
-    }
+  function categorizeBankTransaction(bankTransactionId: string, selection: CategorySelection) {
+    void runZeroMutation(zero.mutate(mutators.ledger.categorizeTransaction({bankTransactionId, selection})), 'Could not save category')
   }
 
-  async function confirmTransaction(bankTransactionId: string) {
-    try {
-      await zero.mutate(mutators.ledger.confirmTransaction({bankTransactionId}))
-    } catch (error) {
-      showErrorToast(error, 'Could not confirm transaction')
-    }
+  function confirmTransaction(bankTransactionId: string) {
+    void runZeroMutation(zero.mutate(mutators.ledger.confirmTransaction({bankTransactionId})), 'Could not confirm transaction')
   }
 
   async function aiCategorizeBatch() {
@@ -107,32 +95,21 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     if (isClearPending) return
 
     setIsClearPending(true)
-    try {
-      await zero.mutate(mutators.ledger.clearCategorizations({}))
+    const ok = await runZeroMutation(zero.mutate(mutators.ledger.clearCategorizations({})), 'Could not clear categorizations')
+    if (ok) {
       setIsClearDialogOpen(false)
       toast.success('Cleared ledger categorizations. Imported bank transactions were kept.')
-    } catch (error) {
-      showErrorToast(error, 'Could not clear categorizations')
-    } finally {
-      setIsClearPending(false)
     }
+    setIsClearPending(false)
   }
 
   async function saveSplit(row: TransactionTableRow, lines: SplitLine[]) {
-    let didSave = false
-
-    await saveDashboardSplitTransaction({
+    return saveDashboardSplitTransaction({
       bankTransactionId: row.bankTransactionId,
       bankAmount: row.amount,
       lines,
       mutate: (mutation) => zero.mutate(mutation),
-      onSuccess: () => {
-        didSave = true
-      },
-      onError: showErrorToast,
     })
-
-    return didSave
   }
 
   const aiEligibleReviewCount = model.transactionRows.filter(row => row.needsReview).length
@@ -202,8 +179,8 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
               categorizationAccounts={model.categorizationAccounts}
               transferAccounts={model.transferAccounts}
               isAiRequestPending={isAiRequestPending}
-              onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
-              onConfirmTransaction={(bankTransactionId) => void confirmTransaction(bankTransactionId)}
+              onCategorizeBankTransaction={categorizeBankTransaction}
+              onConfirmTransaction={confirmTransaction}
               onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
               onSaveSplit={saveSplit}
             />

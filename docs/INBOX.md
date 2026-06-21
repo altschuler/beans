@@ -1,5 +1,6 @@
 # Inbox
 
+- 2026-06-21: `tests/unit/category-management-server.test.ts` (and likely other Postgres-backed unit tests) can flake when `pnpm test` runs the whole suite in parallel — they share one test DB and contend on migrations/rows, producing inconsistent failures that vanish when the file runs in isolation. Consider giving DB-backed suites a serialized pool or per-suite schema/transaction isolation before relying on `pnpm test` as a merge gate.
 - 2026-06-21: `pnpm test:e2e` smoke currently expects the banking dashboard at `/app`, but `/app` now renders the intentional welcome page and the banking dashboard lives at `/app/banks`. Update the smoke flow or route expectation before using e2e as a merge gate.
 - 2026-06-20: Vite 8 warns that `vite-tsconfig-paths` is now redundant because `resolve.tsconfigPaths: true` is built in. Consider replacing the plugin to remove repeated build/test warnings.
 - 2026-06-20: `AGENTS.md` still points to several missing docs (`docs/FRONTEND.md`, `docs/I18N.md`, `docs/ENVIRONMENT.md`, `docs/TESTING.md`, `docs/CODESTYLE.md`, `docs/DATABASES.md`) while this checkout has only some renamed/partial equivalents. Agents changing frontend/auth/test areas need to fall back to available docs and source until the references are reconciled.

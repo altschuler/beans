@@ -1,10 +1,13 @@
-import {useState} from 'react'
-import {ChevronDown} from 'lucide-react'
+import {useMemo, useState, type ReactNode} from 'react'
+import {ChevronDown, GitBranch, Sparkles} from 'lucide-react'
 import {Button} from '@/components/ui/button'
+import {Input} from '@/components/ui/input'
 import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover'
-import {CategorySelectorContent, type CategorySelectorMode} from './category-selector-content'
 import {getInitialSplitLines} from './split-lines'
+import {SplitEditor} from './split-editor'
 import type {CategorizationAccountOption, CategorySelection, SplitLine, TransactionTableRow, TransferAccountOption} from './types'
+
+export type CategorySelectorMode = 'select' | 'split'
 
 type CategorySelectorProps = {
   row: TransactionTableRow
@@ -22,6 +25,16 @@ export function CategorySelector({row, categorizationAccounts, transferAccounts,
   const [search, setSearch] = useState('')
   const [splitLines, setSplitLines] = useState<SplitLine[]>([])
   const isAiDisabled = !row.canCategorize || !row.needsReview || isAiRequestPending || row.aiProcessing
+  const transferDirection = row.amount < 0 ? 'to' : 'from'
+  const visibleTransferAccounts = useMemo(
+    () => transferAccounts.filter(account => account.bankAccountId !== row.bankAccountId),
+    [row.bankAccountId, transferAccounts],
+  )
+  const normalizedSearch = search.trim().toLowerCase()
+  const transferOptions = visibleTransferAccounts
+    .map(account => ({account, label: `Transfer ${transferDirection}: ${account.name}`}))
+    .filter(option => option.label.toLowerCase().includes(normalizedSearch))
+  const categoryOptions = categorizationAccounts.filter(account => account.name.toLowerCase().includes(normalizedSearch))
 
   function resetPopoverState() {
     setMode('select')
@@ -68,35 +81,95 @@ export function CategorySelector({row, categorizationAccounts, transferAccounts,
           <Button
             type="button"
             variant="outline"
-            className="h-9 w-full justify-between px-3 text-left font-normal"
+            className="h-9 w-full min-w-0 justify-between px-3 text-left font-normal"
             disabled={!row.canCategorize}
             aria-label={`Category for ${row.description}`}
             aria-expanded={isOpen}
           >
-            <span className="truncate">{row.categoryLabel}</span>
+            <span className="min-w-0 flex-1 truncate">{row.categoryLabel}</span>
             <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[28rem] max-w-[calc(100vw-2rem)] p-2">
-          <CategorySelectorContent
-            mode={mode}
-            row={row}
-            categorizationAccounts={categorizationAccounts}
-            transferAccounts={transferAccounts}
-            search={search}
-            setSearch={setSearch}
-            splitLines={splitLines}
-            setSplitLines={setSplitLines}
-            isAiDisabled={isAiDisabled}
-            onChoose={choose}
-            onStartAi={startAi}
-            onOpenSplit={openSplit}
-            onBackToSelect={() => setMode('select')}
-            onCancelSplit={closePopover}
-            onSaveSplit={() => void saveSplit()}
-          />
+          {mode === 'split' ? (
+            <SplitEditor
+              splitLines={splitLines}
+              setSplitLines={setSplitLines}
+              categorizationAccounts={categorizationAccounts}
+              transactionAmount={row.amount}
+              currency={row.currency}
+              onBack={() => setMode('select')}
+              onCancel={closePopover}
+              onSave={() => void saveSplit()}
+            />
+          ) : (
+            <>
+              <div className="mb-2 flex items-center gap-2">
+                <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search categories or transfers…" className="h-9 min-w-0 flex-1" autoFocus />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 shrink-0"
+                  title="AI categorize transaction"
+                  aria-label="AI categorize transaction"
+                  disabled={isAiDisabled}
+                  onClick={startAi}
+                >
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 shrink-0 px-2"
+                  title="Split transaction"
+                  aria-label="Split transaction"
+                  disabled={!row.canCategorize}
+                  onClick={openSplit}
+                >
+                  <GitBranch className="h-4 w-4" aria-hidden="true" />
+                  Split
+                </Button>
+              </div>
+              <div className="max-h-72 overflow-auto">
+                {transferOptions.length > 0 ? (
+                  <SelectorSection title="Transfers">
+                    {transferOptions.map(option => (
+                      <SelectorOption key={option.account.id} label={option.label} onClick={() => choose({kind: 'transfer', accountId: option.account.id})} />
+                    ))}
+                  </SelectorSection>
+                ) : null}
+                {categoryOptions.length > 0 ? (
+                  <SelectorSection title="Categories">
+                    {categoryOptions.map(account => (
+                      <SelectorOption key={account.id} label={account.name} onClick={() => choose({kind: 'category', accountId: account.id})} />
+                    ))}
+                  </SelectorSection>
+                ) : null}
+                {transferOptions.length === 0 && categoryOptions.length === 0 ? <p className="px-2 py-3 text-sm text-muted-foreground">No matches.</p> : null}
+              </div>
+            </>
+          )}
         </PopoverContent>
       </Popover>
     </div>
+  )
+}
+
+function SelectorSection({title, children}: {title: string; children: ReactNode}) {
+  return (
+    <div className="py-1">
+      <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
+      <div className="space-y-1">{children}</div>
+    </div>
+  )
+}
+
+function SelectorOption({label, onClick}: {label: string; onClick: () => void}) {
+  return (
+    <Button type="button" variant="ghost" className="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-left font-normal" onClick={onClick}>
+      {label}
+    </Button>
   )
 }

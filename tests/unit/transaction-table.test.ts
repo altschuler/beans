@@ -2,64 +2,27 @@ import React from 'react'
 import {renderToStaticMarkup} from 'react-dom/server'
 import {describe, expect, it, vi} from 'vitest'
 import {TransactionTable} from '@/components/transaction-table'
-import type {TransactionTableRow} from '@/components/transaction-table'
+import {buildTransactionTableRow, testCategorizationAccounts, testTransferAccounts} from '../helpers/transaction-table'
+
+const virtualizerOptions = vi.hoisted(() => [] as Array<{estimateSize: () => number}>)
 
 vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: ({count}: {count: number}) => ({
-    getTotalSize: () => count * 56,
-    getVirtualItems: () => Array.from({length: Math.min(count, 8)}, (_, index) => ({index, key: index, start: index * 56, size: 56})),
-    measureElement: vi.fn(),
-  }),
+  useVirtualizer: (options: {count: number; estimateSize: () => number}) => {
+    virtualizerOptions.push(options)
+    const rowHeight = options.estimateSize()
+    return {
+      getTotalSize: () => options.count * rowHeight,
+      getVirtualItems: () => Array.from({length: Math.min(options.count, 8)}, (_, index) => ({index, key: index, start: index * rowHeight, size: rowHeight})),
+    }
+  },
 }))
-
-vi.mock('@/components/ui/button', async () => {
-  const ReactModule = await import('react')
-  return {
-    Button: ({children, ...props}: React.ButtonHTMLAttributes<HTMLButtonElement>) => ReactModule.createElement('button', props, children),
-  }
-})
-
-const row: TransactionTableRow = {
-  id: 'bank-transaction-1',
-  ledgerTransactionId: 'ledger-transaction-1',
-  bankTransactionId: 'bank-transaction-1',
-  bankAccountId: 'bank-account-1',
-  description: 'Netto',
-  date: '2026-06-18',
-  bankAccountName: 'Checking',
-  amount: -1_000_000,
-  currency: 'DKK',
-  status: 'needs_review',
-  needsReview: true,
-  aiConfidence: 1,
-  aiProcessing: false,
-  canCategorize: true,
-  statusIndicator: {
-    kind: 'needs_review',
-    title: 'Review recommended',
-    ariaLabel: 'Review recommended',
-    className: 'bg-yellow-600',
-    canConfirm: true,
-  },
-  aiIndicator: {
-    kind: 'needs_review',
-    title: 'Review recommended',
-    ariaLabel: 'Review recommended',
-    className: 'bg-yellow-600',
-    canConfirm: true,
-  },
-  categoryAccountId: 'groceries',
-  categoryLabel: 'Groceries',
-  isSplit: false,
-  splitLines: [],
-}
 
 describe('TransactionTable', () => {
   it('owns row scrolling while keeping the table header sticky', () => {
     const markup = renderToStaticMarkup(
       React.createElement(TransactionTable, {
-        rows: [row],
-        categorizationAccounts: [{id: 'groceries', name: 'Groceries'}],
+        rows: [buildTransactionTableRow()],
+        categorizationAccounts: testCategorizationAccounts,
         transferAccounts: [],
         isAiRequestPending: false,
         onCategorizeBankTransaction: vi.fn(),
@@ -75,6 +38,35 @@ describe('TransactionTable', () => {
     expect(markup).toContain('<tbody class="relative grid"')
   })
 
+  it('keeps virtualized rows at the fixed estimated height with truncating cells', () => {
+    virtualizerOptions.length = 0
+
+    const markup = renderToStaticMarkup(
+      React.createElement(TransactionTable, {
+        rows: [
+          buildTransactionTableRow({
+            description: 'A very long transaction description that should stay on one row instead of wrapping',
+            bankAccountName: 'A very long bank account name',
+            categoryLabel: 'A very long category label',
+          }),
+        ],
+        categorizationAccounts: testCategorizationAccounts,
+        transferAccounts: [],
+        isAiRequestPending: false,
+        onCategorizeBankTransaction: vi.fn(),
+        onConfirmTransaction: vi.fn(),
+        onAiCategorizeOne: vi.fn(),
+        onSaveSplit: vi.fn(async () => true),
+      }),
+    )
+
+    expect(virtualizerOptions.at(-1)?.estimateSize()).toBe(56)
+    expect(markup).toContain('height:56px')
+    expect(markup).toContain('class="grid h-14')
+    expect(markup).toContain('truncate px-3 py-2 font-medium')
+    expect(markup).toContain('truncate px-3 py-2 text-muted-foreground')
+  })
+
   it('renders a loading indicator instead of a status dot while AI is processing a row', () => {
     const processingStatus = {
       kind: 'processing' as const,
@@ -85,8 +77,8 @@ describe('TransactionTable', () => {
     }
     const markup = renderToStaticMarkup(
       React.createElement(TransactionTable, {
-        rows: [{...row, aiProcessing: true, statusIndicator: processingStatus, aiIndicator: processingStatus}],
-        categorizationAccounts: [{id: 'groceries', name: 'Groceries'}],
+        rows: [buildTransactionTableRow({aiProcessing: true, statusIndicator: processingStatus, aiIndicator: processingStatus})],
+        categorizationAccounts: testCategorizationAccounts,
         transferAccounts: [],
         isAiRequestPending: false,
         onCategorizeBankTransaction: vi.fn(),
@@ -103,17 +95,18 @@ describe('TransactionTable', () => {
   })
 
   it('renders only the virtual window for large transaction lists', () => {
-    const rows = Array.from({length: 40}, (_, index) => ({
-      ...row,
-      id: `bank-transaction-${index}`,
-      bankTransactionId: `bank-transaction-${index}`,
-      description: `Transaction ${index}`,
-    }))
+    const rows = Array.from({length: 40}, (_, index) =>
+      buildTransactionTableRow({
+        id: `bank-transaction-${index}`,
+        bankTransactionId: `bank-transaction-${index}`,
+        description: `Transaction ${index}`,
+      }),
+    )
 
     const markup = renderToStaticMarkup(
       React.createElement(TransactionTable, {
         rows,
-        categorizationAccounts: [{id: 'groceries', name: 'Groceries'}],
+        categorizationAccounts: testCategorizationAccounts,
         transferAccounts: [],
         isAiRequestPending: false,
         onCategorizeBankTransaction: vi.fn(),
@@ -135,9 +128,9 @@ describe('TransactionTable', () => {
   it('renders category actions through the category selector instead of separate row buttons', () => {
     const markup = renderToStaticMarkup(
       React.createElement(TransactionTable, {
-        rows: [{...row, ledgerTransactionId: null, categoryAccountId: null, categoryLabel: 'Choose category'}],
-        categorizationAccounts: [{id: 'groceries', name: 'Groceries'}, {id: 'restaurants', name: 'Restaurants'}],
-        transferAccounts: [{id: 'savings-ledger', bankAccountId: 'bank-account-2', name: 'Savings'}],
+        rows: [buildTransactionTableRow({ledgerTransactionId: null, categoryAccountId: null, categoryLabel: 'Choose category'})],
+        categorizationAccounts: testCategorizationAccounts,
+        transferAccounts: testTransferAccounts,
         isAiRequestPending: false,
         onCategorizeBankTransaction: vi.fn(),
         onConfirmTransaction: vi.fn(),
@@ -152,24 +145,5 @@ describe('TransactionTable', () => {
     expect(markup).not.toContain('<select')
     expect(markup).not.toContain('aria-label="AI categorize transaction"')
     expect(markup).not.toContain('aria-label="Split transaction"')
-  })
-
-  it('keeps transfer choices available through row props for selector filtering', () => {
-    const positiveRow: TransactionTableRow = {...row, id: 'bank-transaction-2', bankTransactionId: 'bank-transaction-2', ledgerTransactionId: null, amount: 1_000_000, categoryAccountId: null, categoryLabel: 'Choose category'}
-    const markup = renderToStaticMarkup(
-      React.createElement(TransactionTable, {
-        rows: [positiveRow],
-        categorizationAccounts: [],
-        transferAccounts: [{id: 'checking-ledger', bankAccountId: 'bank-account-1', name: 'Checking'}],
-        isAiRequestPending: false,
-        onCategorizeBankTransaction: vi.fn(),
-        onConfirmTransaction: vi.fn(),
-        onAiCategorizeOne: vi.fn(),
-        onSaveSplit: vi.fn(async () => true),
-      }),
-    )
-
-    expect(markup).toContain('Category for Netto')
-    expect(markup).not.toContain('<select')
   })
 })

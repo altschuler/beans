@@ -1,4 +1,6 @@
 import {validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@/ledger/categorization'
+import {runZeroMutation} from '@/lib/run-mutation'
+import {showErrorToast} from '@/lib/show-error-toast'
 import {mutators} from '@/zero/mutators'
 
 type SplitTransactionMutation = ReturnType<typeof mutators.ledger.splitTransaction>
@@ -9,32 +11,16 @@ type SaveDashboardSplitTransactionInput = {
   bankAmount: number
   lines: CategorizationLineInput[]
   mutate: (mutation: SplitTransactionMutation) => MutationResult
-  onSuccess: () => void
-  onError: (error: unknown, fallbackMessage: string) => void
 }
 
-export async function saveDashboardSplitTransaction({
-  bankTransactionId,
-  bankAmount,
-  lines,
-  mutate,
-  onSuccess,
-  onError,
-}: SaveDashboardSplitTransactionInput) {
+/** Returns true when the split was saved, false when validation or the mutation failed (after toasting). */
+export async function saveDashboardSplitTransaction({bankTransactionId, bankAmount, lines, mutate}: SaveDashboardSplitTransactionInput): Promise<boolean> {
   try {
     validateBankLinkedCategorizationLines({bankAmount, lines})
-    await waitForMutation(mutate(mutators.ledger.splitTransaction({bankTransactionId, lines})))
-    onSuccess()
   } catch (error) {
-    onError(error, 'Could not save split')
-  }
-}
-
-async function waitForMutation(result: MutationResult) {
-  if ('server' in result) {
-    await result.server
-    return
+    showErrorToast(error, 'Could not save split')
+    return false
   }
 
-  await result
+  return runZeroMutation(mutate(mutators.ledger.splitTransaction({bankTransactionId, lines})), 'Could not save split')
 }

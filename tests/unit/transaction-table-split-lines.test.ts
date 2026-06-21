@@ -1,62 +1,23 @@
 import {describe, expect, it} from 'vitest'
-import type {CategorizationAccountOption, SplitLine, TransactionTableRow} from '@/components/transaction-table'
+import type {SplitLine} from '@/components/transaction-table'
 import {addSplitLine, fillRemainingSplitAmount, getInitialSplitLines, removeSplitLine} from '@/components/transaction-table/split-lines'
-
-const accounts: CategorizationAccountOption[] = [
-  {id: 'groceries', name: 'Groceries'},
-  {id: 'household', name: 'Household'},
-]
-
-const row: TransactionTableRow = {
-  id: 'bank-transaction-1',
-  ledgerTransactionId: 'ledger-transaction-1',
-  bankTransactionId: 'bank-transaction-1',
-  bankAccountId: 'bank-account-1',
-  description: 'Netto',
-  date: '2026-06-18',
-  bankAccountName: 'Checking',
-  amount: -1_000_000,
-  currency: 'DKK',
-  status: 'needs_review',
-  needsReview: true,
-  aiConfidence: 1,
-  aiProcessing: false,
-  canCategorize: true,
-  statusIndicator: {
-    kind: 'needs_review',
-    title: 'Review recommended',
-    ariaLabel: 'Review recommended',
-    className: 'bg-yellow-600',
-    canConfirm: true,
-  },
-  aiIndicator: {
-    kind: 'needs_review',
-    title: 'Review recommended',
-    ariaLabel: 'Review recommended',
-    className: 'bg-yellow-600',
-    canConfirm: true,
-  },
-  categoryAccountId: 'groceries',
-  categoryLabel: 'Groceries',
-  isSplit: false,
-  splitLines: [],
-}
+import {buildTransactionTableRow, testCategorizationAccounts} from '../helpers/transaction-table'
 
 describe('transaction table split line helpers', () => {
   it('starts a non-split transaction with two lines', () => {
-    expect(getInitialSplitLines(row, accounts)).toEqual([
+    expect(getInitialSplitLines(buildTransactionTableRow(), testCategorizationAccounts)).toEqual([
       {accountId: 'groceries', amount: '100.00'},
       {accountId: 'groceries', amount: ''},
     ])
   })
 
-  it('copies existing split lines and preserves at least two lines', () => {
+  it('copies existing split lines', () => {
     const existingLines: SplitLine[] = [
       {accountId: 'groceries', amount: '60.00'},
       {accountId: 'household', amount: '40.00'},
     ]
 
-    const initialLines = getInitialSplitLines({...row, isSplit: true, splitLines: existingLines}, accounts)
+    const initialLines = getInitialSplitLines(buildTransactionTableRow({isSplit: true, splitLines: existingLines}), testCategorizationAccounts)
 
     expect(initialLines).toEqual(existingLines)
     expect(initialLines).not.toBe(existingLines)
@@ -85,7 +46,7 @@ describe('transaction table split line helpers', () => {
   })
 
   it('adds a line with the first available category', () => {
-    expect(addSplitLine([{accountId: 'groceries', amount: '100.00'}], accounts)).toEqual([
+    expect(addSplitLine([{accountId: 'groceries', amount: '100.00'}], testCategorizationAccounts)).toEqual([
       {accountId: 'groceries', amount: '100.00'},
       {accountId: 'groceries', amount: ''},
     ])

@@ -10,24 +10,10 @@ export function getInitialSplitLines(row: TransactionTableRow, categorizationAcc
     return row.splitLines.map(line => ({...line}))
   }
 
-  return normalizeSplitLines(
-    [
-      {accountId: fallbackAccountId, amount: formatMoneyDecimal(absoluteMoneyAmount(row.amount), row.currency)},
-      {accountId: categorizationAccounts[0]?.id ?? fallbackAccountId, amount: ''},
-    ],
-    categorizationAccounts,
-  )
-}
-
-function normalizeSplitLines(splitLines: SplitLine[], categorizationAccounts: CategorizationAccountOption[]): SplitLine[] {
-  const fallbackAccountId = categorizationAccounts[0]?.id ?? splitLines[0]?.accountId ?? ''
-  const normalized = splitLines.map(line => ({...line}))
-
-  while (normalized.length < MINIMUM_SPLIT_LINES) {
-    normalized.push({accountId: fallbackAccountId, amount: ''})
-  }
-
-  return normalized
+  return [
+    {accountId: fallbackAccountId, amount: formatMoneyDecimal(absoluteMoneyAmount(row.amount), row.currency)},
+    {accountId: categorizationAccounts[0]?.id ?? fallbackAccountId, amount: ''},
+  ]
 }
 
 export function addSplitLine(splitLines: SplitLine[], categorizationAccounts: CategorizationAccountOption[]): SplitLine[] {
@@ -37,10 +23,6 @@ export function addSplitLine(splitLines: SplitLine[], categorizationAccounts: Ca
 export function removeSplitLine(splitLines: SplitLine[], indexToRemove: number): SplitLine[] {
   if (splitLines.length <= MINIMUM_SPLIT_LINES) return splitLines
   return splitLines.filter((_, lineIndex) => lineIndex !== indexToRemove)
-}
-
-export function canRemoveSplitLine(splitLines: SplitLine[]) {
-  return splitLines.length > MINIMUM_SPLIT_LINES
 }
 
 export function fillRemainingSplitAmount(splitLines: SplitLine[], indexToFill: number, transactionAmount: number, currency = DEFAULT_CURRENCY): SplitLine[] {

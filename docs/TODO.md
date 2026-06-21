@@ -4,14 +4,6 @@
 
 - Implement deletion/archival for non-empty categories. Current editable-category work should only allow hard deletion when a category has zero ledger postings; categories with historical postings need an archival/deactivation flow instead.
 
-## Category selector
-
-- Enforce a truly fixed transaction-row height in the virtualized transaction table. Rows should not use virtualizer row measurement; `estimateSize` and the rendered row height must match, and long descriptions/categories should truncate instead of wrapping.
-- Collapse the one-off `CategorySelectorContent` boundary unless it starts owning cohesive behavior. It has one production caller and mostly passes through selector state, setters, and callbacks from `CategorySelector`; inline it back into `CategorySelector` while keeping `SplitEditor` separate, or move the relevant state/handlers into the child.
-- Reduce category-selector test scaffolding duplication. The new selector/split tests repeat large `TransactionTableRow` fixtures and button-recorder mocks; add a small shared row builder/test helper, or collapse the tests that become unnecessary if `CategorySelectorContent` is inlined.
-- Replace over-mocked selector/popover tests with real UI behavior where practical. The new tests mock `Button` and make `Popover` a passthrough, so closed popover content is always present and Radix/shadcn integration/accessibility regressions can be hidden; render real primitives in a DOM-oriented test and mock only unavoidable browser gaps.
-- Inline low-value split-line helpers such as `normalizeSplitLines` and `canRemoveSplitLine`; they only wrap local length/defaulting expressions. Keep helpers that encode real behavior, such as remaining-amount calculation.
-
 ## Category management cleanup
 
 - Replace custom category-management form controls with shadcn-style primitives. Still relevant: `src/components/ledger/category-management-dialogs.tsx` hand-styles a native `textarea`, `select`, radio inputs, and `category-management-page.tsx` renders the type pill as a raw `span`.

@@ -1,7 +1,7 @@
 import {ArrowLeft, ListPlus, Minus, Trash2} from 'lucide-react'
 import {Button} from '@/components/ui/button'
 import {Input} from '@/components/ui/input'
-import {addSplitLine, canRemoveSplitLine, fillRemainingSplitAmount, removeSplitLine} from './split-lines'
+import {addSplitLine, fillRemainingSplitAmount, removeSplitLine} from './split-lines'
 import type {CategorizationAccountOption, SplitLine} from './types'
 
 type SplitEditorProps = {
@@ -16,7 +16,7 @@ type SplitEditorProps = {
 }
 
 export function SplitEditor({splitLines, setSplitLines, categorizationAccounts, transactionAmount, currency, onBack, onCancel, onSave}: SplitEditorProps) {
-  const canRemove = canRemoveSplitLine(splitLines)
+  const canRemove = splitLines.length > 2
 
   return (
     <div className="space-y-3">
