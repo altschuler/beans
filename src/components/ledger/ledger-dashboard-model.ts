@@ -283,7 +283,7 @@ function buildStatusIndicator(input: {
       kind: 'confirmed',
       title,
       ariaLabel: title,
-      className: 'bg-green-600',
+      className: 'bg-status-confirmed',
       canConfirm: false,
     }
   }
@@ -294,7 +294,7 @@ function buildStatusIndicator(input: {
       kind: 'ai_confident',
       title,
       ariaLabel: title,
-      className: 'bg-green-400',
+      className: 'bg-status-suggested',
       canConfirm: hasRealCategory && transaction.categorizedBy === 'ai',
     }
   }
@@ -305,7 +305,7 @@ function buildStatusIndicator(input: {
       kind: 'needs_review',
       title,
       ariaLabel: title,
-      className: 'bg-yellow-600',
+      className: 'bg-status-review',
       canConfirm: hasRealCategory && transaction.categorizedBy === 'ai',
     }
   }

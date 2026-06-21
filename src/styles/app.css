@@ -18,7 +18,12 @@
   --color-secondary-foreground: oklch(0.205 0 0);
   --color-muted: oklch(0.97 0 0);
   --color-muted-foreground: oklch(0.556 0 0);
+  --color-accent: oklch(0.97 0 0);
+  --color-accent-foreground: oklch(0.205 0 0);
   --color-destructive: oklch(0.577 0.245 27.325);
+  --color-status-confirmed: oklch(0.627 0.194 149.214);
+  --color-status-suggested: oklch(0.792 0.209 151.711);
+  --color-status-review: oklch(0.681 0.162 75.834);
   --color-border: oklch(0.922 0 0);
   --color-input: oklch(0.922 0 0);
   --color-ring: oklch(0.708 0 0);
@@ -58,22 +63,43 @@ body {
 }
 
 .dark {
+  --color-background: oklch(0.145 0 0);
+  --color-foreground: oklch(0.985 0 0);
+  --color-card: oklch(0.205 0 0);
+  --color-card-foreground: oklch(0.985 0 0);
+  --color-popover: oklch(0.205 0 0);
+  --color-popover-foreground: oklch(0.985 0 0);
+  --color-primary: oklch(0.922 0 0);
+  --color-primary-foreground: oklch(0.205 0 0);
+  --color-secondary: oklch(0.269 0 0);
+  --color-secondary-foreground: oklch(0.985 0 0);
+  --color-muted: oklch(0.269 0 0);
+  --color-muted-foreground: oklch(0.708 0 0);
+  --color-accent: oklch(0.269 0 0);
+  --color-accent-foreground: oklch(0.985 0 0);
+  --color-destructive: oklch(0.704 0.191 22.216);
+  --color-status-confirmed: oklch(0.723 0.219 149.579);
+  --color-status-suggested: oklch(0.871 0.15 154.449);
+  --color-status-review: oklch(0.795 0.184 86.047);
+  --color-border: oklch(1 0 0 / 10%);
+  --color-input: oklch(1 0 0 / 15%);
+  --color-ring: oklch(0.556 0 0);
   --sidebar:
-    hsl(240 5.9% 10%);
+    oklch(0.205 0 0);
   --sidebar-foreground:
-    hsl(240 4.8% 95.9%);
+    oklch(0.985 0 0);
   --sidebar-primary:
-    hsl(224.3 76.3% 48%);
+    oklch(0.922 0 0);
   --sidebar-primary-foreground:
-    hsl(0 0% 100%);
+    oklch(0.205 0 0);
   --sidebar-accent:
-    hsl(240 3.7% 15.9%);
+    oklch(0.269 0 0);
   --sidebar-accent-foreground:
-    hsl(240 4.8% 95.9%);
+    oklch(0.985 0 0);
   --sidebar-border:
-    hsl(240 3.7% 15.9%);
+    oklch(1 0 0 / 10%);
   --sidebar-ring:
-    hsl(217.2 91.2% 59.8%);
+    oklch(0.556 0 0);
 }
 
 @theme inline {

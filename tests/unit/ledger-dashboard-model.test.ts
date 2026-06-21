@@ -96,18 +96,18 @@ describe('buildLedgerDashboardModel', () => {
     })
   })
 
-  it('shows manual rows with a bright green status dot', () => {
+  it('shows manual rows with the confirmed status token', () => {
     const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'user', userConfirmedAt: new Date('2026-06-19T10:00:00.000Z')})
 
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'confirmed',
       title: 'Category confirmed by you',
-      className: 'bg-green-600',
+      className: 'bg-status-confirmed',
       canConfirm: false,
     })
   })
 
-  it('shows user-confirmed AI rows with a bright green status dot that preserves AI reasoning', () => {
+  it('shows user-confirmed AI rows with the confirmed status token and AI reasoning', () => {
     const model = buildModelForTransaction(
       {
         status: 'confirmed',
@@ -121,29 +121,29 @@ describe('buildLedgerDashboardModel', () => {
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'confirmed',
       title: 'Category confirmed by you. AI originally categorized this transaction. Reason: Matched past Netto grocery transactions.',
-      className: 'bg-green-600',
+      className: 'bg-status-confirmed',
       canConfirm: false,
     })
   })
 
-  it('shows high-confidence AI rows with a softer green confirmable status dot and reasoning', () => {
+  it('shows high-confidence AI rows with the suggested status token and reasoning', () => {
     const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'ai'}, 'groceries', {aiConfidence: 2, aiReasoning: 'Matched past Netto grocery transactions.'})
 
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'ai_confident',
       title: 'AI categorized with high confidence; not yet confirmed by you. Reason: Matched past Netto grocery transactions.',
-      className: 'bg-green-400',
+      className: 'bg-status-suggested',
       canConfirm: true,
     })
   })
 
-  it('shows medium-confidence AI rows as yellow and confirmable', () => {
+  it('shows medium-confidence AI rows with the review status token and confirmable', () => {
     const model = buildModelForTransaction({categorizedBy: 'ai'}, 'groceries', {aiConfidence: 1, aiReasoning: 'Merchant looks like groceries.'})
 
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'needs_review',
       title: 'AI suggested a category; review recommended. Reason: Merchant looks like groceries.',
-      className: 'bg-yellow-600',
+      className: 'bg-status-review',
       canConfirm: true,
     })
   })

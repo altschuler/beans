@@ -32,6 +32,30 @@ vi.mock('@/zero/queries', () => ({
 
 vi.mock('@/auth/client', () => ({authClient: {signOut: vi.fn()}}))
 
+vi.mock('@/components/ui/dropdown-menu', async () => {
+  const ReactModule = await import('react')
+  const passthrough = ({children}: {children?: React.ReactNode}) => ReactModule.createElement(ReactModule.Fragment, null, children)
+
+  return {
+    DropdownMenu: passthrough,
+    DropdownMenuContent: passthrough,
+    DropdownMenuGroup: passthrough,
+    DropdownMenuItem: ({children, onSelect}: {children?: React.ReactNode; onSelect?: () => void}) =>
+      ReactModule.createElement('button', {type: 'button', onClick: onSelect}, children),
+    DropdownMenuLabel: ({children, className}: {children?: React.ReactNode; className?: string}) => ReactModule.createElement('div', {className}, children),
+    DropdownMenuRadioGroup: ({children, value}: {children?: React.ReactNode; value?: string}) => ReactModule.createElement('div', {'data-value': value}, children),
+    DropdownMenuRadioItem: ({children, value, onSelect}: {children?: React.ReactNode; value?: string; onSelect?: () => void}) =>
+      ReactModule.createElement('button', {type: 'button', 'data-value': value, onClick: onSelect}, children),
+    DropdownMenuSeparator: () => ReactModule.createElement('hr'),
+    DropdownMenuTrigger: passthrough,
+  }
+})
+
+vi.mock('@/components/theme/theme', () => ({
+  isThemePreference: (value: unknown) => ['light', 'dark', 'system'].includes(String(value)),
+  useTheme: () => ({theme: 'system', setTheme: vi.fn()}),
+}))
+
 import {Shell} from '@/components/layout/shell'
 
 describe('Shell', () => {
@@ -76,14 +100,20 @@ describe('Shell', () => {
     expect(markup).toContain('data-slot="sidebar-inset"')
   })
 
-  it('renders the user identity row without wrapping it in a focusable button', () => {
+  it('renders the user identity as a sidebar dropdown menu with theme choices and sign out', () => {
     const markup = renderShell()
-    const emailIndex = markup.indexOf('data-testid="session-email"')
-    const previousButtonOpenIndex = markup.lastIndexOf('<button', emailIndex)
-    const previousButtonCloseIndex = markup.lastIndexOf('</button>', emailIndex)
 
-    expect(emailIndex).toBeGreaterThan(-1)
-    expect(previousButtonOpenIndex === -1 || previousButtonCloseIndex > previousButtonOpenIndex).toBe(true)
+    expect(markup).toContain('data-testid="sidebar-user-menu"')
+    expect(markup).toContain('data-testid="session-email"')
+    expect(markup).toContain('Test User')
+    expect(markup).toContain('Theme')
+    expect(markup).toContain('data-value="light"')
+    expect(markup).toContain('Light')
+    expect(markup).toContain('data-value="dark"')
+    expect(markup).toContain('Dark')
+    expect(markup).toContain('data-value="system"')
+    expect(markup).toContain('System')
+    expect(markup).toContain('Sign out')
   })
 
   it('closes the mobile sidebar when route links are selected without changing desktop link behavior', async () => {

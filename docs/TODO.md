@@ -4,6 +4,16 @@
 
 - Implement deletion/archival for non-empty categories. Current editable-category work should only allow hard deletion when a category has zero ledger postings; categories with historical postings need an archival/deactivation flow instead.
 
+## Category selector
+
+- Restore transaction-row virtualization measurement after the category selector/split popover change. `src/components/transaction-table/transaction-table.tsx` no longer passes `rowVirtualizer.measureElement` to `TransactionRow`, but rows are still positioned from a fixed `estimateSize: () => 56`; long descriptions/categories or actual row-height drift can cause overlap, gaps, or incorrect scroll range. Restore the row ref/`measureElement` wiring or enforce a truly fixed row height with matching truncation.
+- Add focused test coverage that proves the virtualizer measurement ref is wired to rendered transaction rows. The mock still exposes `measureElement`, but the last commit removed the production wiring without a failing test.
+- Collapse the one-off `CategorySelectorContent` boundary unless it starts owning cohesive behavior. It has one production caller and mostly passes through selector state, setters, and callbacks from `CategorySelector`; inline it back into `CategorySelector` while keeping `SplitEditor` separate, or move the relevant state/handlers into the child.
+- Reduce category-selector test scaffolding duplication. The new selector/split tests repeat large `TransactionTableRow` fixtures and button-recorder mocks; add a small shared row builder/test helper, or collapse the tests that become unnecessary if `CategorySelectorContent` is inlined.
+- Replace over-mocked selector/popover tests with real UI behavior where practical. The new tests mock `Button` and make `Popover` a passthrough, so closed popover content is always present and Radix/shadcn integration/accessibility regressions can be hidden; render real primitives in a DOM-oriented test and mock only unavoidable browser gaps.
+- Inline low-value split-line helpers such as `normalizeSplitLines` and `canRemoveSplitLine`; they only wrap local length/defaulting expressions. Keep helpers that encode real behavior, such as remaining-amount calculation.
+- Split or drop unrelated category-management TODO additions from the category-selector commit if curating history. The backlog entries are useful, but they are not part of the category selector change.
+
 ## Category management cleanup
 
 - Replace custom category-management form controls with shadcn components: use shadcn `Textarea` for description, `Select` for group selection, `RadioGroup`/`RadioGroupItem` for category type, and `Badge` for the category type pill instead of hand-styled native controls/spans.
