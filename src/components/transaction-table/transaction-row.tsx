@@ -1,4 +1,4 @@
-import {Fragment, useState} from 'react'
+import {Fragment, useState, type CSSProperties} from 'react'
 import {GitBranch, LoaderCircle, Sparkles} from 'lucide-react'
 import {Button} from '@/components/ui/button'
 import {CategorySelector} from './category-selector'
@@ -14,6 +14,9 @@ type TransactionRowProps = {
   onConfirmTransaction: (ledgerTransactionId: string) => void
   onAiCategorizeOne: (bankTransactionId: string) => void
   onSaveSplit: (row: TransactionTableRowData, splitLines: SplitLine[]) => Promise<boolean>
+  rowRef?: (node: HTMLTableRowElement | null) => void
+  rowStyle?: CSSProperties
+  rowIndex?: number
 }
 
 export function TransactionRow({
@@ -25,6 +28,9 @@ export function TransactionRow({
   onConfirmTransaction,
   onAiCategorizeOne,
   onSaveSplit,
+  rowRef,
+  rowStyle,
+  rowIndex,
 }: TransactionRowProps) {
   const [isSplitEditorOpen, setIsSplitEditorOpen] = useState(false)
   const [splitLines, setSplitLines] = useState<SplitLine[]>([])
@@ -45,7 +51,7 @@ export function TransactionRow({
 
   return (
     <Fragment>
-      <tr className="border-t align-middle">
+      <tr ref={rowRef} data-index={rowIndex} style={rowStyle} className="grid grid-cols-[minmax(14rem,1fr)_8rem_10rem_minmax(18rem,1fr)_5rem_8rem] border-t align-middle">
         <td className="px-3 py-3 font-medium">{row.description}</td>
         <td className="px-3 py-3 text-muted-foreground">{row.date ?? 'No date'}</td>
         <td className="px-3 py-3 text-muted-foreground">{row.bankAccountName}</td>

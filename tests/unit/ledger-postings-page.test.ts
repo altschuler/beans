@@ -17,6 +17,14 @@ const queryRows = vi.hoisted(() => ({
   bankTransactions: [] as Array<{id: string; bookingDate: string | null; valueDate: string | null; description: string}>,
 }))
 
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({count}: {count: number}) => ({
+    getTotalSize: () => count * 40,
+    getVirtualItems: () => Array.from({length: Math.min(count, 10)}, (_, index) => ({index, key: index, start: index * 40, size: 40})),
+    measureElement: vi.fn(),
+  }),
+}))
+
 const renderedPageLayouts = vi.hoisted(
   () =>
     [] as Array<{
@@ -118,5 +126,32 @@ describe('LedgerPostingsPage', () => {
     expect(markup).toContain('1')
     expect(markup).not.toContain('<h1')
     expect(markup).not.toContain('account-1</td>')
+  })
+
+  it('renders only the virtual window for large posting lists', () => {
+    queryRows.ledgerTransactions = Array.from({length: 40}, (_, index) => ({
+      id: `ledger-transaction-${index.toString().padStart(2, '0')}`,
+      date: `2026-06-${(20 - (index % 20)).toString().padStart(2, '0')}`,
+      description: `Transaction ${index}`,
+    }))
+    queryRows.postings = queryRows.ledgerTransactions.map((transaction, index) => ({
+      id: `posting-${index.toString().padStart(2, '0')}`,
+      ledgerTransactionId: transaction.id,
+      accountId: 'account-1',
+      amount: `${index}.0000`,
+      currency: 'DKK',
+      bankTransactionId: null,
+      sortOrder: index,
+    }))
+
+    const markup = renderToStaticMarkup(React.createElement(LedgerPostingsPage))
+
+    expect(markup).toContain('height:1600px')
+    expect(markup).toContain('data-index="0"')
+    expect(markup).toContain('data-index="9"')
+    expect(markup).toContain('posting-00')
+    expect(markup).toContain('posting-24')
+    expect(markup).not.toContain('posting-25')
+    expect(markup).not.toContain('posting-39')
   })
 })

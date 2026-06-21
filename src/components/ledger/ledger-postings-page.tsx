@@ -1,4 +1,6 @@
+import {useRef} from 'react'
 import {useQuery} from '@rocicorp/zero/react'
+import {useVirtualizer} from '@tanstack/react-virtual'
 import {PageLayout} from '@/components/page-layout'
 import {queries} from '@/zero/queries'
 
@@ -20,6 +22,16 @@ export function LedgerPostingsPage() {
   const [bankTransactions] = useQuery(queries.domain.bankTransactions())
 
   const rows = buildLedgerPostingRows({accounts, ledgerTransactions, postings, bankTransactions})
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 40,
+    getItemKey: index => rows[index]?.id ?? index,
+    overscan: 10,
+    initialRect: {width: 1000, height: 600},
+  })
+  const virtualRows = rowVirtualizer.getVirtualItems()
 
   return (
     <PageLayout breadcrumbs={[{title: 'Ledger'}]} contentClassName="p-0">
@@ -27,10 +39,10 @@ export function LedgerPostingsPage() {
         {rows.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground md:p-6 lg:p-8">No ledger postings yet.</p>
         ) : (
-          <div className="h-full min-h-0 flex-1 overflow-auto rounded-md border">
-            <table className="w-full min-w-[980px] text-sm">
-              <thead className="bg-muted text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
+          <div ref={scrollContainerRef} className="h-full min-h-0 flex-1 overflow-auto rounded-md border">
+            <table className="grid w-full min-w-[980px] text-sm">
+              <thead className="sticky top-0 z-10 grid bg-muted text-xs uppercase tracking-wide text-muted-foreground">
+                <tr className="grid grid-cols-[7rem_minmax(12rem,1fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_8rem_6rem_minmax(10rem,1fr)_6rem]">
                   <th className="px-3 py-2 text-left font-semibold">Date</th>
                   <th className="px-3 py-2 text-left font-semibold">Transaction ID</th>
                   <th className="px-3 py-2 text-left font-semibold">Posting ID</th>
@@ -41,19 +53,30 @@ export function LedgerPostingsPage() {
                   <th className="px-3 py-2 text-right font-semibold">Sort order</th>
                 </tr>
               </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="border-t">
-                    <td className="px-3 py-2 whitespace-nowrap">{row.date}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{row.ledgerTransactionId}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{row.id}</td>
-                    <td className="px-3 py-2">{row.accountName}</td>
-                    <td className="px-3 py-2 text-right font-mono">{row.amount}</td>
-                    <td className="px-3 py-2">{row.currency}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{row.bankTransactionId}</td>
-                    <td className="px-3 py-2 text-right font-mono">{row.sortOrder ?? '—'}</td>
-                  </tr>
-                ))}
+              <tbody className="relative grid" style={{height: `${rowVirtualizer.getTotalSize()}px`}}>
+                {virtualRows.map((virtualRow) => {
+                  const row = rows[virtualRow.index]
+                  if (!row) return null
+
+                  return (
+                    <tr
+                      key={row.id}
+                      ref={rowVirtualizer.measureElement}
+                      data-index={virtualRow.index}
+                      className="grid grid-cols-[7rem_minmax(12rem,1fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_8rem_6rem_minmax(10rem,1fr)_6rem] border-t"
+                      style={{position: 'absolute', transform: `translateY(${virtualRow.start}px)`, width: '100%'}}
+                    >
+                      <td className="px-3 py-2 whitespace-nowrap">{row.date}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{row.ledgerTransactionId}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{row.id}</td>
+                      <td className="px-3 py-2">{row.accountName}</td>
+                      <td className="px-3 py-2 text-right font-mono">{row.amount}</td>
+                      <td className="px-3 py-2">{row.currency}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{row.bankTransactionId}</td>
+                      <td className="px-3 py-2 text-right font-mono">{row.sortOrder ?? '—'}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

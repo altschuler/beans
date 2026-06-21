@@ -1,6 +1,6 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest'
 import {eq} from 'drizzle-orm'
-import {db} from '@/db/client'
+import {db, sql} from '@/db/client'
 import {
   bankAccounts,
   bankTransactions,
@@ -225,6 +225,63 @@ describe('posting-based ledger categorization server functions', () => {
   })
   afterAll(async () => closeDatabase())
 
+
+  it('serializes concurrent categorization of the same unreconciled bank transaction', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-concurrent-category', amount: '-100.0000', description: 'Concurrent card purchase'})
+
+    await sql`
+      create or replace function test_sleep_on_concurrent_posting()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        if new.bank_transaction_id = 'bank-concurrent-category' then
+          perform pg_sleep(0.2);
+        end if;
+        return new;
+      end;
+      $$
+    `
+    await sql`drop trigger if exists test_sleep_on_concurrent_posting on ledger_postings`
+    await sql`
+      create trigger test_sleep_on_concurrent_posting
+      before insert on ledger_postings
+      for each row
+      execute function test_sleep_on_concurrent_posting()
+    `
+
+    try {
+      await expect(
+        Promise.all([
+          db.transaction(tx =>
+            categorizeBankTransaction(tx, {
+              userId: 'user-1',
+              bankTransactionId: 'bank-concurrent-category',
+              selection: {kind: 'category', accountId: 'groceries'},
+            }),
+          ),
+          db.transaction(tx =>
+            categorizeBankTransaction(tx, {
+              userId: 'user-1',
+              bankTransactionId: 'bank-concurrent-category',
+              selection: {kind: 'category', accountId: 'household'},
+            }),
+          ),
+        ]),
+      ).resolves.toEqual([true, true])
+    } finally {
+      await sql`drop trigger if exists test_sleep_on_concurrent_posting on ledger_postings`
+      await sql`drop function if exists test_sleep_on_concurrent_posting()`
+    }
+
+    const bankPostings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-concurrent-category'))
+    expect(bankPostings).toHaveLength(1)
+    const postings = await getPostings(bankPostings[0]!.ledgerTransactionId)
+    expect(postings).toHaveLength(2)
+    expect(postings[0]).toMatchObject({accountId: 'bank-ledger-account', amount: '-100.0000', bankTransactionId: 'bank-concurrent-category'})
+    expect(['groceries', 'household']).toContain(postings[1]!.accountId)
+  })
 
   it('creates a ledger transaction when categorizing an unreconciled bank transaction', async () => {
     const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
