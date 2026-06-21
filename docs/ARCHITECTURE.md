@@ -1,5 +1,7 @@
 # Architecture Notes
 
+For product/system-design explanations, use `docs/reference/` alongside this architecture map. The reference docs describe current behavior and intentionally synthesize implemented specs rather than preserving all historical spec details.
+
 ## Client/server import boundaries
 
 TanStack Start builds client and server environments from overlapping route modules, so server-only dependencies must be explicit.
