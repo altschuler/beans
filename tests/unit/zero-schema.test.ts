@@ -28,6 +28,7 @@ describe('zero schema', () => {
   })
 
   it('exposes ledger fields with server column names', () => {
+    expect(schema.tables.ledgerAccountGroups.columns.systemKey).toMatchObject({type: 'string', optional: true, serverName: 'system_key'})
     expect(schema.tables.ledgerAccounts.columns.systemKey).toMatchObject({type: 'string', optional: true, serverName: 'system_key'})
     expect(schema.tables.ledgerAccounts.columns.normalBalance).toMatchObject({type: 'string', optional: false, serverName: 'normal_balance'})
     expect(schema.tables.ledgerAccounts.columns.linkedBankAccountId).toMatchObject({type: 'string', optional: true, serverName: 'linked_bank_account_id'})

@@ -74,6 +74,7 @@ export default drizzleZeroConfig(drizzleSchema, {
     ledgerAccountGroups: {
       id: true,
       teamId: true,
+      systemKey: true,
       name: true,
       sortOrder: true,
       createdAt: true,

@@ -193,6 +193,7 @@ export const ledgerAccountGroups = pgTable(
     teamId: text('team_id')
       .notNull()
       .references(() => teams.id, {onDelete: 'cascade'}),
+    systemKey: text('system_key'),
     name: text('name').notNull(),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: timestamp('created_at', {mode: 'date'}).notNull(),

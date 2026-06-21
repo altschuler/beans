@@ -1,0 +1,1 @@
+ALTER TABLE "ledger_account_groups" ADD COLUMN "system_key" text;

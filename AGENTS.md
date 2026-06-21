@@ -38,6 +38,8 @@ Never change branches, create worktrees, stash or commit anything unless explici
 
 The user might stage or unstage files while implementation is running, do not change it.
 
+**IMPORTANT!** other agents and the user will be editing files frequently. Never revert unrelated changes unless you did them, multiple agents and users can be working here at the same time.
+
 ## INBOX
 
 Use `docs/INBOX.md` proactively during implementation — not just at the end. Write an entry whenever you encounter something that would help future agents, such as:

@@ -1,5 +1,4 @@
 import {useRef, useState} from 'react'
-import {Link} from '@tanstack/react-router'
 import {useQuery, useZero} from '@rocicorp/zero/react'
 import {MoreHorizontal} from 'lucide-react'
 import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
@@ -17,7 +16,7 @@ import {queries} from '@/zero/queries'
 import {buildLedgerDashboardModel} from './ledger-dashboard-model'
 import {saveDashboardSplitTransaction} from './save-dashboard-split-transaction'
 
-type LedgerDashboardView = 'transactions' | 'categories' | 'bankAccountTransactions'
+type LedgerDashboardView = 'transactions' | 'bankAccountTransactions'
 
 type LedgerDashboardProps = {
   view?: LedgerDashboardView
@@ -48,12 +47,8 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   })
 
   const selectedBankAccount = view === 'bankAccountTransactions' ? bankAccounts.find((account) => account.id === bankAccountId) : undefined
-  const showCategories = view === 'categories'
-  const showTransactions = view === 'transactions' || view === 'bankAccountTransactions'
   const showGlobalTransactionActions = view === 'transactions'
-  const showCategorySummary = view === 'categories'
-  const categoryCount = model.accountGroups.reduce((count, group) => count + group.accounts.length, 0)
-  const pageTitle = view === 'categories' ? 'Categories' : view === 'bankAccountTransactions' ? (selectedBankAccount?.name ?? 'Bank account') : 'Transactions'
+  const pageTitle = view === 'bankAccountTransactions' ? (selectedBankAccount?.name ?? 'Bank account') : 'Transactions'
 
   async function categorizeBankTransaction(bankTransactionId: string, selection: CategorySelection) {
     try {
@@ -142,7 +137,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
 
   const aiEligibleReviewCount = model.transactionRows.filter(row => row.needsReview).length
 
-  const dashboardClassName = view === 'transactions' || view === 'categories' ? 'flex h-full min-h-0 flex-col' : 'space-y-6'
+  const dashboardClassName = view === 'transactions' ? 'flex h-full min-h-0 flex-col' : 'space-y-6'
   const transactionHeaderActions = showGlobalTransactionActions ? (
     <>
       <div className="text-sm font-semibold">
@@ -200,83 +195,42 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   return (
     <PageLayout breadcrumbs={[{title: pageTitle}]} actions={transactionHeaderActions} contentClassName="p-0">
       <div className={dashboardClassName}>
-        {showCategorySummary ? (
-          <div className="flex shrink-0 items-center border-b px-3 pt-3 pb-3 text-sm font-semibold">
-            {categoryCount} {categoryCount === 1 ? 'category' : 'categories'}
-          </div>
-        ) : null}
-
-        <div
-          className={
-            view === 'transactions'
-              ? 'flex min-h-0 flex-1'
-              : view === 'categories'
-                ? 'space-y-4 p-3 md:p-4'
-                : showCategories && showTransactions
-                  ? 'grid gap-4 lg:grid-cols-[0.8fr_1.2fr]'
-                  : 'grid gap-4'
-          }
-        >
-          {showCategories ? (
-            <div className="space-y-4">
-              {model.accountGroups.map((group) => (
-                <section key={group.id} className="space-y-2">
-                  <h2 className="text-sm font-semibold text-muted-foreground">{group.name}</h2>
-                  <div className="space-y-2">
-                    {group.accounts.map((account) => (
-                      <Link
-                        key={account.id}
-                        to="/app/accounts/$accountId"
-                        params={{accountId: account.id}}
-                        className="flex items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted"
-                      >
-                        <span>{account.name}</span>
-                        <span className="font-mono">{account.balance}</span>
-                      </Link>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          ) : null}
-
-          {showTransactions ? (
-            view === 'transactions' ? (
-              <TransactionTable
-                rows={model.transactionRows}
-                categorizationAccounts={model.categorizationAccounts}
-                transferAccounts={model.transferAccounts}
-                isAiRequestPending={isAiRequestPending}
-                onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
-                onConfirmTransaction={(bankTransactionId) => void confirmTransaction(bankTransactionId)}
-                onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
-                onSaveSplit={saveSplit}
-              />
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Transactions</CardTitle>
-                  <CardDescription>Choose a category inline. Use Split only for the rare transaction that spans categories.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {!selectedBankAccount ? (
-                    <p className="text-sm text-muted-foreground">Bank account not found.</p>
-                  ) : (
-                    <TransactionTable
-                      rows={model.transactionRows}
-                      categorizationAccounts={model.categorizationAccounts}
-                      transferAccounts={model.transferAccounts}
-                      isAiRequestPending={isAiRequestPending}
-                      onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
-                      onConfirmTransaction={(bankTransactionId) => void confirmTransaction(bankTransactionId)}
-                      onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
-                      onSaveSplit={saveSplit}
-                    />
-                  )}
-                </CardContent>
-              </Card>
-            )
-          ) : null}
+        <div className={view === 'transactions' ? 'flex min-h-0 flex-1' : 'grid gap-4'}>
+          {view === 'transactions' ? (
+            <TransactionTable
+              rows={model.transactionRows}
+              categorizationAccounts={model.categorizationAccounts}
+              transferAccounts={model.transferAccounts}
+              isAiRequestPending={isAiRequestPending}
+              onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
+              onConfirmTransaction={(bankTransactionId) => void confirmTransaction(bankTransactionId)}
+              onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
+              onSaveSplit={saveSplit}
+            />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Transactions</CardTitle>
+                <CardDescription>Choose a category inline. Use Split only for the rare transaction that spans categories.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {!selectedBankAccount ? (
+                  <p className="text-sm text-muted-foreground">Bank account not found.</p>
+                ) : (
+                  <TransactionTable
+                    rows={model.transactionRows}
+                    categorizationAccounts={model.categorizationAccounts}
+                    transferAccounts={model.transferAccounts}
+                    isAiRequestPending={isAiRequestPending}
+                    onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
+                    onConfirmTransaction={(bankTransactionId) => void confirmTransaction(bankTransactionId)}
+                    onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
+                    onSaveSplit={saveSplit}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </PageLayout>

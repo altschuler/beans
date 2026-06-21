@@ -4,10 +4,16 @@ export const SYSTEM_LEDGER_ACCOUNT_KEYS = {
   openingBalances: 'opening_balances',
 } as const
 
+export const SYSTEM_LEDGER_GROUP_KEYS = {
+  bankAccounts: 'bank_accounts',
+  systemAccounts: 'system_accounts',
+} as const
+
 export type LedgerAccountType = 'bank' | 'ready_to_budget' | 'income' | 'expense' | 'savings' | 'adjustment'
 export type LedgerNormalBalance = 'debit' | 'credit'
 export type LedgerAccountStatus = 'active' | 'archived'
 export type LedgerSystemAccountKey = (typeof SYSTEM_LEDGER_ACCOUNT_KEYS)[keyof typeof SYSTEM_LEDGER_ACCOUNT_KEYS]
+export type LedgerSystemGroupKey = (typeof SYSTEM_LEDGER_GROUP_KEYS)[keyof typeof SYSTEM_LEDGER_GROUP_KEYS]
 
 type DefaultAccountDefinition = {
   name: string
@@ -19,12 +25,14 @@ type DefaultAccountDefinition = {
 
 type DefaultGroupDefinition = {
   name: string
+  systemKey?: LedgerSystemGroupKey
   accounts: DefaultAccountDefinition[]
 }
 
 export type BuiltLedgerAccountGroup = {
   id: string
   teamId: string
+  systemKey: string | null
   name: string
   sortOrder: number
   createdAt: Date
@@ -48,9 +56,10 @@ export type BuiltLedgerAccount = {
 }
 
 export const DEFAULT_LEDGER_GROUPS: DefaultGroupDefinition[] = [
-  {name: 'Bank accounts', accounts: []},
+  {name: 'Bank accounts', systemKey: SYSTEM_LEDGER_GROUP_KEYS.bankAccounts, accounts: []},
   {
-    name: 'Ready',
+    name: 'System accounts',
+    systemKey: SYSTEM_LEDGER_GROUP_KEYS.systemAccounts,
     accounts: [
       {
         name: 'Ready to budget',
@@ -58,6 +67,20 @@ export const DEFAULT_LEDGER_GROUPS: DefaultGroupDefinition[] = [
         normalBalance: 'credit',
         systemKey: SYSTEM_LEDGER_ACCOUNT_KEYS.readyToBudget,
         description: 'Money available to allocate into spending, saving, or other budget accounts.',
+      },
+      {
+        name: 'Uncategorized',
+        type: 'adjustment',
+        normalBalance: 'credit',
+        systemKey: SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized,
+        description: 'Fallback when a transaction needs review or no useful account can be selected confidently.',
+      },
+      {
+        name: 'Opening balances',
+        type: 'adjustment',
+        normalBalance: 'credit',
+        systemKey: SYSTEM_LEDGER_ACCOUNT_KEYS.openingBalances,
+        description: 'Source account used when setting starting balances for bank accounts.',
       },
     ],
   },
@@ -113,20 +136,13 @@ export const DEFAULT_LEDGER_GROUPS: DefaultGroupDefinition[] = [
       {name: 'Large purchases', type: 'savings', normalBalance: 'credit', description: 'Use for planned larger purchases such as electronics, furniture, appliances, and equipment.'},
     ],
   },
-  {
-    name: 'Adjustments',
-    accounts: [
-      {name: 'Uncategorized', type: 'adjustment', normalBalance: 'credit', systemKey: SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized, description: 'Fallback when a transaction needs review or no useful account can be selected confidently.'},
-      {name: 'Opening balances', type: 'adjustment', normalBalance: 'credit', systemKey: SYSTEM_LEDGER_ACCOUNT_KEYS.openingBalances, description: 'Source account used when setting starting balances for bank accounts.'},
-      {name: 'Corrections', type: 'adjustment', normalBalance: 'credit', description: 'Use for manual corrections, rounding adjustments, and accounting cleanup entries.'},
-    ],
-  },
 ]
 
 export function buildDefaultLedgerChartForTeam(teamId: string, now = new Date()) {
   const groups: BuiltLedgerAccountGroup[] = DEFAULT_LEDGER_GROUPS.map((group, sortOrder) => ({
     id: crypto.randomUUID(),
     teamId,
+    systemKey: group.systemKey ?? null,
     name: group.name,
     sortOrder,
     createdAt: now,
