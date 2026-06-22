@@ -6,30 +6,10 @@
 
 ## Category management cleanup
 
-- Replace custom category-management form controls with shadcn-style primitives. Still relevant: `src/components/ledger/category-management-dialogs.tsx` hand-styles a native `textarea`, `select`, radio inputs, and `category-management-page.tsx` renders the type pill as a raw `span`.
-  - Add missing primitives under `src/components/ui/` first, following the existing shadcn wrapper pattern and token usage: `Textarea`, `Select`, `RadioGroup`/`RadioGroupItem`, and `Badge`.
-  - Update `CategoryDialog` to use `Textarea` for description, `Select` for group choice, and `RadioGroup` for type choice while preserving the current controlled form state, labels, option descriptions, disabled/pending behavior, and submit payload shape.
-  - Update the category row type pill to use `Badge` rather than a hand-styled `span`.
-  - Prefer tests that render the real UI primitives; only mock browser/Radix gaps that make the test impractical.
-- Simplify category management dialog mounting. Still relevant: `src/components/ledger/category-management-page.tsx` mounts four dialogs at all times and uses `key` resets plus repeated `dialog.kind` guards.
+- Simplify category management dialog mounting. Still relevant: `src/components/ledger/category-management-page.tsx` mounts four dialogs at all times and uses `key` resets plus repeated `dialog.kind` guards. (Deferred: to be handled by the new dialog system.)
   - Render only the active dialog from a `switch`/helper on `dialog.kind`, or make form resets explicit inside the dialog components. Avoid keeping closed dialogs mounted just to preserve reset behavior.
   - Keep the current stacked flow intact: Add category → Add group should return to category creation, and successful group creation should pass the new group id back as `initialGroupId`.
   - Once only the active dialog is rendered, remove unnecessary `key` reset props and reduce inline `dialog.kind === ... ? ... : ...` guards.
-- Derive category/group dialog titles and descriptions from dialog mode instead of passing repeated copy from `CategoryManagementPage`.
-  - Move the create/edit title and description constants into `CategoryDialog` and `GroupDialog`, keyed by `mode`, or expose a small local helper in `category-management-dialogs.tsx`.
-  - Keep delete-section copy data-driven from `category`/`group.deleteDisabledReason`; only the static dialog chrome should be derived from mode.
-  - After this, callers should pass `mode`, entity data, and callbacks, not repeated `title`/`description` strings.
-- Drop low-value category-management Zero mutator dispatch tests in `tests/unit/zero-mutators.test.ts`. Still relevant: the tests named `runs category account management on the server transaction` and `runs category group management on the server transaction` mostly assert mocked pass-through argument plumbing.
-  - Keep the Zod input schema tests for category account/group mutators; those protect the public Zero input boundary.
-  - Rely on `tests/unit/category-management-server.test.ts` for authorization, editability, deletion, trimming, and persistence behavior.
-  - If a Zero server-mutator smoke test is still desired, keep at most one generic test for the server transaction/user-id seam rather than one assertion per category-management command.
-- Inline `normalizeName` in `src/ledger/category-management.server.ts`. Still relevant: it only calls `requireNonEmpty(value, message)` and adds no domain-specific behavior.
-  - Replace `normalizeName(input.name, '...')` calls with `requireNonEmpty(input.name, '...')`, then delete `normalizeName`.
-  - Preserve the current trim-and-empty-validation behavior; no behavior change or new test should be needed.
-- Keep `tests/unit/category-management-page.test.ts` focused on page-level behavior. Still relevant: it currently mixes page rendering assertions with direct `CategoryDialog`/`GroupDialog` static markup checks and broad absence assertions.
-  - Page tests should cover page-owned behavior only: query/model filtering into the visible list, header actions, lock/edit affordances, and the mutation/dialog boundary if tested with an interactive renderer.
-  - Move valuable dialog-internal coverage to a focused `tests/unit/category-management-dialogs.test.tsx` (for delete section disabled copy, Add group callback, initial group selection, submit payloads), or drop static markup checks that only restate component structure.
-  - Avoid absence-only assertions for removed markup unless the absence is a durable product rule; prefer positive behavior assertions backed by `category-management-model.test.ts` and `category-management-server.test.ts`.
 
 ## Transaction categorization
 

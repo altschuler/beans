@@ -184,36 +184,6 @@ describe('ledger Zero mutators', () => {
     expect(clearLedgerCategorizations).toHaveBeenCalledWith('wrapped-tx', {userId: 'user-1'})
   })
 
-  it('runs category account management on the server transaction', async () => {
-    const {serverMutators} = await import('@/zero/mutators.server')
-    const createRequest = serverMutators.ledger.createCategoryAccount({id: 'category-1', teamId: 'team-1', groupId: 'group-1', name: 'Groceries', description: '', type: 'expense'})
-    const updateRequest = serverMutators.ledger.updateCategoryAccount({accountId: 'category-1', groupId: 'group-1', name: 'Food', description: 'Food shops', type: 'savings'})
-    const deleteRequest = serverMutators.ledger.deleteCategoryAccount({accountId: 'category-1'})
-
-    await createRequest.mutator.fn({args: createRequest.args, ctx: {userID: 'user-1'}, tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never})
-    await updateRequest.mutator.fn({args: updateRequest.args, ctx: {userID: 'user-1'}, tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never})
-    await deleteRequest.mutator.fn({args: deleteRequest.args, ctx: {userID: 'user-1'}, tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never})
-
-    expect(createCategoryAccount).toHaveBeenCalledWith('wrapped-tx', {userId: 'user-1', id: 'category-1', teamId: 'team-1', groupId: 'group-1', name: 'Groceries', description: '', type: 'expense'})
-    expect(updateCategoryAccount).toHaveBeenCalledWith('wrapped-tx', {userId: 'user-1', accountId: 'category-1', groupId: 'group-1', name: 'Food', description: 'Food shops', type: 'savings'})
-    expect(deleteCategoryAccount).toHaveBeenCalledWith('wrapped-tx', {userId: 'user-1', accountId: 'category-1'})
-  })
-
-  it('runs category group management on the server transaction', async () => {
-    const {serverMutators} = await import('@/zero/mutators.server')
-    const createRequest = serverMutators.ledger.createCategoryGroup({id: 'group-1', teamId: 'team-1', name: 'Pets'})
-    const updateRequest = serverMutators.ledger.updateCategoryGroup({groupId: 'group-1', name: 'Pet care'})
-    const deleteRequest = serverMutators.ledger.deleteCategoryGroup({groupId: 'group-1'})
-
-    await createRequest.mutator.fn({args: createRequest.args, ctx: {userID: 'user-1'}, tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never})
-    await updateRequest.mutator.fn({args: updateRequest.args, ctx: {userID: 'user-1'}, tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never})
-    await deleteRequest.mutator.fn({args: deleteRequest.args, ctx: {userID: 'user-1'}, tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never})
-
-    expect(createCategoryGroup).toHaveBeenCalledWith('wrapped-tx', {userId: 'user-1', id: 'group-1', teamId: 'team-1', name: 'Pets'})
-    expect(updateCategoryGroup).toHaveBeenCalledWith('wrapped-tx', {userId: 'user-1', groupId: 'group-1', name: 'Pet care'})
-    expect(deleteCategoryGroup).toHaveBeenCalledWith('wrapped-tx', {userId: 'user-1', groupId: 'group-1'})
-  })
-
   it('does not run server-only persistence during optimistic client execution', async () => {
     const {mutators} = await import('@/zero/mutators')
     const request = mutators.ledger.categorizeTransaction({

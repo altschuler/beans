@@ -3,6 +3,7 @@ import {useQuery, useZero} from '@rocicorp/zero/react'
 import {Lock} from 'lucide-react'
 import {Currency} from '@/components/currency'
 import {PageLayout} from '@/components/page-layout'
+import {Badge} from '@/components/ui/badge'
 import {Button} from '@/components/ui/button'
 import {DEFAULT_CURRENCY} from '@/lib/money'
 import {runZeroMutation} from '@/lib/run-mutation'
@@ -100,7 +101,7 @@ export function CategoryManagementPage() {
                       <div className="flex items-center gap-2">
                         {account.locked ? <Lock className="h-4 w-4 text-muted-foreground" aria-label="Locked account" /> : null}
                         <span className="font-medium">{account.name}</span>
-                        <span className="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{account.typeLabel}</span>
+                        <Badge variant="muted">{account.typeLabel}</Badge>
                       </div>
                       {account.description ? <p className="truncate text-xs text-muted-foreground">{account.description}</p> : null}
                     </div>
@@ -122,8 +123,6 @@ export function CategoryManagementPage() {
         key={dialog.kind === 'create-group' ? `create-group-${dialog.returnToCategory}` : 'create-group'}
         mode="create"
         open={dialog.kind === 'create-group'}
-        title="Add group"
-        description="Create a category group. You can choose it when adding or editing categories."
         pending={pending}
         onOpenChange={open => !open ? setDialog(dialog.kind === 'create-group' && dialog.returnToCategory ? {kind: 'create-category'} : {kind: 'none'}) : undefined}
         onSubmit={createGroup}
@@ -132,8 +131,6 @@ export function CategoryManagementPage() {
         key={`edit-group-${dialog.kind === 'edit-group' ? dialog.group.id : 'none'}`}
         mode="edit"
         open={dialog.kind === 'edit-group'}
-        title="Edit group"
-        description="Rename this category group or delete it if it is empty."
         group={dialog.kind === 'edit-group' ? dialog.group : null}
         pending={pending}
         onOpenChange={open => !open ? setDialog({kind: 'none'}) : undefined}
@@ -144,8 +141,6 @@ export function CategoryManagementPage() {
         key={`create-category-${dialog.kind === 'create-category' ? (dialog.initialGroupId ?? 'none') : 'none'}`}
         mode="create"
         open={dialog.kind === 'create-category'}
-        title="Add category"
-        description="Create a category and choose how it should behave in the ledger."
         groups={model.editableGroups}
         initialGroupId={dialog.kind === 'create-category' ? dialog.initialGroupId : null}
         pending={pending}
@@ -157,8 +152,6 @@ export function CategoryManagementPage() {
         key={`edit-category-${dialog.kind === 'edit-category' ? dialog.category.id : 'none'}`}
         mode="edit"
         open={dialog.kind === 'edit-category'}
-        title="Edit category"
-        description="Update this category or delete it if it has no ledger history."
         category={dialog.kind === 'edit-category' ? dialog.category : null}
         groups={model.editableGroups}
         pending={pending}

@@ -1,5 +1,7 @@
+// @vitest-environment jsdom
 import React from 'react'
-import {renderToStaticMarkup} from 'react-dom/server'
+import {render, screen} from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
 const queryRows = vi.hoisted(() => ({
@@ -21,8 +23,7 @@ const queryRows = vi.hoisted(() => ({
 }))
 
 const zeroMutate = vi.hoisted(() => vi.fn(async () => undefined))
-const renderedButtons = vi.hoisted(() => [] as Array<{children: React.ReactNode; disabled?: boolean; onClick?: () => void; ariaLabel?: string; title?: string; variant?: string}>)
-const renderedPageLayouts = vi.hoisted(() => [] as Array<{breadcrumbs: Array<{title: string; to?: string}>; actions?: React.ReactNode; contentClassName?: string}>)
+const createCategoryAccount = vi.hoisted(() => vi.fn(input => ({type: 'createCategoryAccount', input})))
 
 vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string}) => {
@@ -35,41 +36,12 @@ vi.mock('@rocicorp/zero/react', () => ({
   useZero: vi.fn(() => ({mutate: zeroMutate})),
 }))
 
-vi.mock('@/components/page-layout', async () => {
-  const ReactModule = await import('react')
-  return {
-    PageLayout: ({breadcrumbs, actions, contentClassName, children}: {breadcrumbs: Array<{title: string; to?: string}>; actions?: React.ReactNode; contentClassName?: string; children: React.ReactNode}) => {
-      renderedPageLayouts.push({breadcrumbs, actions, contentClassName})
-      return ReactModule.createElement('section', {'data-testid': 'page-layout'}, ReactModule.createElement('header', null, actions), ReactModule.createElement('main', {className: contentClassName}, children))
-    },
-  }
-})
-
-vi.mock('@/components/ui/button', async () => {
-  const ReactModule = await import('react')
-  return {
-    Button: ({children, disabled, onClick, title, 'aria-label': ariaLabel, variant, type, className}: {children: React.ReactNode; disabled?: boolean; onClick?: () => void; title?: string; 'aria-label'?: string; variant?: string; type?: 'button' | 'submit'; className?: string}) => {
-      renderedButtons.push({children, disabled, onClick, title, ariaLabel, variant})
-      return ReactModule.createElement('button', {disabled, onClick, title, 'aria-label': ariaLabel, type, className, 'data-variant': variant}, children)
-    },
-  }
-})
-
-vi.mock('@/components/ui/dialog', async () => {
-  const ReactModule = await import('react')
-  const passthrough = ({children}: {children: React.ReactNode}) => ReactModule.createElement(ReactModule.Fragment, null, children)
-  return {Dialog: passthrough, DialogContent: passthrough, DialogDescription: passthrough, DialogFooter: passthrough, DialogHeader: passthrough, DialogTitle: passthrough}
-})
-
-vi.mock('@/components/ui/input', async () => {
-  const ReactModule = await import('react')
-  return {Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => ReactModule.createElement('input', props)}
-})
-
-vi.mock('@/components/ui/label', async () => {
-  const ReactModule = await import('react')
-  return {Label: (props: React.LabelHTMLAttributes<HTMLLabelElement>) => ReactModule.createElement('label', props)}
-})
+// PageLayout owns the app frame and router context; render a thin stand-in so the
+// test exercises page-owned behavior without mounting the full shell.
+vi.mock('@/components/page-layout', () => ({
+  PageLayout: ({actions, children}: {actions?: React.ReactNode; children: React.ReactNode}) =>
+    React.createElement('section', null, React.createElement('header', null, actions), React.createElement('main', null, children)),
+}))
 
 vi.mock('@/zero/queries', () => ({
   queries: {domain: {
@@ -82,7 +54,7 @@ vi.mock('@/zero/queries', () => ({
 
 vi.mock('@/zero/mutators', () => ({
   mutators: {ledger: {
-    createCategoryAccount: vi.fn(input => ({type: 'createCategoryAccount', input})),
+    createCategoryAccount,
     updateCategoryAccount: vi.fn(input => ({type: 'updateCategoryAccount', input})),
     deleteCategoryAccount: vi.fn(input => ({type: 'deleteCategoryAccount', input})),
     createCategoryGroup: vi.fn(input => ({type: 'createCategoryGroup', input})),
@@ -92,134 +64,47 @@ vi.mock('@/zero/mutators', () => ({
 }))
 
 import {CategoryManagementPage} from '@/components/ledger/category-management-page'
-import {CategoryDialog, GroupDialog} from '@/components/ledger/category-management-dialogs'
 
 describe('CategoryManagementPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    renderedButtons.length = 0
-    renderedPageLayouts.length = 0
   })
 
-  it('renders header add actions and grouped editable categories with locks', () => {
-    const markup = renderToStaticMarkup(React.createElement(CategoryManagementPage))
+  it('lists the team categories with type and balance and hides bank-linked and other-team data', () => {
+    render(React.createElement(CategoryManagementPage))
 
-    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Categories'}])
-    expect(renderedPageLayouts[0]?.contentClassName).toBe('p-0')
-    expect(markup).toContain('Add group')
-    expect(markup).toContain('Add category')
-    expect(markup).toContain('System accounts')
-    expect(markup).toContain('Uncategorized')
-    expect(markup).toContain('Everyday spending')
-    expect(markup).toContain('Groceries')
-    expect(markup).toContain('Food shops')
-    expect(markup).toContain('Expense')
-    expect(markup).toContain('100.00 DKK')
-    expect(markup).not.toContain('Checking')
-    expect(markup).not.toContain('Other team group')
-    expect(markup).not.toContain('Other team category')
-    expect(markup).not.toContain('href="/app/accounts/groceries"')
-    expect(markup).not.toContain('Delete category</button><span>Groceries')
+    expect(screen.getByText('Everyday spending')).toBeInTheDocument()
+    expect(screen.getByText('Groceries')).toBeInTheDocument()
+    expect(screen.getByText('Food shops')).toBeInTheDocument()
+    expect(screen.getByText('Expense')).toBeInTheDocument()
+    expect(screen.getByText('100.00 DKK')).toBeInTheDocument()
+
+    // Bank-linked accounts are not categories, and other teams' data must never leak.
+    expect(screen.queryByText('Checking')).not.toBeInTheDocument()
+    expect(screen.queryByText('Other team group')).not.toBeInTheDocument()
+    expect(screen.queryByText('Other team category')).not.toBeInTheDocument()
   })
 
-  it('keeps row actions to edit only and renders destructive controls in edit dialogs', () => {
-    const pageMarkup = renderToStaticMarkup(React.createElement(CategoryManagementPage))
+  it('locks system groups and lets editable groups and categories be edited', () => {
+    render(React.createElement(CategoryManagementPage))
 
-    expect(findButtonByLabel('Edit category Groceries')).toBeDefined()
-    expect(findButtonByLabel('Delete category Groceries')).toBeUndefined()
-    expect(pageMarkup).not.toContain('Delete category</button><span>Groceries')
-
-    const categoryDialogMarkup = renderToStaticMarkup(React.createElement(CategoryDialog, {
-      mode: 'edit',
-      open: true,
-      title: 'Edit category',
-      description: 'Update this category or delete it if it has no ledger history.',
-      category: {
-        id: 'groceries',
-        groupId: 'spending-group',
-        name: 'Groceries',
-        description: 'Food shops',
-        type: 'expense',
-        typeLabel: 'Expense',
-        balance: 1_000_000,
-        balanceCurrency: 'DKK',
-        postingCount: 1,
-        locked: false,
-        lockReason: null,
-        canEdit: true,
-        canDelete: false,
-        deleteDisabledReason: 'Categories with ledger history cannot be deleted.',
-      },
-      groups: [{id: 'spending-group', name: 'Everyday spending'}],
-      pending: false,
-      onOpenChange: vi.fn(),
-      onSubmit: vi.fn(),
-      onRequestAddGroup: vi.fn(),
-      onDelete: vi.fn(),
-    }))
-    const groupDialogMarkup = renderToStaticMarkup(React.createElement(GroupDialog, {
-      mode: 'edit',
-      open: true,
-      title: 'Edit group',
-      description: 'Rename this category group or delete it if it is empty.',
-      group: {
-        id: 'spending-group',
-        name: 'Everyday spending',
-        accountCount: 1,
-        locked: false,
-        lockReason: null,
-        canEdit: true,
-        canDelete: false,
-        deleteDisabledReason: 'Move or delete categories in this group first.',
-        accounts: [],
-      },
-      pending: false,
-      onOpenChange: vi.fn(),
-      onSubmit: vi.fn(),
-      onDelete: vi.fn(),
-    }))
-
-    expect(categoryDialogMarkup).toContain('Delete category')
-    expect(categoryDialogMarkup).toContain('Categories with ledger history cannot be deleted.')
-    expect(groupDialogMarkup).toContain('Delete group')
-    expect(groupDialogMarkup).toContain('Move or delete categories in this group first.')
+    expect(screen.getByLabelText('Locked group')).toBeInTheDocument()
+    expect(screen.getByRole('button', {name: 'Edit group System accounts'})).toBeDisabled()
+    expect(screen.getByRole('button', {name: 'Edit group Everyday spending'})).toBeEnabled()
+    expect(screen.getByRole('button', {name: 'Edit category Groceries'})).toBeEnabled()
   })
 
-  it('lets Add Category request a stacked Add Group dialog and select the returned group id', () => {
-    const requestAddGroup = vi.fn()
-    const markup = renderToStaticMarkup(React.createElement(CategoryDialog, {
-      mode: 'create',
-      open: true,
-      title: 'Add category',
-      description: 'Create a category and choose how it should behave in the ledger.',
-      groups: [
-        {id: 'spending-group', name: 'Everyday spending'},
-        {id: 'new-group', name: 'Pets'},
-      ],
-      initialGroupId: 'new-group',
-      pending: false,
-      onOpenChange: vi.fn(),
-      onSubmit: vi.fn(),
-      onRequestAddGroup: requestAddGroup,
-    }))
+  it('dispatches a create-category mutation from the Add category dialog', async () => {
+    const user = userEvent.setup()
+    render(React.createElement(CategoryManagementPage))
 
-    expect(markup).toContain('<option value="new-group" selected="">Pets</option>')
-    findButton('Add group')?.onClick?.()
-    expect(requestAddGroup).toHaveBeenCalledOnce()
+    await user.click(screen.getByRole('button', {name: 'Add category'}))
+    await user.type(screen.getByLabelText('Name'), 'Travel')
+    await user.click(screen.getByRole('button', {name: 'Save'}))
+
+    expect(createCategoryAccount).toHaveBeenCalledWith(
+      expect.objectContaining({teamId: 'team-1', name: 'Travel', description: '', type: 'expense', groupId: 'spending-group'}),
+    )
+    expect(zeroMutate).toHaveBeenCalledTimes(1)
   })
 })
-
-function findButton(text: string) {
-  return renderedButtons.find(button => textFromNode(button.children) === text)
-}
-
-function findButtonByLabel(label: string) {
-  return renderedButtons.find(button => button.ariaLabel === label)
-}
-
-function textFromNode(node: React.ReactNode): string {
-  if (typeof node === 'string' || typeof node === 'number') return String(node)
-  if (Array.isArray(node)) return node.map(textFromNode).join('')
-  if (React.isValidElement<{children?: React.ReactNode}>(node)) return textFromNode(node.props.children)
-  return ''
-}

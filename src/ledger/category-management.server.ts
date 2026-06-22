@@ -25,7 +25,7 @@ export async function createCategoryGroup(tx: DrizzleTransaction, input: CreateC
     id: requireNonEmpty(input.id, 'Group id is required'),
     teamId: input.teamId,
     systemKey: null,
-    name: normalizeName(input.name, 'Group name is required'),
+    name: requireNonEmpty(input.name, 'Group name is required'),
     sortOrder: await nextGroupSortOrder(tx, input.teamId),
     createdAt: now,
     updatedAt: now,
@@ -35,7 +35,7 @@ export async function createCategoryGroup(tx: DrizzleTransaction, input: CreateC
 export async function updateCategoryGroup(tx: DrizzleTransaction, input: UpdateCategoryGroupInput) {
   const group = await loadAccessibleGroup(tx, input.userId, input.groupId)
   if (group.systemKey) throw new Error('System groups cannot be edited')
-  await tx.update(ledgerAccountGroups).set({name: normalizeName(input.name, 'Group name is required'), updatedAt: new Date()}).where(eq(ledgerAccountGroups.id, group.id))
+  await tx.update(ledgerAccountGroups).set({name: requireNonEmpty(input.name, 'Group name is required'), updatedAt: new Date()}).where(eq(ledgerAccountGroups.id, group.id))
 }
 
 export async function deleteCategoryGroup(tx: DrizzleTransaction, input: DeleteCategoryGroupInput) {
@@ -61,7 +61,7 @@ export async function createCategoryAccount(tx: DrizzleTransaction, input: Creat
     systemKey: null,
     type: input.type,
     normalBalance: 'credit',
-    name: normalizeName(input.name, 'Category name is required'),
+    name: requireNonEmpty(input.name, 'Category name is required'),
     description: input.description.trim(),
     status: 'active',
     sortOrder: await nextAccountSortOrder(tx, group.id),
@@ -81,7 +81,7 @@ export async function updateCategoryAccount(tx: DrizzleTransaction, input: Updat
     groupId: group.id,
     type: input.type,
     normalBalance: 'credit',
-    name: normalizeName(input.name, 'Category name is required'),
+    name: requireNonEmpty(input.name, 'Category name is required'),
     description: input.description.trim(),
     updatedAt: new Date(),
   }).where(eq(ledgerAccounts.id, account.id))
@@ -103,10 +103,6 @@ function assertEditableAccount(account: {systemKey: string | null; linkedBankAcc
 
 function isManagedCategoryType(type: string): type is ManagedCategoryType {
   return (MANAGED_CATEGORY_TYPES as readonly string[]).includes(type)
-}
-
-function normalizeName(value: string, message: string) {
-  return requireNonEmpty(value, message)
 }
 
 function requireNonEmpty(value: string, message: string) {
