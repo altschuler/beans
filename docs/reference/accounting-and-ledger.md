@@ -21,6 +21,8 @@ For imported bank transactions, ledger transactions are interpretations. They ca
 
 A ledger posting is one signed amount on one ledger account. Postings are the canonical accounting layer.
 
+Money amounts are stored and synced as scale-4 signed integers with a separate currency code; examples in this doc use decimal display values for readability. See [Money representation and display](./money.md) for the canonical data format and UI display rules.
+
 Important invariants:
 
 - A ledger transaction has at least two postings.
@@ -46,7 +48,7 @@ Ledger accounts include:
 - user categories such as Groceries, Salary, Vacation, or Dentist
 - locked system accounts such as Ready to budget, Uncategorized, and Opening balances
 
-Balances are derived from postings, not stored as editable account fields.
+Balances are derived from postings, not stored as editable account fields. Balance aggregation uses integer arithmetic and does not collapse mixed-currency totals into one misleading amount.
 
 Display rules depend on account behavior:
 

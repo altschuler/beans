@@ -105,6 +105,12 @@ Financial review views should be dense and scannable.
 - Keep row actions close to the field they affect.
 - Prefer empty states that say what is missing and what the user can do next.
 
+## Money display
+
+Use the shared `Currency` component from `src/components/currency.tsx` for visible money amounts. It accepts canonical scale-4 integer amounts and renders a decimal value followed by the currency code, such as `-100.00 DKK`.
+
+Callers own layout classes, so financial table cells should pass or wrap with right-aligned `font-mono` styling. Do not format money ad hoc in components unless the value is an editable form input boundary.
+
 ## Forms and inputs
 
 - Use shadcn `Input`, `Label`, `Button`, `Dialog`, `Popover`, and `DropdownMenu` where applicable.

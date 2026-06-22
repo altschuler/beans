@@ -35,6 +35,17 @@ Current Zero-synced app/domain tables:
 
 Imported bank transactions reconcile through `ledger_postings.bank_transaction_id`, not through `ledger_transactions`.
 
+## Money storage
+
+Money amounts use the canonical representation documented in `docs/reference/money.md`: signed scale-4 integer amounts plus a currency code.
+
+Current stored money columns:
+
+- `bank_transactions.amount`
+- `ledger_postings.amount`
+
+These columns are Postgres `bigint` values exposed by Drizzle and Zero as `number`. Keep safe-integer database checks on stored money columns, and do not reintroduce `numeric(18,4)` or decimal-string storage for synced money amounts.
+
 When adding a new app/domain table, it is not complete until it is represented in both Drizzle and Zero generation config, and the generated Zero schema has been updated.
 
 ## Client mutations

@@ -25,6 +25,8 @@ The ledger account is linked through `ledger_accounts.linked_bank_account_id` an
 
 Bank sync upserts `bank_transactions` from provider data. These rows are imported evidence and should not be changed by categorization, AI, confirmation, or reset actions.
 
+Provider amount strings are parsed at import into canonical scale-4 integer money amounts and stored with their currency code. Invalid amount syntax fails at the import boundary and surfaces through the existing sync error path.
+
 Current sync imports bank transactions and ensures the bank-linked ledger account exists. Categorization can happen later through the Transactions page or AI.
 
 Provider facts that matter for reconciliation — bank account, amount, and currency — are guarded after reconciliation. If a provider later reports conflicting facts for an already reconciled transaction, the sync path should not silently leave the ledger inconsistent.

@@ -34,7 +34,7 @@ The imported bank transaction row itself is not edited.
 
 Split mode opens inside the same selector popover. It maintains at least two lines and has a “fill remaining amount” convenience action.
 
-Saving a split replaces the interpretation with one reconciled bank posting and multiple category postings. The server still validates that split line amounts are positive and sum to the absolute bank transaction amount.
+Split form lines are temporary decimal strings for user editing. Saving a split parses those strings into canonical scale-4 integer money amounts, then replaces the interpretation with one reconciled bank posting and multiple category postings. The server still validates that split line amounts are positive and sum to the absolute bank transaction amount.
 
 ## Transfers
 

@@ -8,6 +8,7 @@ The specs are useful design history, but they are not always the best entry poin
 
 - [Product principles](./product-principles.md) — the core philosophy: immutable bank evidence, replaceable ledger interpretation, team-scoped data, and user-facing language.
 - [Accounting and ledger model](./accounting-and-ledger.md) — bank transactions, ledger transactions, signed postings, reconciliation, balances, and account history semantics.
+- [Money representation and display](./money.md) — canonical scale-4 integer money amounts, provider parsing, integer arithmetic, and the shared `Currency` display component.
 - [Transaction review and categorization](./transaction-categorization.md) — the Transactions page, category selector, splits, transfers, confirmation dots, and clear-categorizations reset.
 - [AI categorization](./ai-categorization.md) — AI confidence, processing state, similar examples, reasoning, and how AI suggestions are applied.
 - [Categories](./categories.md) — category groups, editable categories, locked system accounts, balances, and deletion rules.
