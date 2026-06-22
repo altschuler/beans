@@ -19,6 +19,16 @@ describe('zero schema', () => {
     )
   })
 
+  it('excludes Better Auth tables from the synced schema', () => {
+    for (const authTable of ['user', 'session', 'account', 'verification']) {
+      expect(schema.tables).not.toHaveProperty(authTable)
+    }
+  })
+
+  it('excludes server-only bank transaction provider payloads from the synced schema', () => {
+    expect(schema.tables.bankTransactions.columns).not.toHaveProperty('raw')
+  })
+
   it('exposes bank account sync fields with server column names', () => {
     const columns = schema.tables.bankAccounts.columns
 

@@ -1,5 +1,5 @@
 import {Link, useRouter, useRouterState} from '@tanstack/react-router'
-import {useQuery} from '@rocicorp/zero/react'
+import {useQuery, useZero} from '@rocicorp/zero/react'
 import {Banknote, ChevronsUpDown, CreditCard, Home, Landmark, LogOut, Monitor, Moon, ReceiptText, ScrollText, Sun, Tags} from 'lucide-react'
 import {authClient} from '@/auth/client'
 import {
@@ -45,18 +45,24 @@ const primaryNavItems = [
 export function AppSidebar({userEmail, userName}: AppSidebarProps) {
   const router = useRouter()
   const pathname = useRouterState({select: state => state.location.pathname})
+  const zero = useZero()
   const [teams] = useQuery(queries.domain.teams())
-  const [bankAccounts] = useQuery(queries.domain.bankAccounts())
+  const [bankAccounts, bankAccountsStatus] = useQuery(queries.domain.bankAccounts())
   const {isMobile, setOpenMobile} = useSidebar()
   const {theme, setTheme} = useTheme()
   const teamName = teams[0]?.name ?? 'Penge'
   const displayName = userName || userEmail
+  const bankAccountsComplete = bankAccountsStatus.type === 'complete'
 
   function closeMobileSidebar() {
     if (isMobile) setOpenMobile(false)
   }
 
   async function signOut() {
+    // Purge this user's synced data from IndexedDB so it does not linger at rest
+    // on shared devices. Zero partitions storage by userID, so this is about
+    // data-at-rest cleanup, not preventing cross-user reads.
+    await zero.delete()
     await authClient.signOut()
     await router.navigate({to: '/login', search: {redirect: undefined}})
   }
@@ -106,7 +112,7 @@ export function AppSidebar({userEmail, userName}: AppSidebarProps) {
             <SidebarMenu>
               {bankAccounts.length === 0 ? (
                 <SidebarMenuItem>
-                  <div className="px-2 py-1 text-xs text-muted-foreground">No bank accounts yet</div>
+                  <div className="px-2 py-1 text-xs text-muted-foreground">{bankAccountsComplete ? 'No bank accounts yet' : 'Syncing bank accounts…'}</div>
                 </SidebarMenuItem>
               ) : (
                 bankAccounts.map(account => (

@@ -3,6 +3,7 @@ import '@tanstack/react-start/server-only'
 import {openai} from '@ai-sdk/openai'
 import {generateObject} from 'ai'
 import {and, desc, eq, inArray, isNull, lt, or} from 'drizzle-orm'
+import {uniq} from 'lodash-es'
 import {z} from 'zod'
 import {db, type Database} from '@/db/client'
 import {formatMoneyDecimal} from '@/lib/money'
@@ -113,7 +114,7 @@ export async function aiCategorizeBankTransactions(
     const transactionTeamsById = new Map(work.transactions.map(transaction => [transaction.id, transaction.teamId]))
     const categorizedTransactionIds = new Set<string>()
 
-    for (const teamId of uniqueStrings(work.transactions.map(transaction => transaction.teamId))) {
+    for (const teamId of uniq(work.transactions.map(transaction => transaction.teamId))) {
       const teamTransactions = work.transactions.filter(transaction => transaction.teamId === teamId)
       const teamCategories = work.categories.filter(category => category.teamId === teamId)
 
@@ -204,7 +205,7 @@ async function claimAiCategorizationWork(tx: DrizzleTransaction, input: AiCatego
     throw new Error('No transactions available for AI categorization')
   }
 
-  const transactionTeams = uniqueStrings(claimedTransactions.map(transaction => transaction.teamId))
+  const transactionTeams = uniq(claimedTransactions.map(transaction => transaction.teamId))
   const categories = await loadEligibleCategories(tx, input.userId, transactionTeams)
   if (categories.length === 0) {
     throw new Error('No categories available for AI categorization')
@@ -380,7 +381,7 @@ async function loadEligibleCategories(tx: DrizzleTransaction, userId: string, te
 }
 
 async function loadRequestedTransactions(tx: DrizzleTransaction, userId: string, bankTransactionIds: string[]): Promise<LoadedAiCategorizationTransaction[]> {
-  return loadTransactions(tx, userId, uniqueStrings(bankTransactionIds).slice(0, MAX_AI_CATEGORIZATION_BATCH_SIZE))
+  return loadTransactions(tx, userId, uniq(bankTransactionIds).slice(0, MAX_AI_CATEGORIZATION_BATCH_SIZE))
 }
 
 async function loadNeedsReviewBatch(tx: DrizzleTransaction, userId: string, limit: number | undefined): Promise<LoadedAiCategorizationTransaction[]> {
@@ -438,6 +439,9 @@ async function loadTransactions(
   }))
 }
 
+// Plain read, no row lock. A concurrent user confirm/categorize is caught downstream: the processing-marker
+// check (isSameProcessingMarker) skips work this run no longer owns, and categorizeBankTransaction's
+// `requiredExistingStatus: 'needs_review'` guard makes the apply a no-op if the row changed underneath us.
 async function loadCurrentTransactionForAiApplication(tx: DrizzleTransaction, userId: string, bankTransactionId: string) {
   const [transaction] = await tx
     .select({teamId: bankAccounts.teamId, status: ledgerTransactions.status, aiProcessingStartedAt: bankTransactions.aiProcessingStartedAt})
@@ -448,7 +452,6 @@ async function loadCurrentTransactionForAiApplication(tx: DrizzleTransaction, us
     .leftJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerPostings.ledgerTransactionId))
     .where(and(eq(bankTransactions.id, bankTransactionId), eq(teamMembers.userId, userId)))
     .limit(1)
-    .for('update', {of: bankTransactions})
 
   return transaction
 }
@@ -484,6 +487,3 @@ function isSameProcessingMarker(current: Date | null, expected: Date) {
   return current?.getTime() === expected.getTime()
 }
 
-function uniqueStrings(values: string[]) {
-  return [...new Set(values)]
-}

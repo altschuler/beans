@@ -1,6 +1,7 @@
 import '@tanstack/react-start/server-only'
 
 import {and, desc, eq, inArray, isNotNull, isNull, sql} from 'drizzle-orm'
+import {clamp, intersection, uniq, uniqBy, union} from 'lodash-es'
 import type {Database} from '@/db/client'
 import {formatMoneyDecimal, moneySign} from '@/lib/money'
 import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from '@/db/schema'
@@ -111,7 +112,7 @@ async function loadConfirmedCandidateTransactions(
   if (targets.length === 0) return []
 
   const rowsById = new Map<string, CandidateTransactionRow>()
-  const teamIds = uniqueStrings(targets.map(transaction => transaction.teamId))
+  const teamIds = uniq(targets.map(transaction => transaction.teamId))
   for (const teamId of teamIds) {
     addCandidateRows(
       rowsById,
@@ -120,7 +121,9 @@ async function loadConfirmedCandidateTransactions(
           id: ledgerTransactions.id,
           teamId: ledgerTransactions.teamId,
           date: ledgerTransactions.date,
-          description: ledgerTransactions.description,
+          // Source the description from the bank transaction: bank-import ledger transactions no longer
+          // store one (see schema), and the bank transaction's merchant text is the signal we want here.
+          description: bankTransactions.description,
           amount: bankTransactions.amount,
           currency: bankTransactions.currency,
           counterpartyName: bankTransactions.counterpartyName,
@@ -145,7 +148,7 @@ async function loadConfirmedCandidateTransactions(
     )
   }
 
-  const counterpartyLookups = uniqueBy(
+  const counterpartyLookups = uniqBy(
     targets
       .map(target => ({teamId: target.teamId, normalizedCounterparty: normalizeSearchText(target.counterpartyName ?? '')}))
       .filter(lookup => lookup.normalizedCounterparty.length > 0),
@@ -160,7 +163,9 @@ async function loadConfirmedCandidateTransactions(
           id: ledgerTransactions.id,
           teamId: ledgerTransactions.teamId,
           date: ledgerTransactions.date,
-          description: ledgerTransactions.description,
+          // Source the description from the bank transaction: bank-import ledger transactions no longer
+          // store one (see schema), and the bank transaction's merchant text is the signal we want here.
+          description: bankTransactions.description,
           amount: bankTransactions.amount,
           currency: bankTransactions.currency,
           counterpartyName: bankTransactions.counterpartyName,
@@ -256,7 +261,7 @@ async function loadSingleEligibleCategoryByTransactionId(tx: DrizzleTransaction,
   }
 
   for (const [ledgerTransactionId, accountsForTransaction] of eligibleAccountsByTransactionId) {
-    const uniqueAccounts = uniqueBy(accountsForTransaction, account => account.categoryAccountId)
+    const uniqueAccounts = uniqBy(accountsForTransaction, account => account.categoryAccountId)
     if (uniqueAccounts.length === 1) {
       result.set(ledgerTransactionId, uniqueAccounts[0]!)
     }
@@ -353,9 +358,9 @@ function tokenSimilarity(left: string, right: string) {
   const leftTokens = new Set(left.split(' ').filter(Boolean))
   const rightTokens = new Set(right.split(' ').filter(Boolean))
   if (leftTokens.size === 0 || rightTokens.size === 0) return 0
-  const intersection = [...leftTokens].filter(token => rightTokens.has(token)).length
-  const union = new Set([...leftTokens, ...rightTokens]).size
-  return intersection / union
+  const intersectionSize = intersection([...leftTokens], [...rightTokens]).length
+  const unionSize = union([...leftTokens], [...rightTokens]).length
+  return intersectionSize / unionSize
 }
 
 function similarAmountScore(left: number, right: number) {
@@ -381,19 +386,6 @@ function compareDatesDescending(left: string | null, right: string | null) {
 }
 
 function boundedLimit(limit: number | undefined) {
-  return Math.min(Math.max(limit ?? DEFAULT_EXAMPLES_PER_TRANSACTION, 0), DEFAULT_EXAMPLES_PER_TRANSACTION)
+  return clamp(limit ?? DEFAULT_EXAMPLES_PER_TRANSACTION, 0, DEFAULT_EXAMPLES_PER_TRANSACTION)
 }
 
-function uniqueStrings(values: string[]) {
-  return [...new Set(values)]
-}
-
-function uniqueBy<T>(values: T[], key: (value: T) => string) {
-  const seen = new Set<string>()
-  return values.filter(value => {
-    const resolvedKey = key(value)
-    if (seen.has(resolvedKey)) return false
-    seen.add(resolvedKey)
-    return true
-  })
-}

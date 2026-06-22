@@ -2,6 +2,11 @@ import React from 'react'
 import {renderToStaticMarkup} from 'react-dom/server'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
+const queryStatuses = vi.hoisted(() => ({
+  accounts: 'complete',
+  transactions: 'complete',
+}))
+
 const queryRows = vi.hoisted(() => ({
   accounts: [] as Array<{id: string; name: string}>,
   transactions: [] as Array<{
@@ -27,8 +32,8 @@ const renderedPageLayouts = vi.hoisted(
 
 vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string}) => {
-    if (query.name === 'bankAccounts') return [queryRows.accounts]
-    if (query.name === 'bankTransactions') return [queryRows.transactions]
+    if (query.name === 'bankAccounts') return [queryRows.accounts, {type: queryStatuses.accounts}]
+    if (query.name === 'bankTransactions') return [queryRows.transactions, {type: queryStatuses.transactions}]
     throw new Error(`Unexpected query: ${query.name}`)
   }),
 }))
@@ -82,6 +87,8 @@ import {BankingDashboard} from '@/components/banking/banking-dashboard'
 describe('BankingDashboard', () => {
   beforeEach(() => {
     renderedPageLayouts.length = 0
+    queryStatuses.accounts = 'complete'
+    queryStatuses.transactions = 'complete'
     queryRows.accounts = [{id: 'account-1', name: 'Checking'}]
     queryRows.transactions = []
   })
@@ -130,5 +137,25 @@ describe('BankingDashboard', () => {
     const markup = renderToStaticMarkup(React.createElement(BankingDashboard))
 
     expect(markup).toContain('2 transactions')
+  })
+
+  it('waits for bank account query completion before showing the empty linked accounts state', () => {
+    queryRows.accounts = []
+    queryStatuses.accounts = 'unknown'
+
+    const markup = renderToStaticMarkup(React.createElement(BankingDashboard))
+
+    expect(markup).toContain('Syncing bank accounts…')
+    expect(markup).not.toContain('No bank accounts linked yet.')
+  })
+
+  it('waits for transaction query completion before showing the empty transactions state', () => {
+    queryRows.transactions = []
+    queryStatuses.transactions = 'unknown'
+
+    const markup = renderToStaticMarkup(React.createElement(BankingDashboard))
+
+    expect(markup).toContain('Syncing transactions…')
+    expect(markup).not.toContain('No transactions synced yet.')
   })
 })

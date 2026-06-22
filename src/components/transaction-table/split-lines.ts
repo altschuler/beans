@@ -1,3 +1,4 @@
+import {sum} from 'lodash-es'
 import {absoluteMoneyAmount, DEFAULT_CURRENCY, formatMoneyDecimal, parseDecimalMoneyToAmount} from '@/lib/money'
 import type {CategorizationAccountOption, SplitLine, TransactionTableRow} from './types'
 
@@ -27,10 +28,7 @@ export function removeSplitLine(splitLines: SplitLine[], indexToRemove: number):
 
 export function fillRemainingSplitAmount(splitLines: SplitLine[], indexToFill: number, transactionAmount: number, currency = DEFAULT_CURRENCY): SplitLine[] {
   const transactionTotal = absoluteMoneyAmount(transactionAmount)
-  const otherLinesTotal = splitLines.reduce((total, line, lineIndex) => {
-    if (lineIndex === indexToFill) return total
-    return total + parseOptionalMoneyToAmount(line.amount)
-  }, 0)
+  const otherLinesTotal = sum(splitLines.map((line, lineIndex) => (lineIndex === indexToFill ? 0 : parseOptionalMoneyToAmount(line.amount))))
   const remainingAmount = transactionTotal - otherLinesTotal
 
   return splitLines.map((line, lineIndex) => (lineIndex === indexToFill ? {...line, amount: formatMoneyDecimal(remainingAmount, currency)} : line))

@@ -1,3 +1,4 @@
+import {sum} from 'lodash-es'
 import {absoluteMoneyAmount, assertSafeMoneyAmount, parseDecimalMoneyToAmount} from '@/lib/money'
 
 export type CategorizationLineInput = {
@@ -102,7 +103,7 @@ export function validateBankLinkedCategorizationLines(input: BankLinkedCategoriz
     throw new Error('Split amounts must be positive')
   }
 
-  const actualTotal = lineUnits.reduce((total, amount) => total + amount, 0)
+  const actualTotal = sum(lineUnits)
   if (actualTotal !== expectedTotal) {
     throw new Error('Split total must equal the bank transaction amount')
   }

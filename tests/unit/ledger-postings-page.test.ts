@@ -2,9 +2,11 @@ import React from 'react'
 import {renderToStaticMarkup} from 'react-dom/server'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
+const queryStatuses = vi.hoisted(() => ({
+  postings: 'complete',
+}))
+
 const queryRows = vi.hoisted(() => ({
-  accounts: [] as Array<{id: string; name: string}>,
-  ledgerTransactions: [] as Array<{id: string; date: string | null; description: string}>,
   postings: [] as Array<{
     id: string
     ledgerTransactionId: string
@@ -13,8 +15,10 @@ const queryRows = vi.hoisted(() => ({
     currency: string
     bankTransactionId: string | null
     sortOrder: number | null
+    account?: {id: string; name: string}
+    ledgerTransaction?: {id: string; date: string | null; description: string} | undefined
+    bankTransaction?: {id: string; bookingDate: string | null; valueDate: string | null; description: string} | undefined
   }>,
-  bankTransactions: [] as Array<{id: string; bookingDate: string | null; valueDate: string | null; description: string}>,
 }))
 
 vi.mock('@tanstack/react-virtual', () => ({
@@ -35,10 +39,7 @@ const renderedPageLayouts = vi.hoisted(
 
 vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string}) => {
-    if (query.name === 'ledgerAccounts') return [queryRows.accounts]
-    if (query.name === 'ledgerTransactions') return [queryRows.ledgerTransactions]
-    if (query.name === 'ledgerPostings') return [queryRows.postings]
-    if (query.name === 'bankTransactions') return [queryRows.bankTransactions]
+    if (query.name === 'ledgerPostingsWithRelations') return [queryRows.postings, {type: queryStatuses.postings}]
     throw new Error(`Unexpected query: ${query.name}`)
   }),
 }))
@@ -69,10 +70,7 @@ vi.mock('@/components/page-layout', async () => {
 vi.mock('@/zero/queries', () => ({
   queries: {
     domain: {
-      ledgerAccounts: () => ({name: 'ledgerAccounts'}),
-      ledgerTransactions: () => ({name: 'ledgerTransactions'}),
-      ledgerPostings: () => ({name: 'ledgerPostings'}),
-      bankTransactions: () => ({name: 'bankTransactions'}),
+      ledgerPostingsWithRelations: () => ({name: 'ledgerPostingsWithRelations'}),
     },
   },
 }))
@@ -82,8 +80,7 @@ import {LedgerPostingsPage} from '@/components/ledger/ledger-postings-page'
 describe('LedgerPostingsPage', () => {
   beforeEach(() => {
     renderedPageLayouts.length = 0
-    queryRows.accounts = [{id: 'account-1', name: 'Groceries'}]
-    queryRows.ledgerTransactions = [{id: 'ledger-transaction-1', date: '2026-06-20', description: 'Weekly shop'}]
+    queryStatuses.postings = 'complete'
     queryRows.postings = [
       {
         id: 'posting-1',
@@ -93,9 +90,11 @@ describe('LedgerPostingsPage', () => {
         currency: 'DKK',
         bankTransactionId: 'bank-transaction-1',
         sortOrder: 1,
+        account: {id: 'account-1', name: 'Groceries'},
+        ledgerTransaction: {id: 'ledger-transaction-1', date: '2026-06-20', description: 'Weekly shop'},
+        bankTransaction: {id: 'bank-transaction-1', bookingDate: '2026-06-19', valueDate: '2026-06-18', description: 'Netto'},
       },
     ]
-    queryRows.bankTransactions = [{id: 'bank-transaction-1', bookingDate: '2026-06-19', valueDate: '2026-06-18', description: 'Netto'}]
   })
 
   it('renders all ledger postings with joined account names and transaction data', () => {
@@ -128,21 +127,35 @@ describe('LedgerPostingsPage', () => {
     expect(markup).not.toContain('account-1</td>')
   })
 
+  it('waits for ledger posting query completion before showing the empty postings state', () => {
+    queryRows.postings = []
+    queryStatuses.postings = 'unknown'
+
+    const markup = renderToStaticMarkup(React.createElement(LedgerPostingsPage))
+
+    expect(markup).toContain('Syncing ledger postings…')
+    expect(markup).not.toContain('No ledger postings yet.')
+  })
+
   it('renders only the virtual window for large posting lists', () => {
-    queryRows.ledgerTransactions = Array.from({length: 40}, (_, index) => ({
-      id: `ledger-transaction-${index.toString().padStart(2, '0')}`,
-      date: `2026-06-${(20 - (index % 20)).toString().padStart(2, '0')}`,
-      description: `Transaction ${index}`,
-    }))
-    queryRows.postings = queryRows.ledgerTransactions.map((transaction, index) => ({
-      id: `posting-${index.toString().padStart(2, '0')}`,
-      ledgerTransactionId: transaction.id,
-      accountId: 'account-1',
-      amount: index * 10_000,
-      currency: 'DKK',
-      bankTransactionId: null,
-      sortOrder: index,
-    }))
+    queryRows.postings = Array.from({length: 40}, (_, index) => {
+      const transaction = {
+        id: `ledger-transaction-${index.toString().padStart(2, '0')}`,
+        date: `2026-06-${(20 - (index % 20)).toString().padStart(2, '0')}`,
+        description: `Transaction ${index}`,
+      }
+      return {
+        id: `posting-${index.toString().padStart(2, '0')}`,
+        ledgerTransactionId: transaction.id,
+        accountId: 'account-1',
+        amount: index * 10_000,
+        currency: 'DKK',
+        bankTransactionId: null,
+        sortOrder: index,
+        account: {id: 'account-1', name: 'Groceries'},
+        ledgerTransaction: transaction,
+      }
+    })
 
     const markup = renderToStaticMarkup(React.createElement(LedgerPostingsPage))
 

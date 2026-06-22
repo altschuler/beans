@@ -50,7 +50,7 @@ When adding a new app/domain table, it is not complete until it is represented i
 
 ## Client mutations
 
-Writes go through Zero custom mutators: Zod input schemas in `src/zero/mutators.ts`, server logic in `src/zero/mutators.server.ts` (and the `*.server.ts` command files it calls). The client mutators are currently no-ops, so writes are server-authoritative with no optimistic update — the UI reflects a change only after the server round-trip syncs back (see the empty-client-mutators item in `docs/TODO.md`).
+Writes go through Zero custom mutators: Zod input schemas and optimistic client logic in `src/zero/mutators.ts`, server logic in `src/zero/mutators.server.ts` (and the `*.server.ts` command files it calls). Transaction categorization, splits, confirmation, and clearing apply deterministic optimistic updates in the client replica while the server remains authoritative. Transfer categorization intentionally stays server-authoritative because it depends on server-side counter-transaction matching.
 
 Always run mutations through `runZeroMutation` (`src/lib/run-mutation.ts`); never `await zero.mutate(...)` directly. A mutator call returns `{client, server}` promises that **resolve** with a result detail — they do not reject on failure. A server-side error resolves `.server` with `{type: 'error', ...}` and Zero only logs it to the console, so awaiting the mutation alone silently swallows the error. `runZeroMutation` inspects the resolved detail, shows an error toast, and returns a success boolean:
 

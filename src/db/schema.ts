@@ -249,7 +249,10 @@ export const ledgerTransactions = pgTable(
     userConfirmedAt: timestamp('user_confirmed_at', {mode: 'date'}),
     userConfirmedBy: text('user_confirmed_by'),
     date: text('date'),
-    description: text('description').notNull(),
+    // Nullable and currently left null for bank-import interpretations: the bank transaction's
+    // description is the source of truth and the UI reads it from there. Kept for future non-bank
+    // ledger entries (e.g. manual transactions) that will own a real description.
+    description: text('description'),
     createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
     updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
   },

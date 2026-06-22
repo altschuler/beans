@@ -5,6 +5,7 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 const shellTestState = vi.hoisted(() => ({
   pathname: '/app',
   bankAccounts: [{id: 'bank-account-1', name: 'Checking'}],
+  bankAccountsStatus: 'complete',
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -15,10 +16,11 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string}) => {
-    if (query.name === 'teams') return [[{id: 'team-1', name: 'Personal team'}]]
-    if (query.name === 'bankAccounts') return [shellTestState.bankAccounts]
+    if (query.name === 'teams') return [[{id: 'team-1', name: 'Personal team'}], {type: 'complete'}]
+    if (query.name === 'bankAccounts') return [shellTestState.bankAccounts, {type: shellTestState.bankAccountsStatus}]
     throw new Error(`Unexpected query: ${query.name}`)
   }),
+  useZero: vi.fn(() => ({delete: vi.fn()})),
 }))
 
 vi.mock('@/zero/queries', () => ({
@@ -63,6 +65,7 @@ describe('Shell', () => {
   beforeEach(() => {
     shellTestState.pathname = '/app'
     shellTestState.bankAccounts = [{id: 'bank-account-1', name: 'Checking'}]
+    shellTestState.bankAccountsStatus = 'complete'
   })
 
   it('shows sidebar navigation, team, current user, and product title without rendering page breadcrumbs', () => {
@@ -99,6 +102,16 @@ describe('Shell', () => {
 
     expect(markup.match(/<main\b/g)).toHaveLength(1)
     expect(markup).toContain('data-slot="sidebar-inset"')
+  })
+
+  it('waits for bank account query completion before showing the empty bank accounts sidebar state', () => {
+    shellTestState.bankAccounts = []
+    shellTestState.bankAccountsStatus = 'unknown'
+
+    const markup = renderShell()
+
+    expect(markup).toContain('Syncing bank accounts…')
+    expect(markup).not.toContain('No bank accounts yet')
   })
 
   it('renders the user identity as a sidebar dropdown menu with theme choices and sign out', () => {

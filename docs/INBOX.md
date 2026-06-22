@@ -1,5 +1,7 @@
 # Inbox
 
+- 2026-06-22: Pi subagent async runs can fill `/tmp` quickly; this run exhausted the 30G tmpfs under `/tmp/pi-subagents-uid-1000`. If subagent status calls fail with `ENOSPC`, clear stale files under that Pi temp directory before continuing verification.
+- 2026-06-22: Pi subagent acceptance rejected worker outputs even though reports were saved and validation passed because the runtime did not detect the fenced `acceptance-report`. Prefer no/built-in acceptance gates or verify reports manually until the expected structured-output format is documented.
 - 2026-06-21: `tests/unit/category-management-server.test.ts` (and likely other Postgres-backed unit tests) can flake when `pnpm test` runs the whole suite in parallel — they share one test DB and contend on migrations/rows, producing inconsistent failures that vanish when the file runs in isolation. Consider giving DB-backed suites a serialized pool or per-suite schema/transaction isolation before relying on `pnpm test` as a merge gate.
 - 2026-06-21: `pnpm test:e2e` smoke currently expects the banking dashboard at `/app`, but `/app` now renders the intentional welcome page and the banking dashboard lives at `/app/banks`. Update the smoke flow or route expectation before using e2e as a merge gate.
 - 2026-06-20: Vite 8 warns that `vite-tsconfig-paths` is now redundant because `resolve.tsconfigPaths: true` is built in. Consider replacing the plugin to remove repeated build/test warnings.

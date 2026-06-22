@@ -1,3 +1,4 @@
+import {groupBy, keyBy} from 'lodash-es'
 import {MONEY_FACTOR} from '@/lib/money'
 import {deriveLedgerAccountBalances, deriveSingleBalanceCurrency} from '@/ledger/categorization'
 
@@ -21,7 +22,7 @@ export type LedgerAccountDetailTransaction = {
   source: string
   status: string
   date: string | null
-  description: string
+  description: string | null
 }
 export type LedgerAccountDetailPosting = {
   id: string
@@ -98,9 +99,9 @@ export function buildLedgerAccountDetailModel(input: {
     bankTransactionId: posting.bankTransactionId ?? null,
   }))
   const bankTransactions = input.bankTransactions.map(transaction => ({...transaction}))
-  const ledgerTransactionsById = new Map(input.ledgerTransactions.map(transaction => [transaction.id, transaction]))
-  const bankTransactionsById = new Map(bankTransactions.map(transaction => [transaction.id, transaction]))
-  const bankAccountNamesById = new Map(input.bankAccounts.map(bankAccount => [bankAccount.id, bankAccount.name]))
+  const ledgerTransactionsById = keyBy(input.ledgerTransactions, transaction => transaction.id)
+  const bankTransactionsById = keyBy(bankTransactions, transaction => transaction.id)
+  const bankAccountNamesById = Object.fromEntries(input.bankAccounts.map(bankAccount => [bankAccount.id, bankAccount.name]))
   const postingsByTransactionId = groupBy(postings, posting => posting.ledgerTransactionId)
   const groupName = input.groups.find(group => group.id === account.groupId)?.name ?? 'Ungrouped'
   const currentBalance = deriveLedgerAccountBalances(accounts, postings).get(account.id) ?? 0
@@ -125,18 +126,18 @@ function buildSpendingModel(input: {
   currentBalanceCurrency: string | null
   period: AccountDetailPeriod
   postings: NormalizedPosting[]
-  ledgerTransactionsById: Map<string, LedgerAccountDetailTransaction>
-  bankTransactionsById: Map<string, NormalizedBankTransaction>
-  bankAccountNamesById: Map<string, string>
-  postingsByTransactionId: Map<string, NormalizedPosting[]>
+  ledgerTransactionsById: Record<string, LedgerAccountDetailTransaction>
+  bankTransactionsById: Record<string, NormalizedBankTransaction>
+  bankAccountNamesById: Record<string, string>
+  postingsByTransactionId: Record<string, NormalizedPosting[]>
 }): LedgerAccountDetailModel {
   const entries = input.postings.flatMap(posting => {
     if (posting.accountId !== input.account.id || posting.bankTransactionId) return []
-    const ledgerTransaction = input.ledgerTransactionsById.get(posting.ledgerTransactionId)
+    const ledgerTransaction = input.ledgerTransactionsById[posting.ledgerTransactionId]
     if (!ledgerTransaction || ledgerTransaction.source !== 'bank_import') return []
-    const reconciledPosting = input.postingsByTransactionId.get(posting.ledgerTransactionId)?.find(candidate => candidate.bankTransactionId)
+    const reconciledPosting = input.postingsByTransactionId[posting.ledgerTransactionId]?.find(candidate => candidate.bankTransactionId)
     if (!reconciledPosting?.bankTransactionId) return []
-    const bankTransaction = input.bankTransactionsById.get(reconciledPosting.bankTransactionId)
+    const bankTransaction = input.bankTransactionsById[reconciledPosting.bankTransactionId]
     if (!bankTransaction) return []
     const date = preferredDate(bankTransaction.bookingDate, bankTransaction.valueDate, ledgerTransaction.date)
     const amount = posting.amount
@@ -148,7 +149,7 @@ function buildSpendingModel(input: {
         amount,
         chartAmount: amount / MONEY_FACTOR,
         currency: posting.currency,
-        context: input.bankAccountNamesById.get(bankTransaction.bankAccountId) ?? 'Unknown bank account',
+        context: input.bankAccountNamesById[bankTransaction.bankAccountId] ?? 'Unknown bank account',
       },
     ]
   })
@@ -181,12 +182,12 @@ function buildLinkedBankModel(input: {
   currentBalanceCurrency: string | null
   period: AccountDetailPeriod
   postings: NormalizedPosting[]
-  bankTransactionsById: Map<string, NormalizedBankTransaction>
-  bankAccountNamesById: Map<string, string>
+  bankTransactionsById: Record<string, NormalizedBankTransaction>
+  bankAccountNamesById: Record<string, string>
 }): LedgerAccountDetailModel {
   const entries = input.postings.flatMap(posting => {
     if (posting.accountId !== input.account.id || !posting.bankTransactionId) return []
-    const bankTransaction = input.bankTransactionsById.get(posting.bankTransactionId)
+    const bankTransaction = input.bankTransactionsById[posting.bankTransactionId]
     if (!bankTransaction) return []
     return [
       {
@@ -196,7 +197,7 @@ function buildLinkedBankModel(input: {
         amount: posting.amount,
         chartAmount: posting.amount / MONEY_FACTOR,
         currency: posting.currency,
-        context: input.bankAccountNamesById.get(bankTransaction.bankAccountId) ?? 'Unknown bank account',
+        context: input.bankAccountNamesById[bankTransaction.bankAccountId] ?? 'Unknown bank account',
       },
     ]
   })
@@ -229,11 +230,11 @@ function buildEnvelopeActivityModel(input: {
   currentBalanceCurrency: string | null
   period: AccountDetailPeriod
   postings: NormalizedPosting[]
-  ledgerTransactionsById: Map<string, LedgerAccountDetailTransaction>
+  ledgerTransactionsById: Record<string, LedgerAccountDetailTransaction>
 }): LedgerAccountDetailModel {
   const entries = input.postings.flatMap(posting => {
     if (posting.accountId !== input.account.id) return []
-    const ledgerTransaction = input.ledgerTransactionsById.get(posting.ledgerTransactionId)
+    const ledgerTransaction = input.ledgerTransactionsById[posting.ledgerTransactionId]
     const amount = signedBalanceChangeForPosting(posting, input.account)
     return [
       {
@@ -338,11 +339,3 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100
 }
 
-function groupBy<T>(items: T[], key: (item: T) => string) {
-  const groups = new Map<string, T[]>()
-  for (const item of items) {
-    const groupKey = key(item)
-    groups.set(groupKey, [...(groups.get(groupKey) ?? []), item])
-  }
-  return groups
-}

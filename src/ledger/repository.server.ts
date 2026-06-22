@@ -1,6 +1,7 @@
 import '@tanstack/react-start/server-only'
 
 import {and, eq} from 'drizzle-orm'
+import {keyBy} from 'lodash-es'
 import type {Database} from '@/db/client'
 import {ledgerAccountGroups, ledgerAccounts} from '@/db/schema'
 import {buildDefaultLedgerChartForTeam, SYSTEM_LEDGER_ACCOUNT_KEYS} from './default-chart'
@@ -20,11 +21,11 @@ export async function seedDefaultLedgerChartForTeam(tx: DrizzleExecutor, teamId:
     .from(ledgerAccountGroups)
     .where(eq(ledgerAccountGroups.teamId, teamId))
 
-  const generatedGroupNamesById = new Map(chart.groups.map(group => [group.id, group.name]))
-  const persistedGroupIdsByName = new Map(persistedGroups.map(group => [group.name, group.id]))
+  const generatedGroupsById = keyBy(chart.groups, group => group.id)
+  const persistedGroupsByName = keyBy(persistedGroups, group => group.name)
   const accounts = chart.accounts.map(account => {
-    const generatedGroupName = generatedGroupNamesById.get(account.groupId)
-    const persistedGroupId = generatedGroupName ? persistedGroupIdsByName.get(generatedGroupName) : undefined
+    const generatedGroupName = generatedGroupsById[account.groupId]?.name
+    const persistedGroupId = generatedGroupName ? persistedGroupsByName[generatedGroupName]?.id : undefined
     if (!persistedGroupId) throw new Error(`Missing persisted ledger group for ${generatedGroupName ?? account.groupId}`)
     return {...account, groupId: persistedGroupId}
   })

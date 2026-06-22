@@ -99,6 +99,13 @@
       "when": 1782069373624,
       "tag": "0013_large_apocalypse",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1782125015030,
+      "tag": "0014_goofy_frightful_four",
+      "breakpoints": true
     }
   ]
 }

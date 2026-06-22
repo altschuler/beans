@@ -1,3 +1,4 @@
+import {groupBy, keyBy, uniq, uniqBy} from 'lodash-es'
 import {absoluteMoneyAmount, formatMoneyDecimal} from '@/lib/money'
 import {deriveLedgerAccountBalances, isCategorizationAccount} from '@/ledger/categorization'
 
@@ -12,6 +13,7 @@ export type LedgerDashboardAccount = {
   sortOrder: number | null
   systemKey?: string | null
   linkedBankAccountId?: string | null
+  postings?: ReadonlyArray<LedgerDashboardPosting>
 }
 export type LedgerDashboardTransaction = {
   id: string
@@ -21,7 +23,8 @@ export type LedgerDashboardTransaction = {
   userConfirmedAt?: Date | string | number | null
   userConfirmedBy?: string | null
   date: string | null
-  description: string
+  description: string | null
+  postings?: ReadonlyArray<LedgerDashboardPosting>
 }
 export type LedgerDashboardPosting = {
   id: string
@@ -31,6 +34,7 @@ export type LedgerDashboardPosting = {
   currency: string
   bankTransactionId?: string | null
   sortOrder: number | null
+  ledgerTransaction?: LedgerDashboardTransaction
 }
 export type LedgerDashboardBankTransaction = {
   id: string
@@ -43,6 +47,7 @@ export type LedgerDashboardBankTransaction = {
   aiConfidence?: number | null
   aiProcessingStartedAt?: Date | string | number | null
   aiReasoning?: string | null
+  posting?: LedgerDashboardPosting
 }
 export type LedgerDashboardBankAccount = {id: string; name: string}
 export type LedgerDashboardStatusIndicator = {
@@ -68,8 +73,8 @@ type RowInterpretation = {
 export function buildLedgerDashboardModel(input: {
   groups: ReadonlyArray<LedgerDashboardGroup>
   accounts: ReadonlyArray<LedgerDashboardAccount>
-  ledgerTransactions: ReadonlyArray<LedgerDashboardTransaction>
-  postings: ReadonlyArray<LedgerDashboardPosting>
+  ledgerTransactions?: ReadonlyArray<LedgerDashboardTransaction>
+  postings?: ReadonlyArray<LedgerDashboardPosting>
   bankTransactions: ReadonlyArray<LedgerDashboardBankTransaction>
   bankAccounts: ReadonlyArray<LedgerDashboardBankAccount>
   bankAccountIdFilter?: string | null
@@ -81,12 +86,7 @@ export function buildLedgerDashboardModel(input: {
     systemKey: account.systemKey ?? null,
     linkedBankAccountId: account.linkedBankAccountId ?? null,
   }))
-  const postings: NormalizedPosting[] = input.postings.map(posting => ({
-    ...posting,
-    amount: posting.amount,
-    sortOrder: posting.sortOrder ?? 0,
-    bankTransactionId: posting.bankTransactionId ?? null,
-  }))
+  const postings = normalizePostings(input.postings ?? input.accounts.flatMap(account => account.postings ?? []))
   const bankTransactions = input.bankTransactions.map(transaction => ({
     ...transaction,
     amount: transaction.amount,
@@ -95,9 +95,9 @@ export function buildLedgerDashboardModel(input: {
     aiReasoning: transaction.aiReasoning ?? null,
   }))
   const balances = deriveLedgerAccountBalances(accounts, postings)
-  const accountsById = new Map(accounts.map(account => [account.id, account]))
-  const ledgerTransactionsById = new Map(input.ledgerTransactions.map(transaction => [transaction.id, transaction]))
-  const bankAccountNamesById = new Map(input.bankAccounts.map(account => [account.id, account.name]))
+  const accountsById = keyBy(accounts, account => account.id)
+  const ledgerTransactionsById = keyBy(input.ledgerTransactions ?? [], transaction => transaction.id)
+  const bankAccountNamesById = Object.fromEntries(input.bankAccounts.map(account => [account.id, account.name]))
   const postingsByTransactionId = groupBy(postings, posting => posting.ledgerTransactionId)
   const now = new Date()
 
@@ -110,7 +110,7 @@ export function buildLedgerDashboardModel(input: {
     .map(account => ({
       id: account.id,
       bankAccountId: account.linkedBankAccountId!,
-      name: bankAccountNamesById.get(account.linkedBankAccountId!) ?? account.name,
+      name: bankAccountNamesById[account.linkedBankAccountId!] ?? account.name,
     }))
     .sort((left, right) => left.name.localeCompare(right.name))
 
@@ -131,10 +131,11 @@ export function buildLedgerDashboardModel(input: {
 
   const transactionRows = bankTransactions
     .flatMap(bankTransaction => {
-      const bankPosting = reconciledPostingByBankTransactionId.get(bankTransaction.id) ?? null
-      const reconciledTransaction = bankPosting ? (ledgerTransactionsById.get(bankPosting.ledgerTransactionId) ?? null) : null
+      const relatedBankPosting = bankTransaction.posting
+      const bankPosting = relatedBankPosting ? normalizePosting(relatedBankPosting) : (reconciledPostingByBankTransactionId.get(bankTransaction.id) ?? null)
+      const reconciledTransaction = relatedBankPosting?.ledgerTransaction ?? (bankPosting ? (ledgerTransactionsById[bankPosting.ledgerTransactionId] ?? null) : null)
       const transaction = reconciledTransaction?.source === 'bank_import' ? reconciledTransaction : null
-      const transactionPostings = transaction ? (postingsByTransactionId.get(transaction.id) ?? []) : []
+      const transactionPostings = transaction ? (transaction.postings ? normalizePostings(transaction.postings) : (postingsByTransactionId[transaction.id] ?? [])) : []
       const interpretation = bankPosting && transaction
         ? buildRowInterpretation({
             bankPosting,
@@ -168,7 +169,7 @@ export function buildLedgerDashboardModel(input: {
           bankAccountId: bankTransaction.bankAccountId,
           description: bankTransaction.description,
           date: bankTransaction.bookingDate ?? bankTransaction.valueDate ?? transaction?.date ?? null,
-          bankAccountName: bankAccountNamesById.get(bankTransaction.bankAccountId) ?? 'Unknown account',
+          bankAccountName: bankAccountNamesById[bankTransaction.bankAccountId] ?? 'Unknown account',
           amount: bankTransaction.amount,
           currency: bankTransaction.currency,
           status: transaction?.status ?? 'needs_review',
@@ -198,6 +199,18 @@ export function buildLedgerDashboardModel(input: {
   }
 }
 
+function normalizePostings(postings: ReadonlyArray<LedgerDashboardPosting>): NormalizedPosting[] {
+  return postings.map(normalizePosting)
+}
+
+function normalizePosting(posting: LedgerDashboardPosting): NormalizedPosting {
+  return {
+    ...posting,
+    amount: posting.amount,
+    sortOrder: posting.sortOrder ?? 0,
+    bankTransactionId: posting.bankTransactionId ?? null,
+  }
+}
 
 function buildUnreconciledRowInterpretation(): RowInterpretation {
   return {
@@ -335,28 +348,28 @@ function buildRowInterpretation(input: {
   bankPosting: NormalizedPosting
   transactionPostings: NormalizedPosting[]
   explanatoryPostings: NormalizedPosting[]
-  accountsById: Map<string, NormalizedAccount>
-  bankAccountNamesById: Map<string, string>
+  accountsById: Record<string, NormalizedAccount>
+  bankAccountNamesById: Record<string, string>
 }): RowInterpretation {
   const categoryPostings = input.explanatoryPostings.filter(posting => {
-    const account = input.accountsById.get(posting.accountId)
+    const account = input.accountsById[posting.accountId]
     return account ? isCategorizationAccount(account) : false
   })
   const categoryAccounts = uniqueAccounts(
     categoryPostings.flatMap(posting => {
-      const account = input.accountsById.get(posting.accountId)
+      const account = input.accountsById[posting.accountId]
       return account ? [account] : []
     }),
   )
 
   if (categoryPostings.length > 0) {
-    const categoryAccountIds = new Set(categoryAccounts.map(account => account.id))
-    const categoryAccountId = categoryAccountIds.size === 1 ? [...categoryAccountIds][0]! : null
+    const categoryAccountIds = uniq(categoryAccounts.map(account => account.id))
+    const categoryAccountId = categoryAccountIds.length === 1 ? categoryAccountIds[0]! : null
     const isSplit = categoryPostings.length > 1
     return {
       categoryAccounts,
       categoryAccountId,
-      categoryLabel: isSplit ? 'Split transaction' : (input.accountsById.get(categoryAccountId ?? '')?.name ?? 'Unknown category'),
+      categoryLabel: isSplit ? 'Split transaction' : (input.accountsById[categoryAccountId ?? '']?.name ?? 'Unknown category'),
       isSplit,
       splitLines: categoryPostings.map(posting => ({accountId: posting.accountId, amount: formatMoneyDecimal(absoluteMoneyAmount(posting.amount), posting.currency)})),
       isUncategorized: false,
@@ -365,8 +378,8 @@ function buildRowInterpretation(input: {
 
   const transferCounterPosting = input.transactionPostings.find(posting => posting.id !== input.bankPosting.id && isBankLinkedPosting(posting, input.accountsById))
   if (transferCounterPosting) {
-    const counterAccount = input.accountsById.get(transferCounterPosting.accountId)
-    const counterAccountName = counterAccount?.linkedBankAccountId ? (input.bankAccountNamesById.get(counterAccount.linkedBankAccountId) ?? counterAccount.name) : 'Unknown account'
+    const counterAccount = input.accountsById[transferCounterPosting.accountId]
+    const counterAccountName = counterAccount?.linkedBankAccountId ? (input.bankAccountNamesById[counterAccount.linkedBankAccountId] ?? counterAccount.name) : 'Unknown account'
     const direction = input.bankPosting.amount < 0 ? 'to' : 'from'
     return {
       categoryAccounts: [],
@@ -388,8 +401,8 @@ function buildRowInterpretation(input: {
   }
 }
 
-function isBankLinkedPosting(posting: NormalizedPosting, accountsById: Map<string, NormalizedAccount>) {
-  return Boolean(accountsById.get(posting.accountId)?.linkedBankAccountId)
+function isBankLinkedPosting(posting: NormalizedPosting, accountsById: Record<string, NormalizedAccount>) {
+  return Boolean(accountsById[posting.accountId]?.linkedBankAccountId)
 }
 
 function isRealCategorizationAccount(account: NormalizedAccount) {
@@ -404,15 +417,7 @@ function isRecentlyProcessing(value: Date | string | number | null, now: Date) {
 }
 
 function uniqueAccounts(accounts: NormalizedAccount[]) {
-  return [...new Map(accounts.map(account => [account.id, account])).values()]
+  return uniqBy(accounts, account => account.id)
 }
 
-function groupBy<T>(items: T[], key: (item: T) => string) {
-  const groups = new Map<string, T[]>()
-  for (const item of items) {
-    const groupKey = key(item)
-    groups.set(groupKey, [...(groups.get(groupKey) ?? []), item])
-  }
-  return groups
-}
 

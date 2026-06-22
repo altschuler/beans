@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react'
 import {useQuery} from '@rocicorp/zero/react'
+import {keyBy} from 'lodash-es'
 import {listDanishInstitutions, startBankLink, syncBankAccount} from '@/banking/banking-fns'
 import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
 import {Currency} from '@/components/currency'
@@ -13,8 +14,8 @@ import {queries} from '@/zero/queries'
 type Institution = Awaited<ReturnType<typeof listDanishInstitutions>>[number]
 
 export function BankingDashboard() {
-  const [accounts] = useQuery(queries.domain.bankAccounts())
-  const [transactions] = useQuery(queries.domain.bankTransactions())
+  const [accounts, accountsStatus] = useQuery(queries.domain.bankAccounts())
+  const [transactions, transactionsStatus] = useQuery(queries.domain.bankTransactions())
   const [institutions, setInstitutions] = useState<Institution[]>([])
   const [selectedInstitutionId, setSelectedInstitutionId] = useState('')
   const [filter, setFilter] = useState('')
@@ -44,8 +45,11 @@ export function BankingDashboard() {
 
   const query = filter.trim().toLowerCase()
   const filteredInstitutions = (query ? institutions.filter((institution) => institution.name.toLowerCase().includes(query)) : institutions).slice(0, 20)
-  const accountNamesById = new Map(accounts.map((account) => [account.id, account.name]))
-  const transactionCountLabel = `${transactions.length} ${transactions.length === 1 ? 'transaction' : 'transactions'}`
+  const accountsById = keyBy(accounts, account => account.id)
+  const accountsComplete = accountsStatus.type === 'complete'
+  const transactionsComplete = transactionsStatus.type === 'complete'
+  const transactionCountLabel =
+    transactions.length > 0 || transactionsComplete ? `${transactions.length} ${transactions.length === 1 ? 'transaction' : 'transactions'}` : 'Syncing…'
 
   async function connectBank() {
     if (!selectedInstitutionId) {
@@ -126,7 +130,7 @@ export function BankingDashboard() {
           </CardHeader>
           <CardContent data-testid="bank-accounts" className="space-y-3">
             {accounts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No bank accounts linked yet.</p>
+              <p className="text-sm text-muted-foreground">{accountsComplete ? 'No bank accounts linked yet.' : 'Syncing bank accounts…'}</p>
             ) : (
               accounts.map((account) => {
                 const isSyncing = account.syncStatus === 'syncing'
@@ -170,14 +174,14 @@ export function BankingDashboard() {
           </CardHeader>
           <CardContent data-testid="bank-transactions" className="space-y-3">
             {transactions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No transactions synced yet.</p>
+              <p className="text-sm text-muted-foreground">{transactionsComplete ? 'No transactions synced yet.' : 'Syncing transactions…'}</p>
             ) : (
               transactions.map((transaction) => (
                 <div key={transaction.id} className="grid gap-1 rounded-md border p-3 md:grid-cols-[1fr_auto] md:items-center">
                   <div>
                     <p className="font-medium">{transaction.description}</p>
                     <p className="text-sm text-muted-foreground">
-                      {accountNamesById.get(transaction.bankAccountId) ?? 'Unknown account'} · {transaction.bookingDate ?? transaction.valueDate ?? 'No date'} ·{' '}
+                      {accountsById[transaction.bankAccountId]?.name ?? 'Unknown account'} · {transaction.bookingDate ?? transaction.valueDate ?? 'No date'} ·{' '}
                       {transaction.status}
                     </p>
                   </div>

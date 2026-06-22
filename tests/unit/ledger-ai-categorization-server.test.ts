@@ -539,7 +539,7 @@ describe('aiCategorizeBankTransactions', () => {
       userConfirmedAt: null,
       userConfirmedBy: null,
     })
-    expect(interpretation?.ledgerTransaction?.id).not.toBe('ledger-transaction-1')
+    expect(interpretation?.ledgerTransaction?.id).toBe('ledger-transaction-1')
     expect(bankTransaction?.aiConfidence).toBe(2)
     expect(bankTransaction?.aiReasoning).toBe('Known supermarket')
     expect(bankTransaction?.aiProcessingStartedAt).toBeNull()

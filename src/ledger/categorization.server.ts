@@ -1,6 +1,7 @@
 import '@tanstack/react-start/server-only'
 
 import {and, eq, inArray, isNotNull, isNull} from 'drizzle-orm'
+import {keyBy, uniq} from 'lodash-es'
 import {absoluteMoneyAmount, formatMoneyDecimal} from '@/lib/money'
 import type {DrizzleTransaction as ZeroDrizzleTransaction} from '@rocicorp/zero/server/adapters/drizzle'
 import type {Database} from '@/db/client'
@@ -94,6 +95,7 @@ type ReconciledPostingInvariantInput = LoadedImportedLedgerTransaction & {
 const AI_PROCESSING_STALE_AFTER_MS = 30 * 60 * 1000
 const MAX_AI_REASONING_LENGTH = 500
 const TRANSFER_MATCH_DATE_WINDOW_DAYS = 2
+const TRANSFER_CONFIRM_INVALID_MESSAGE = 'Transfer is not valid and cannot be confirmed'
 
 export function normalizeAiReasoning(reasoning: string) {
   return reasoning.trim().slice(0, MAX_AI_REASONING_LENGTH)
@@ -139,15 +141,20 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
   }
 
   const now = new Date()
-  const ledgerTransactionId = crypto.randomUUID()
-  const commonInsert = {
+  // Re-categorization updates the existing ledger transaction in place (reusing its id) rather than
+  // deleting and re-inserting, so Zero syncs an update instead of a delete+insert and id-keyed lookups
+  // stay stable. Postings are still fully rebuilt.
+  const ledgerTransactionId = existing ? existing.ledgerTransaction.id : crypto.randomUUID()
+  const writeFields = {
     ledgerTransactionId,
     teamId: loaded.teamId,
     userId: input.userId,
     date: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
-    description: loaded.bankTransaction.description,
+    // Left null: the bank transaction owns the description for bank-import interpretations (see schema).
+    description: null,
     status: input.status ?? 'confirmed',
     categorizedBy: input.categorizedBy ?? 'user',
+    requiredExistingStatus: input.requiredExistingStatus,
     now,
   }
 
@@ -157,9 +164,11 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
       throw new Error('Cannot transfer to the same bank account')
     }
 
+    // Claim and clear the existing interpretation before counter matching: the guarded UPDATE is the
+    // optimistic-concurrency check and clearing its postings frees the previous counter for re-matching.
     if (existing) {
-      const deleted = await deleteLoadedInterpretation(tx, existing, input.requiredExistingStatus)
-      if (input.requiredExistingStatus && !deleted) return false
+      const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, writeFields)
+      if (!claimed) return false
     }
 
     const counterBankTransaction = await findExactCounterBankTransaction({
@@ -188,7 +197,7 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
       now,
     })
 
-    await insertBankImportLedgerInterpretation(tx, {...commonInsert, postings})
+    await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: Boolean(existing), postings})
     await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
     return true
   }
@@ -200,8 +209,8 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
 
   await validateCategorizationAccounts(tx, loaded.teamId, lines.map(line => line.accountId))
   if (existing) {
-    const deleted = await deleteLoadedInterpretation(tx, existing, input.requiredExistingStatus)
-    if (input.requiredExistingStatus && !deleted) return false
+    const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, writeFields)
+    if (!claimed) return false
   }
 
   const postings = buildBankTransactionCategorizationPostings({
@@ -216,7 +225,7 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
     now,
   })
 
-  await insertBankImportLedgerInterpretation(tx, {...commonInsert, postings})
+  await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: Boolean(existing), postings})
   if (isAiCategorization) {
     await recordBankTransactionAiResult(tx, loaded.bankTransaction.id, input.aiConfidence ?? null, normalizedAiReasoning, now)
   } else {
@@ -245,7 +254,7 @@ export async function clearLedgerCategorizations(tx: DrizzleTransaction, input: 
 
   if (rows.length === 0) return {cleared: 0}
 
-  const transactionIds = [...new Set(rows.map(row => row.ledgerTransactionId))]
+  const transactionIds = uniq(rows.map(row => row.ledgerTransactionId))
   await tx.delete(ledgerTransactions).where(inArray(ledgerTransactions.id, transactionIds))
 
   return {cleared: transactionIds.length}
@@ -273,12 +282,21 @@ export async function confirmBankTransactionInterpretation(tx: DrizzleTransactio
     .where(eq(ledgerTransactions.id, ledgerTransaction.id))
     .returning({id: ledgerTransactions.id})
 
+  // 0 rows means the interpretation was deleted or rewritten by a concurrent action (e.g. clearing
+  // categorizations or a re-categorization) between our load and this update. No shared row lock
+  // serializes these, so the safe outcome is to abort and let the caller retry.
   if (!updatedTransaction) {
-    throw new Error('Transaction is currently being categorized by AI')
+    throw new Error('Transaction was changed concurrently, please retry')
   }
 }
 
 
+// Plain read, no row lock. Concurrency safety relies on the `ledger_postings.bankTransactionId`
+// unique index (a second concurrent attempt to create an interpretation for the same bank transaction
+// hits the constraint and rolls back) plus the guarded UPDATE in claimExistingInterpretationForRewrite
+// (optimistic-concurrency check on re-categorization) and balance validation on every write. Concurrent
+// writes to the same bank transaction resolve as last-writer-wins or roll back and retry rather than
+// serializing on a shared lock — acceptable given low write concurrency.
 async function loadBankTransactionForCategorization(
   tx: DrizzleTransaction,
   userId: string,
@@ -309,7 +327,6 @@ async function loadBankTransactionForCategorization(
     .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
     .where(and(eq(bankTransactions.id, bankTransactionId), eq(teamMembers.userId, userId)))
     .limit(1)
-    .for('update', {of: bankTransactions})
 
   if (!row) throw new Error('Bank transaction not found')
   if (row.sourceLedgerAccount.teamId !== row.teamId || row.sourceLedgerAccount.linkedBankAccountId !== row.bankTransaction.bankAccountId) {
@@ -374,21 +391,80 @@ async function loadExistingInterpretationForBankTransaction(tx: DrizzleTransacti
   }
 }
 
-async function deleteLoadedInterpretation(
-  tx: DrizzleTransaction,
-  existing: {ledgerTransaction: {id: string}},
-  requiredExistingStatus?: LedgerTransactionFinalStatus,
-) {
-  if (requiredExistingStatus) {
-    const [deleted] = await tx
-      .delete(ledgerTransactions)
-      .where(and(eq(ledgerTransactions.id, existing.ledgerTransaction.id), eq(ledgerTransactions.status, requiredExistingStatus)))
-      .returning({id: ledgerTransactions.id})
-    return Boolean(deleted)
+type RewriteLedgerTransactionFields = {
+  userId: string
+  date: string | null
+  description: string | null
+  status: LedgerTransactionFinalStatus
+  categorizedBy: LedgerTransactionCategorizedBy
+  requiredExistingStatus?: LedgerTransactionFinalStatus
+  now: Date
+}
+
+// Updates the existing ledger transaction row in place and clears its postings so they can be rebuilt
+// under the same id. The guarded UPDATE doubles as the optimistic-concurrency check (returning false on
+// a status mismatch). Ordering is critical: a bare `return false` does not roll back the surrounding
+// db.transaction, so we must run the guarded UPDATE before deleting any postings — otherwise a failed
+// guard would commit a transaction stripped of its postings. createdAt is preserved (only updatedAt moves).
+async function claimExistingInterpretationForRewrite(tx: DrizzleTransaction, existingLedgerTransactionId: string, fields: RewriteLedgerTransactionFields) {
+  const conditions = [eq(ledgerTransactions.id, existingLedgerTransactionId)]
+  if (fields.requiredExistingStatus) {
+    conditions.push(eq(ledgerTransactions.status, fields.requiredExistingStatus))
   }
 
-  await tx.delete(ledgerTransactions).where(eq(ledgerTransactions.id, existing.ledgerTransaction.id))
+  const [updated] = await tx
+    .update(ledgerTransactions)
+    .set({
+      status: fields.status,
+      categorizedBy: fields.categorizedBy,
+      userConfirmedAt: fields.categorizedBy === 'ai' ? null : fields.now,
+      userConfirmedBy: fields.categorizedBy === 'ai' ? null : fields.userId,
+      date: fields.date,
+      description: fields.description,
+      updatedAt: fields.now,
+    })
+    .where(and(...conditions))
+    .returning({id: ledgerTransactions.id})
+
+  if (!updated) return false
+  await tx.delete(ledgerPostings).where(eq(ledgerPostings.ledgerTransactionId, existingLedgerTransactionId))
   return true
+}
+
+async function writeRebuiltInterpretation(
+  tx: DrizzleTransaction,
+  input: {
+    hasExisting: boolean
+    ledgerTransactionId: string
+    teamId: string
+    userId: string
+    date: string | null
+    description: string | null
+    status: LedgerTransactionFinalStatus
+    categorizedBy: LedgerTransactionCategorizedBy
+    now: Date
+    postings: BuiltLedgerPosting[]
+  },
+) {
+  if (input.hasExisting) {
+    // The transaction row was already updated in place by claimExistingInterpretationForRewrite; only
+    // the postings are rebuilt here.
+    await tx.insert(ledgerPostings).values(input.postings)
+    await validatePersistedTransactionBalance(tx, input.ledgerTransactionId)
+    return
+  }
+
+  await insertBankImportLedgerInterpretation(tx, {
+    ledgerTransactionId: input.ledgerTransactionId,
+    teamId: input.teamId,
+    userId: input.userId,
+    date: input.date,
+    description: input.description,
+    postings: input.postings,
+    status: input.status,
+    categorizedBy: input.categorizedBy,
+    now: input.now,
+  })
 }
 
 async function loadTransferLedgerAccount(tx: DrizzleTransaction, teamId: string, accountId: string): Promise<TransferLedgerAccount> {
@@ -475,7 +551,7 @@ async function insertBankImportLedgerInterpretation(
     teamId: string
     userId: string
     date: string | null
-    description: string
+    description: string | null
     postings: BuiltLedgerPosting[]
     status?: LedgerTransactionFinalStatus
     categorizedBy?: LedgerTransactionCategorizedBy
@@ -583,7 +659,7 @@ function validateReconciledPostingInvariant(input: ReconciledPostingInvariantInp
 }
 
 async function validateCategorizationAccounts(tx: DrizzleTransaction, teamId: string, lineAccountIds: string[]) {
-  const accountIds = [...new Set(lineAccountIds)]
+  const accountIds = uniq(lineAccountIds)
   const accounts = accountIds.length
     ? await tx
         .select({
@@ -598,9 +674,9 @@ async function validateCategorizationAccounts(tx: DrizzleTransaction, teamId: st
         .where(inArray(ledgerAccounts.id, accountIds))
     : []
 
-  const accountsById = new Map(accounts.map(account => [account.id, account]))
+  const accountsById = keyBy(accounts, account => account.id)
   for (const accountId of accountIds) {
-    const account = accountsById.get(accountId)
+    const account = accountsById[accountId]
     if (!account || account.teamId !== teamId || !isRealCategorizationAccount(account)) {
       throw new Error('Invalid categorization account')
     }
@@ -639,12 +715,12 @@ async function validateConfirmableInterpretationPostings(tx: DrizzleTransaction,
   }
 
   if (postings.length !== 2) {
-    throw new Error('Transaction must have a category before it can be confirmed')
+    throw new Error(TRANSFER_CONFIRM_INVALID_MESSAGE)
   }
 
   const bankLinkedPostings = postings.flatMap(posting => (posting.bankTransactionId === null ? [] : [{...posting, bankTransactionId: posting.bankTransactionId}]))
   if (bankLinkedPostings.length !== 2) {
-    throw new Error('Transaction must have a category before it can be confirmed')
+    throw new Error(TRANSFER_CONFIRM_INVALID_MESSAGE)
   }
 
   const bankTransactionRows = await tx
@@ -658,14 +734,14 @@ async function validateConfirmableInterpretationPostings(tx: DrizzleTransaction,
     .from(bankTransactions)
     .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
     .where(inArray(bankTransactions.id, bankLinkedPostings.map(posting => posting.bankTransactionId)))
-  const bankTransactionsById = new Map(bankTransactionRows.map(bankTransaction => [bankTransaction.id, bankTransaction]))
+  const bankTransactionsById = keyBy(bankTransactionRows, bankTransaction => bankTransaction.id)
 
-  if (bankTransactionsById.size !== bankLinkedPostings.length) {
-    throw new Error('Transaction must have a category before it can be confirmed')
+  if (Object.keys(bankTransactionsById).length !== bankLinkedPostings.length) {
+    throw new Error(TRANSFER_CONFIRM_INVALID_MESSAGE)
   }
 
   const hasInvalidTransferPosting = bankLinkedPostings.some(posting => {
-    const bankTransaction = bankTransactionsById.get(posting.bankTransactionId)
+    const bankTransaction = bankTransactionsById[posting.bankTransactionId]
     return (
       !bankTransaction ||
       posting.teamId !== teamId ||
@@ -677,12 +753,12 @@ async function validateConfirmableInterpretationPostings(tx: DrizzleTransaction,
     )
   })
   if (hasInvalidTransferPosting) {
-    throw new Error('Transaction must have a category before it can be confirmed')
+    throw new Error(TRANSFER_CONFIRM_INVALID_MESSAGE)
   }
 
-  const linkedBankAccountIds = new Set(bankLinkedPostings.map(posting => posting.linkedBankAccountId))
-  if (linkedBankAccountIds.size !== 2) {
-    throw new Error('Transaction must have a category before it can be confirmed')
+  const linkedBankAccountIds = uniq(bankLinkedPostings.map(posting => posting.linkedBankAccountId))
+  if (linkedBankAccountIds.length !== 2) {
+    throw new Error(TRANSFER_CONFIRM_INVALID_MESSAGE)
   }
 }
 

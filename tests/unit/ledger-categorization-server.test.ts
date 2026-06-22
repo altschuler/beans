@@ -73,6 +73,25 @@ async function seedCategorizationFixture() {
       createdAt: now,
       updatedAt: now,
     },
+    {
+      id: 'bank-account-team-2',
+      teamId: 'team-2',
+      bankConnectionId: null,
+      provider: 'gocardless',
+      providerInstitutionId: 'institution-2',
+      providerRequisitionId: 'requisition-2',
+      providerAccountId: 'provider-account-team-2',
+      name: 'Team 2 Checking',
+      iban: null,
+      currency: 'DKK',
+      status: 'linked',
+      syncStatus: 'idle',
+      syncError: null,
+      syncStartedAt: null,
+      lastSyncedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    },
   ])
   await db.insert(ledgerAccounts).values([
     account('bank-ledger-account', 'team-1', 'bank', 'debit', 'Checking', {linkedBankAccountId: 'bank-account-1', sortOrder: 0}),
@@ -84,8 +103,9 @@ async function seedCategorizationFixture() {
     account('inactive-expense', 'team-1', 'expense', 'credit', 'Inactive', {status: 'archived', sortOrder: 6}),
     account('corrections', 'team-1', 'adjustment', 'credit', 'Corrections', {sortOrder: 7}),
     account('other-team-expense', 'team-2', 'expense', 'credit', 'Other Team Expense', {groupId: 'group-2'}),
+    account('bank-ledger-account-team-2', 'team-2', 'bank', 'debit', 'Team 2 Checking', {linkedBankAccountId: 'bank-account-team-2', groupId: 'group-2'}),
   ])
-  await db.insert(bankTransactions).values({
+  await db.insert(bankTransactions).values([{
     id: 'bank-transaction-1',
     bankAccountId: 'bank-account-1',
     providerTransactionId: 'provider-transaction-1',
@@ -99,7 +119,23 @@ async function seedCategorizationFixture() {
     raw: {},
     createdAt: now,
     updatedAt: now,
-  })
+  }, {
+    // Unreconciled team-2 bank transaction with no ledger interpretation, used to assert team-1 users
+    // cannot categorize or split a fresh import they don't own (the no-existing-interpretation path).
+    id: 'bank-transaction-team-2',
+    bankAccountId: 'bank-account-team-2',
+    providerTransactionId: 'provider-transaction-team-2',
+    status: 'booked',
+    bookingDate: '2026-06-18',
+    valueDate: null,
+    amount: -1_000_000,
+    currency: 'DKK',
+    description: 'Other team supermarket',
+    counterpartyName: null,
+    raw: {},
+    createdAt: now,
+    updatedAt: now,
+  }])
   await seedImportedLedgerTransaction({
     ledgerTransactionId: 'ledger-transaction-1',
     bankTransactionId: 'bank-transaction-1',
@@ -235,7 +271,12 @@ describe('posting-based ledger categorization server functions', () => {
   afterAll(async () => closeDatabase())
 
 
-  it('serializes concurrent categorization of the same unreconciled bank transaction', async () => {
+  // The categorization paths take no FOR UPDATE row lock; concurrency safety comes from the
+  // `ledger_postings.bankTransactionId` unique index. Two concurrent first-time categorizations of the
+  // same bank transaction therefore don't both succeed — one commits, the other rolls back on the unique
+  // violation (and in production Zero would retry it, applying it as a last-writer-wins re-categorization).
+  // The invariant that matters is that the loser corrupts nothing: exactly one balanced interpretation.
+  it('keeps concurrent categorization of the same unreconciled bank transaction safe (one wins, one rolls back)', async () => {
     const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
     await insertUnreconciledBankTransaction({id: 'bank-concurrent-category', amount: -1_000_000, description: 'Concurrent card purchase'})
 
@@ -260,29 +301,36 @@ describe('posting-based ledger categorization server functions', () => {
       execute function test_sleep_on_concurrent_posting()
     `
 
+    let results: PromiseSettledResult<boolean>[]
     try {
-      await expect(
-        Promise.all([
-          db.transaction(tx =>
-            categorizeBankTransaction(tx, {
-              userId: 'user-1',
-              bankTransactionId: 'bank-concurrent-category',
-              selection: {kind: 'category', accountId: 'groceries'},
-            }),
-          ),
-          db.transaction(tx =>
-            categorizeBankTransaction(tx, {
-              userId: 'user-1',
-              bankTransactionId: 'bank-concurrent-category',
-              selection: {kind: 'category', accountId: 'household'},
-            }),
-          ),
-        ]),
-      ).resolves.toEqual([true, true])
+      results = await Promise.allSettled([
+        db.transaction(tx =>
+          categorizeBankTransaction(tx, {
+            userId: 'user-1',
+            bankTransactionId: 'bank-concurrent-category',
+            selection: {kind: 'category', accountId: 'groceries'},
+          }),
+        ),
+        db.transaction(tx =>
+          categorizeBankTransaction(tx, {
+            userId: 'user-1',
+            bankTransactionId: 'bank-concurrent-category',
+            selection: {kind: 'category', accountId: 'household'},
+          }),
+        ),
+      ])
     } finally {
       await sql`drop trigger if exists test_sleep_on_concurrent_posting on ledger_postings`
       await sql`drop function if exists test_sleep_on_concurrent_posting()`
     }
+
+    const fulfilled = results.filter(result => result.status === 'fulfilled')
+    const rejected = results.filter(result => result.status === 'rejected')
+    expect(fulfilled).toHaveLength(1)
+    expect((fulfilled[0] as PromiseFulfilledResult<boolean>).value).toBe(true)
+    expect(rejected).toHaveLength(1)
+    const reason = (rejected[0] as PromiseRejectedResult).reason
+    expect(String((reason as {cause?: unknown})?.cause ?? reason)).toContain('ledger_postings_bank_transaction_unique')
 
     const bankPostings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-concurrent-category'))
     expect(bankPostings).toHaveLength(1)
@@ -321,7 +369,7 @@ describe('posting-based ledger categorization server functions', () => {
     ])
 
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, ledgerTransactionId))
-    expect(transaction).toMatchObject({source: 'bank_import', status: 'confirmed', categorizedBy: 'user', description: 'Card purchase', date: '2026-06-20'})
+    expect(transaction).toMatchObject({source: 'bank_import', status: 'confirmed', categorizedBy: 'user', description: null, date: '2026-06-20'})
   })
 
   it('rejects transfer categorization when no counter bank transaction matches', async () => {
@@ -521,7 +569,7 @@ describe('posting-based ledger categorization server functions', () => {
     ])
   })
 
-  it('replaces an existing needs-review interpretation by bank transaction id and confirms', async () => {
+  it('updates an existing needs-review interpretation in place by bank transaction id and confirms', async () => {
     const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
 
     await db.transaction(tx =>
@@ -540,7 +588,8 @@ describe('posting-based ledger categorization server functions', () => {
       categorizedBy: 'user',
       userConfirmedBy: 'user-1',
     })
-    expect(interpretation?.transaction?.id).not.toBe('ledger-transaction-1')
+    // The ledger transaction id is reused (in-place update) rather than minted fresh on re-categorization.
+    expect(interpretation?.transaction?.id).toBe('ledger-transaction-1')
     expect(interpretation?.transaction?.userConfirmedAt).toBeInstanceOf(Date)
     expect(
       interpretation?.postings.map(posting => ({
@@ -552,6 +601,44 @@ describe('posting-based ledger categorization server functions', () => {
     ).toEqual([
       {accountId: 'bank-ledger-account', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0},
       {accountId: 'groceries', amount: 1_000_000, bankTransactionId: null, sortOrder: 1},
+    ])
+  })
+
+  it('keeps the ledger transaction id stable across re-categorization to a different category and a split', async () => {
+    const {categorizeBankTransaction, splitBankTransaction} = await import('@/ledger/categorization.server')
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {userId: 'user-1', bankTransactionId: 'bank-transaction-1', selection: {kind: 'category', accountId: 'groceries'}}),
+    )
+    const initialId = (await currentInterpretationForBankTransaction('bank-transaction-1'))?.transaction?.id
+    expect(initialId).toBe('ledger-transaction-1')
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {userId: 'user-1', bankTransactionId: 'bank-transaction-1', selection: {kind: 'category', accountId: 'household'}}),
+    )
+    const afterRecategorize = await currentInterpretationForBankTransaction('bank-transaction-1')
+    expect(afterRecategorize?.transaction?.id).toBe(initialId)
+    expect(afterRecategorize?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount}))).toEqual([
+      {accountId: 'bank-ledger-account', amount: -1_000_000},
+      {accountId: 'household', amount: 1_000_000},
+    ])
+
+    await db.transaction(tx =>
+      splitBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transaction-1',
+        lines: [
+          {accountId: 'groceries', amount: '70.00'},
+          {accountId: 'household', amount: '30.00'},
+        ],
+      }),
+    )
+    const afterSplit = await currentInterpretationForBankTransaction('bank-transaction-1')
+    expect(afterSplit?.transaction?.id).toBe(initialId)
+    expect(afterSplit?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount}))).toEqual([
+      {accountId: 'bank-ledger-account', amount: -1_000_000},
+      {accountId: 'groceries', amount: 700_000},
+      {accountId: 'household', amount: 300_000},
     ])
   })
 
@@ -844,7 +931,7 @@ describe('posting-based ledger categorization server functions', () => {
           bankTransactionId: 'bank-transfer-invalid-source',
         }),
       ),
-    ).rejects.toThrow('Transaction must have a category before it can be confirmed')
+    ).rejects.toThrow('Transfer is not valid and cannot be confirmed')
 
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transfer-invalid-confirm'))
     expect(transaction).toMatchObject({status: 'needs_review', userConfirmedBy: null})
@@ -899,7 +986,7 @@ describe('posting-based ledger categorization server functions', () => {
           bankTransactionId: 'bank-transfer-same-account-source',
         }),
       ),
-    ).rejects.toThrow('Transaction must have a category before it can be confirmed')
+    ).rejects.toThrow('Transfer is not valid and cannot be confirmed')
 
     const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transfer-same-account-confirm'))
     expect(transaction).toMatchObject({status: 'needs_review', userConfirmedBy: null})
@@ -1059,5 +1146,42 @@ describe('posting-based ledger categorization server functions', () => {
         }),
       ),
     ).rejects.toThrow('Bank transaction not found')
+  })
+
+  it('rejects categorizing a fresh bank transaction owned by another team without creating postings', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+
+    await expect(
+      db.transaction(tx =>
+        categorizeBankTransaction(tx, {
+          userId: 'user-1',
+          bankTransactionId: 'bank-transaction-team-2',
+          selection: {kind: 'category', accountId: 'groceries'},
+        }),
+      ),
+    ).rejects.toThrow('Bank transaction not found')
+
+    await expect(db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transaction-team-2'))).resolves.toHaveLength(0)
+  })
+
+  it('rejects splitting a fresh bank transaction owned by another team without creating postings', async () => {
+    const {splitBankTransaction} = await import('@/ledger/categorization.server')
+
+    // Lines balance the team-2 bank amount, proving the denial happens on authorization rather than the
+    // split-total or no-existing-interpretation checks downstream.
+    await expect(
+      db.transaction(tx =>
+        splitBankTransaction(tx, {
+          userId: 'user-1',
+          bankTransactionId: 'bank-transaction-team-2',
+          lines: [
+            {accountId: 'groceries', amount: '70.00'},
+            {accountId: 'household', amount: '30.00'},
+          ],
+        }),
+      ),
+    ).rejects.toThrow('Bank transaction not found')
+
+    await expect(db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transaction-team-2'))).resolves.toHaveLength(0)
   })
 })

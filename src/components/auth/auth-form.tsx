@@ -12,9 +12,9 @@ type Mode = 'sign-in' | 'sign-up'
 export function AuthForm({redirect}: {redirect?: string}) {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>('sign-in')
-  const [name, setName] = useState('Test User')
-  const [email, setEmail] = useState('test@example.com')
-  const [password, setPassword] = useState('password1234')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 

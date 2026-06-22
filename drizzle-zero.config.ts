@@ -64,7 +64,7 @@ export default drizzleZeroConfig(drizzleSchema, {
       currency: true,
       description: true,
       counterpartyName: true,
-      raw: true,
+      raw: false,
       aiConfidence: true,
       aiProcessingStartedAt: true,
       aiReasoning: true,

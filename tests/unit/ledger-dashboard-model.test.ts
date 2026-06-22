@@ -96,6 +96,77 @@ describe('buildLedgerDashboardModel', () => {
     })
   })
 
+  it('builds categorized rows from related bank transaction data without flat ledger tables', () => {
+    const model = buildLedgerDashboardModel({
+      groups: baseGroups,
+      accounts: baseAccounts,
+      ledgerTransactions: [],
+      postings: [],
+      bankTransactions: [
+        {
+          id: 'bank-transaction-1',
+          bankAccountId: 'bank-account-1',
+          amount: -1_000_000,
+          currency: 'DKK',
+          bookingDate: '2026-06-18',
+          valueDate: null,
+          description: 'Netto',
+          aiConfidence: 2,
+          aiProcessingStartedAt: null,
+          aiReasoning: 'Matched groceries.',
+          posting: {
+            id: 'bank-posting-1',
+            ledgerTransactionId: 'ledger-transaction-1',
+            accountId: 'checking',
+            amount: -1_000_000,
+            currency: 'DKK',
+            bankTransactionId: 'bank-transaction-1',
+            sortOrder: 0,
+            ledgerTransaction: {
+              id: 'ledger-transaction-1',
+              source: 'bank_import',
+              status: 'confirmed',
+              categorizedBy: 'ai',
+              userConfirmedAt: null,
+              userConfirmedBy: null,
+              date: '2026-06-18',
+              description: 'Netto ledger fallback',
+              postings: [
+                {
+                  id: 'bank-posting-1',
+                  ledgerTransactionId: 'ledger-transaction-1',
+                  accountId: 'checking',
+                  amount: -1_000_000,
+                  currency: 'DKK',
+                  bankTransactionId: 'bank-transaction-1',
+                  sortOrder: 0,
+                },
+                {
+                  id: 'category-posting-1',
+                  ledgerTransactionId: 'ledger-transaction-1',
+                  accountId: 'groceries',
+                  amount: 1_000_000,
+                  currency: 'DKK',
+                  bankTransactionId: null,
+                  sortOrder: 1,
+                },
+              ],
+            },
+          },
+        },
+      ],
+      bankAccounts: [{id: 'bank-account-1', name: 'Checking'}],
+    })
+
+    expect(model.transactionRows[0]).toMatchObject({
+      id: 'bank-transaction-1',
+      ledgerTransactionId: 'ledger-transaction-1',
+      categoryAccountId: 'groceries',
+      categoryLabel: 'Groceries',
+      statusIndicator: {kind: 'ai_confident', canConfirm: true},
+    })
+  })
+
   it('shows manual rows with the confirmed status token', () => {
     const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'user', userConfirmedAt: new Date('2026-06-19T10:00:00.000Z')})
 

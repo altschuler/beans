@@ -184,28 +184,159 @@ describe('ledger Zero mutators', () => {
     expect(clearLedgerCategorizations).toHaveBeenCalledWith('wrapped-tx', {userId: 'user-1'})
   })
 
-  it('does not run server-only persistence during optimistic client execution', async () => {
+  it('optimistically categorizes an unreconciled bank transaction with deterministic ledger rows', async () => {
     const {mutators} = await import('@/zero/mutators')
+    const tx = createClientTransaction({
+      bankTransactions: [bankTransaction()],
+      ledgerAccounts: [bankLedgerAccount(), categoryAccount('groceries', 'Groceries')],
+    })
     const request = mutators.ledger.categorizeTransaction({
       bankTransactionId: 'bank-transaction-1',
       selection: {kind: 'category', accountId: 'groceries'},
     })
-    const clearRequest = mutators.ledger.clearCategorizations({})
 
-    await request.mutator.fn({
-      args: request.args,
-      ctx: {userID: 'user-1'},
-      tx: {location: 'client'} as never,
-    })
-    await clearRequest.mutator.fn({
-      args: clearRequest.args,
-      ctx: {userID: 'user-1'},
-      tx: {location: 'client'} as never,
-    })
+    await request.mutator.fn({args: request.args, ctx: {userID: 'user-1'}, tx: tx as never})
 
+    expect(tx.operations).toEqual([
+      {
+        table: 'ledgerTransactions',
+        kind: 'insert',
+        value: expect.objectContaining({
+          id: 'optimistic:client-1:7:ledger-transaction:bank-transaction-1',
+          teamId: 'team-1',
+          source: 'bank_import',
+          status: 'confirmed',
+          categorizedBy: 'user',
+          userConfirmedBy: 'user-1',
+          date: '2026-06-18',
+          description: null,
+        }),
+      },
+      {
+        table: 'ledgerPostings',
+        kind: 'insert',
+        value: expect.objectContaining({
+          id: 'optimistic:client-1:7:posting:0',
+          ledgerTransactionId: 'optimistic:client-1:7:ledger-transaction:bank-transaction-1',
+          accountId: 'checking',
+          amount: -1_000_000,
+          currency: 'DKK',
+          bankTransactionId: 'bank-transaction-1',
+          sortOrder: 0,
+        }),
+      },
+      {
+        table: 'ledgerPostings',
+        kind: 'insert',
+        value: expect.objectContaining({
+          id: 'optimistic:client-1:7:posting:1',
+          ledgerTransactionId: 'optimistic:client-1:7:ledger-transaction:bank-transaction-1',
+          accountId: 'groceries',
+          amount: 1_000_000,
+          currency: 'DKK',
+          bankTransactionId: null,
+          sortOrder: 1,
+        }),
+      },
+      {
+        table: 'bankTransactions',
+        kind: 'update',
+        value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, aiProcessingStartedAt: null}),
+      },
+    ])
     expect(categorizeBankTransaction).not.toHaveBeenCalled()
+  })
+
+  it('leaves transfer categorization server-authoritative because counter matching is not local', async () => {
+    const {mutators} = await import('@/zero/mutators')
+    const tx = createClientTransaction({
+      bankTransactions: [bankTransaction()],
+      ledgerAccounts: [bankLedgerAccount(), {...bankLedgerAccount(), id: 'savings', linkedBankAccountId: 'bank-account-2'}],
+    })
+    const request = mutators.ledger.categorizeTransaction({
+      bankTransactionId: 'bank-transaction-1',
+      selection: {kind: 'transfer', accountId: 'savings'},
+    })
+
+    await request.mutator.fn({args: request.args, ctx: {userID: 'user-1'}, tx: tx as never})
+
+    expect(tx.operations).toEqual([])
+    expect(categorizeBankTransaction).not.toHaveBeenCalled()
+  })
+
+  it('optimistically replaces an existing interpretation with split postings', async () => {
+    const {mutators} = await import('@/zero/mutators')
+    const tx = createClientTransaction({
+      bankTransactions: [bankTransaction()],
+      ledgerAccounts: [bankLedgerAccount(), categoryAccount('groceries', 'Groceries'), categoryAccount('household', 'Household')],
+      ledgerTransactions: [ledgerTransaction()],
+      ledgerPostings: [
+        posting({id: 'old-bank-posting', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0}),
+        posting({id: 'old-category-posting', accountId: 'groceries', amount: 1_000_000, bankTransactionId: null, sortOrder: 1}),
+      ],
+    })
+    const request = mutators.ledger.splitTransaction({
+      bankTransactionId: 'bank-transaction-1',
+      lines: [
+        {accountId: 'groceries', amount: '70.00'},
+        {accountId: 'household', amount: '30.00'},
+      ],
+    })
+
+    await request.mutator.fn({args: request.args, ctx: {userID: 'user-1'}, tx: tx as never})
+
+    expect(tx.operations).toEqual([
+      {table: 'ledgerTransactions', kind: 'update', value: expect.objectContaining({id: 'ledger-transaction-1', status: 'confirmed', categorizedBy: 'user', userConfirmedBy: 'user-1'})},
+      {table: 'ledgerPostings', kind: 'delete', value: {id: 'old-bank-posting'}},
+      {table: 'ledgerPostings', kind: 'delete', value: {id: 'old-category-posting'}},
+      {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0})},
+      {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries', amount: 700_000, bankTransactionId: null, sortOrder: 1})},
+      {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'household', amount: 300_000, bankTransactionId: null, sortOrder: 2})},
+      {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, aiProcessingStartedAt: null})},
+    ])
     expect(splitBankTransaction).not.toHaveBeenCalled()
+  })
+
+  it('optimistically confirms the current interpretation by bank transaction id', async () => {
+    const {mutators} = await import('@/zero/mutators')
+    const tx = createClientTransaction({
+      bankTransactions: [bankTransaction()],
+      ledgerTransactions: [ledgerTransaction({status: 'needs_review', categorizedBy: 'ai'})],
+      ledgerPostings: [posting({id: 'bank-posting', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0})],
+    })
+    const request = mutators.ledger.confirmTransaction({bankTransactionId: 'bank-transaction-1'})
+
+    await request.mutator.fn({args: request.args, ctx: {userID: 'user-1'}, tx: tx as never})
+
+    expect(tx.operations).toEqual([
+      {
+        table: 'ledgerTransactions',
+        kind: 'update',
+        value: expect.objectContaining({id: 'ledger-transaction-1', status: 'confirmed', userConfirmedBy: 'user-1'}),
+      },
+    ])
     expect(confirmBankTransactionInterpretation).not.toHaveBeenCalled()
+  })
+
+  it('optimistically clears bank-import interpretations and their postings', async () => {
+    const {mutators} = await import('@/zero/mutators')
+    const tx = createClientTransaction({
+      ledgerTransactions: [ledgerTransaction(), ledgerTransaction({id: 'manual-transaction', source: 'manual'})],
+      ledgerPostings: [
+        posting({id: 'bank-posting', ledgerTransactionId: 'ledger-transaction-1', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0}),
+        posting({id: 'category-posting', ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries', amount: 1_000_000, bankTransactionId: null, sortOrder: 1}),
+        posting({id: 'manual-posting', ledgerTransactionId: 'manual-transaction', accountId: 'groceries', amount: 1_000_000, bankTransactionId: null, sortOrder: 0}),
+      ],
+    })
+    const request = mutators.ledger.clearCategorizations({})
+
+    await request.mutator.fn({args: request.args, ctx: {userID: 'user-1'}, tx: tx as never})
+
+    expect(tx.operations).toEqual([
+      {table: 'ledgerPostings', kind: 'delete', value: {id: 'bank-posting'}},
+      {table: 'ledgerPostings', kind: 'delete', value: {id: 'category-posting'}},
+      {table: 'ledgerTransactions', kind: 'delete', value: {id: 'ledger-transaction-1'}},
+    ])
     expect(clearLedgerCategorizations).not.toHaveBeenCalled()
   })
 
@@ -219,3 +350,131 @@ describe('ledger Zero mutators', () => {
     expect('aiCategorizeNeedsReviewBatch' in serverMutators.ledger).toBe(false)
   })
 })
+
+type TestRows = {
+  bankTransactions?: Array<Record<string, unknown>>
+  ledgerAccounts?: Array<Record<string, unknown>>
+  ledgerTransactions?: Array<Record<string, unknown>>
+  ledgerPostings?: Array<Record<string, unknown>>
+}
+
+type TestOperation = {table: string; kind: string; value: unknown}
+
+function createClientTransaction(rows: TestRows) {
+  const rowStore: Record<string, Array<Record<string, unknown>>> = {
+    bankTransactions: rows.bankTransactions ?? [],
+    ledgerAccounts: rows.ledgerAccounts ?? [],
+    ledgerTransactions: rows.ledgerTransactions ?? [],
+    ledgerPostings: rows.ledgerPostings ?? [],
+  }
+  const operations: TestOperation[] = []
+
+  function record(table: string, kind: string) {
+    return async (value: unknown) => {
+      operations.push({table, kind, value})
+    }
+  }
+
+  return {
+    location: 'client',
+    clientID: 'client-1',
+    mutationID: 7,
+    reason: 'optimistic',
+    operations,
+    mutate: {
+      bankTransactions: {update: record('bankTransactions', 'update')},
+      ledgerTransactions: {
+        insert: record('ledgerTransactions', 'insert'),
+        update: record('ledgerTransactions', 'update'),
+        delete: record('ledgerTransactions', 'delete'),
+      },
+      ledgerPostings: {
+        insert: record('ledgerPostings', 'insert'),
+        delete: record('ledgerPostings', 'delete'),
+      },
+    },
+    async run(query: unknown) {
+      const ast = (query as {ast?: {table?: string; where?: unknown; limit?: number}}).ast
+      if (!ast?.table) throw new Error('Test query did not expose an AST table')
+      const results = (rowStore[ast.table] ?? []).filter(row => matchesWhere(row, ast.where))
+      return ast.limit === 1 ? results[0] : results
+    },
+  }
+}
+
+function matchesWhere(row: Record<string, unknown>, where: unknown): boolean {
+  if (!where) return true
+  const condition = where as {type?: string; left?: {type?: string; name?: string}; right?: {type?: string; value?: unknown}; op?: string; conditions?: unknown[]}
+  if (condition.type === 'and') return (condition.conditions ?? []).every(child => matchesWhere(row, child))
+  if (condition.type !== 'simple' || condition.left?.type !== 'column' || condition.right?.type !== 'literal' || condition.op !== '=') {
+    throw new Error(`Unsupported test query where clause: ${JSON.stringify(where)}`)
+  }
+  return row[condition.left.name!] === condition.right.value
+}
+
+function bankTransaction(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'bank-transaction-1',
+    bankAccountId: 'bank-account-1',
+    amount: -1_000_000,
+    currency: 'DKK',
+    bookingDate: '2026-06-18',
+    valueDate: null,
+    aiConfidence: 1,
+    aiReasoning: 'AI suggestion',
+    aiProcessingStartedAt: null,
+    ...overrides,
+  }
+}
+
+function bankLedgerAccount(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'checking',
+    teamId: 'team-1',
+    linkedBankAccountId: 'bank-account-1',
+    type: 'bank',
+    status: 'active',
+    systemKey: null,
+    ...overrides,
+  }
+}
+
+function categoryAccount(id: string, name: string) {
+  return {
+    id,
+    teamId: 'team-1',
+    linkedBankAccountId: null,
+    type: 'expense',
+    status: 'active',
+    systemKey: null,
+    name,
+  }
+}
+
+function ledgerTransaction(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'ledger-transaction-1',
+    teamId: 'team-1',
+    source: 'bank_import',
+    status: 'needs_review',
+    categorizedBy: null,
+    userConfirmedAt: null,
+    userConfirmedBy: null,
+    date: '2026-06-18',
+    description: null,
+    ...overrides,
+  }
+}
+
+function posting(overrides: Record<string, unknown>) {
+  return {
+    id: 'posting-1',
+    ledgerTransactionId: 'ledger-transaction-1',
+    accountId: 'checking',
+    amount: -1_000_000,
+    currency: 'DKK',
+    bankTransactionId: 'bank-transaction-1',
+    sortOrder: 0,
+    ...overrides,
+  }
+}

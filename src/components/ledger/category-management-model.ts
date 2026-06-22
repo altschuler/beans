@@ -1,3 +1,4 @@
+import {groupBy, sumBy} from 'lodash-es'
 import {absoluteMoneyAmount} from '@/lib/money'
 import {deriveLedgerAccountBalances, deriveSingleBalanceCurrency} from '@/ledger/categorization'
 
@@ -96,15 +97,15 @@ export function buildCategoryManagementModel(input: {
   const accountsByGroup = groupBy(visibleAccounts, account => account.groupId)
   const allAccountsByGroup = groupBy(normalizedAccounts, account => account.groupId)
   const visibleGroupIds = new Set([
-    ...accountsByGroup.keys(),
-    ...normalizedGroups.filter(group => !group.systemKey && (allAccountsByGroup.get(group.id) ?? []).length === 0).map(group => group.id),
+    ...Object.keys(accountsByGroup),
+    ...normalizedGroups.filter(group => !group.systemKey && (allAccountsByGroup[group.id] ?? []).length === 0).map(group => group.id),
   ])
 
   const groups = normalizedGroups
     .filter(group => visibleGroupIds.has(group.id))
     .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name))
     .map(group => {
-      const groupAccounts = (accountsByGroup.get(group.id) ?? [])
+      const groupAccounts = (accountsByGroup[group.id] ?? [])
         .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name))
         .map(account => buildAccountModel(account, absoluteMoneyBalance(balances.get(account.id) ?? 0), deriveSingleBalanceCurrency(account.id, normalizedPostings), postingCounts.get(account.id) ?? 0))
       const locked = Boolean(group.systemKey)
@@ -124,7 +125,7 @@ export function buildCategoryManagementModel(input: {
   return {
     groups,
     editableGroups: groups.filter(group => !group.locked).map(group => ({id: group.id, name: group.name})),
-    categoryCount: groups.reduce((count, group) => count + group.accounts.length, 0),
+    categoryCount: sumBy(groups, group => group.accounts.length),
   }
 }
 
@@ -163,15 +164,6 @@ function buildAccountModel(
     canDelete: !locked && postingCount === 0,
     deleteDisabledReason: locked ? 'System accounts cannot be deleted.' : postingCount > 0 ? 'Categories with ledger history cannot be deleted.' : null,
   }
-}
-
-function groupBy<T>(items: T[], key: (item: T) => string) {
-  const groups = new Map<string, T[]>()
-  for (const item of items) {
-    const groupKey = key(item)
-    groups.set(groupKey, [...(groups.get(groupKey) ?? []), item])
-  }
-  return groups
 }
 
 function absoluteMoneyBalance(value: number | 'Multiple currencies') {

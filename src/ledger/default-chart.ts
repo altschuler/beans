@@ -1,3 +1,5 @@
+import {keyBy} from 'lodash-es'
+
 export const SYSTEM_LEDGER_ACCOUNT_KEYS = {
   readyToBudget: 'ready_to_budget',
   uncategorized: 'uncategorized',
@@ -149,9 +151,9 @@ export function buildDefaultLedgerChartForTeam(teamId: string, now = new Date())
     updatedAt: now,
   }))
 
-  const groupIdsByName = new Map(groups.map(group => [group.name, group.id]))
+  const groupsByName = keyBy(groups, group => group.name)
   const accounts: BuiltLedgerAccount[] = DEFAULT_LEDGER_GROUPS.flatMap(group => {
-    const groupId = groupIdsByName.get(group.name)
+    const groupId = groupsByName[group.name]?.id
     if (!groupId) throw new Error(`Missing generated group id for ${group.name}`)
 
     return group.accounts.map((account, sortOrder) => ({

@@ -7,7 +7,7 @@ import {db} from '@/db/client'
 import * as schema from '@/db/schema'
 
 const authBaseURL = process.env.BETTER_AUTH_URL ?? 'https://localhost:3000'
-const authSecret = process.env.BETTER_AUTH_SECRET ?? 'dev-secret-change-me-at-least-32-characters'
+const authSecret = process.env.BETTER_AUTH_SECRET
 
 export const auth = betterAuth({
   baseURL: authBaseURL,

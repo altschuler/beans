@@ -1,6 +1,7 @@
 import {useState} from 'react'
 import {useQuery, useZero} from '@rocicorp/zero/react'
 import {Lock} from 'lucide-react'
+import {uniq} from 'lodash-es'
 import {Currency} from '@/components/currency'
 import {PageLayout} from '@/components/page-layout'
 import {Badge} from '@/components/ui/badge'
@@ -30,8 +31,8 @@ export function CategoryManagementPage() {
   const teamId = teams[0]?.id ?? null
   const teamGroups = teamId ? groups.filter(group => group.teamId === teamId) : []
   const teamAccounts = teamId ? accounts.filter(account => account.teamId === teamId) : []
-  const teamAccountIds = new Set(teamAccounts.map(account => account.id))
-  const teamPostings = postings.filter(posting => teamAccountIds.has(posting.accountId))
+  const teamAccountIds = uniq(teamAccounts.map(account => account.id))
+  const teamPostings = postings.filter(posting => teamAccountIds.includes(posting.accountId))
   const model = buildCategoryManagementModel({groups: teamGroups, accounts: teamAccounts, postings: teamPostings})
 
   async function runMutation(mutation: Parameters<typeof zero.mutate>[0], close: () => void) {

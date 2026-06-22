@@ -2,6 +2,15 @@ import React from 'react'
 import {renderToStaticMarkup} from 'react-dom/server'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
+const queryStatuses = vi.hoisted(() => ({
+  groups: 'complete',
+  accounts: 'complete',
+  ledgerTransactions: 'complete',
+  postings: 'complete',
+  bankTransactions: 'complete',
+  bankAccounts: 'complete',
+}))
+
 const queryRows = vi.hoisted(() => ({
   groups: [] as Array<{id: string; name: string; sortOrder: number}>,
   accounts: [] as Array<{
@@ -48,6 +57,37 @@ const queryRows = vi.hoisted(() => ({
     aiConfidence: number | null
     aiProcessingStartedAt: Date | null
     aiReasoning: string | null
+    posting?: {
+      id: string
+      ledgerTransactionId: string
+      accountId: string
+      amount: number
+      currency: string
+      bankTransactionId: string | null
+      sortOrder: number
+      ledgerTransaction?: {
+        id: string
+        source: string
+        status: string
+        aiConfidence: number | null
+        aiProcessingStartedAt: Date | null
+        categorizedBy: string | null
+        userConfirmedAt: Date | null
+        userConfirmedBy: string | null
+        aiReasoning: string | null
+        date: string | null
+        description: string
+        postings?: Array<{
+          id: string
+          ledgerTransactionId: string
+          accountId: string
+          amount: number
+          currency: string
+          bankTransactionId: string | null
+          sortOrder: number
+        }>
+      }
+    }
   }>,
   bankAccounts: [] as Array<{id: string; name: string; syncStatus?: string}>,
 }))
@@ -106,6 +146,8 @@ const renderedPageLayouts = vi.hoisted(
       contentClassName?: string
     }>,
 )
+const requestedBankTransactionsForBankAccountArgs = vi.hoisted(() => [] as Array<{bankAccountId: string}>)
+const requestedQueryNames = vi.hoisted(() => [] as string[])
 
 vi.mock('sonner', () => ({
   toast: {
@@ -115,13 +157,17 @@ vi.mock('sonner', () => ({
 }))
 
 vi.mock('@rocicorp/zero/react', () => ({
-  useQuery: vi.fn((query: {name: string}) => {
-    if (query.name === 'ledgerAccountGroups') return [queryRows.groups]
-    if (query.name === 'ledgerAccounts') return [queryRows.accounts]
-    if (query.name === 'ledgerTransactions') return [queryRows.ledgerTransactions]
-    if (query.name === 'ledgerPostings') return [queryRows.postings]
-    if (query.name === 'bankTransactions') return [queryRows.bankTransactions]
-    if (query.name === 'bankAccounts') return [queryRows.bankAccounts]
+  useQuery: vi.fn((query: {name: string; bankAccountId?: string}) => {
+    requestedQueryNames.push(query.name)
+    if (query.name === 'ledgerAccountGroups') return [queryRows.groups, {type: queryStatuses.groups}]
+    if (query.name === 'ledgerAccounts') return [queryRows.accounts, {type: queryStatuses.accounts}]
+    if (query.name === 'ledgerAccountsForDashboard') return [queryRows.accounts, {type: queryStatuses.accounts}]
+    if (query.name === 'ledgerTransactions') return [queryRows.ledgerTransactions, {type: queryStatuses.ledgerTransactions}]
+    if (query.name === 'ledgerPostings') return [queryRows.postings, {type: queryStatuses.postings}]
+    if (query.name === 'bankTransactions') return [queryRows.bankTransactions, {type: queryStatuses.bankTransactions}]
+    if (query.name === 'bankTransactionsForDashboard') return [queryRows.bankTransactions, {type: queryStatuses.bankTransactions}]
+    if (query.name === 'bankTransactionsForBankAccount') return [queryRows.bankTransactions.filter(transaction => transaction.bankAccountId === query.bankAccountId), {type: queryStatuses.bankTransactions}]
+    if (query.name === 'bankAccounts') return [queryRows.bankAccounts, {type: queryStatuses.bankAccounts}]
     throw new Error(`Unexpected query: ${query.name}`)
   }),
   useZero: vi.fn(() => ({mutate: zeroMutate})),
@@ -243,9 +289,15 @@ vi.mock('@/zero/queries', () => ({
     domain: {
       ledgerAccountGroups: () => ({name: 'ledgerAccountGroups'}),
       ledgerAccounts: () => ({name: 'ledgerAccounts'}),
+      ledgerAccountsForDashboard: () => ({name: 'ledgerAccountsForDashboard'}),
       ledgerTransactions: () => ({name: 'ledgerTransactions'}),
       ledgerPostings: () => ({name: 'ledgerPostings'}),
       bankTransactions: () => ({name: 'bankTransactions'}),
+      bankTransactionsForDashboard: () => ({name: 'bankTransactionsForDashboard'}),
+      bankTransactionsForBankAccount: (args: {bankAccountId: string}) => {
+        requestedBankTransactionsForBankAccountArgs.push(args)
+        return {name: 'bankTransactionsForBankAccount', bankAccountId: args.bankAccountId}
+      },
       bankAccounts: () => ({name: 'bankAccounts'}),
     },
   },
@@ -298,6 +350,14 @@ describe('LedgerDashboard', () => {
     })
     renderedButtons.length = 0
     renderedPageLayouts.length = 0
+    requestedBankTransactionsForBankAccountArgs.length = 0
+    requestedQueryNames.length = 0
+    queryStatuses.groups = 'complete'
+    queryStatuses.accounts = 'complete'
+    queryStatuses.ledgerTransactions = 'complete'
+    queryStatuses.postings = 'complete'
+    queryStatuses.bankTransactions = 'complete'
+    queryStatuses.bankAccounts = 'complete'
     queryRows.groups = [{id: 'group-1', name: 'Everyday spending', sortOrder: 0}]
     queryRows.accounts = [
       {
@@ -381,6 +441,13 @@ describe('LedgerDashboard', () => {
         aiConfidence: 1,
         aiProcessingStartedAt: null,
         aiReasoning: 'Looks like a supermarket purchase.',
+        posting: {
+          ...queryRows.postings[0]!,
+          ledgerTransaction: {
+            ...queryRows.ledgerTransactions[0]!,
+            postings: queryRows.postings,
+          },
+        },
       },
     ]
     queryRows.bankAccounts = [{id: 'bank-account-1', name: 'Checking'}]
@@ -489,6 +556,7 @@ describe('LedgerDashboard', () => {
       }),
     )
 
+    expect(requestedBankTransactionsForBankAccountArgs).toEqual([{bankAccountId: 'bank-account-1'}])
     expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Checking'}])
     expect(markup).not.toContain('Review imported transactions for this bank account.')
     expect(markup).toContain('Netto')
@@ -517,6 +585,44 @@ describe('LedgerDashboard', () => {
     expect(markup).not.toContain('No imported ledger transactions yet.')
   })
 
+  it('waits for the bank account query to complete before showing selected bank account not found', () => {
+    queryRows.bankAccounts = []
+    queryStatuses.bankAccounts = 'unknown'
+
+    const markup = renderToStaticMarkup(
+      React.createElement(LedgerDashboard, {
+        view: 'bankAccountTransactions',
+        bankAccountId: 'missing-bank-account',
+      }),
+    )
+
+    expect(markup).toContain('Syncing bank account…')
+    expect(markup).not.toContain('Bank account not found.')
+  })
+
+  it('waits for imported transaction query completion before showing the empty transaction state', () => {
+    queryRows.ledgerTransactions = []
+    queryRows.postings = []
+    queryRows.bankTransactions = []
+    queryStatuses.bankTransactions = 'unknown'
+
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    expect(markup).toContain('Syncing transactions…')
+    expect(markup).not.toContain('No imported bank transactions yet.')
+  })
+
+  it('uses dashboard related queries instead of broad ledger transaction and posting reads', () => {
+    renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    expect(requestedQueryNames).toContain('ledgerAccountsForDashboard')
+    expect(requestedQueryNames).toContain('bankTransactionsForDashboard')
+    expect(requestedQueryNames).not.toContain('ledgerAccounts')
+    expect(requestedQueryNames).not.toContain('ledgerTransactions')
+    expect(requestedQueryNames).not.toContain('ledgerPostings')
+    expect(requestedQueryNames).not.toContain('bankTransactions')
+  })
+
   it('renders transactions as a table with bank account, category actions, and dot-only status marker', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
@@ -543,6 +649,18 @@ describe('LedgerDashboard', () => {
   it('enables batch AI when imported rows do not have ledger interpretations yet', () => {
     queryRows.ledgerTransactions = []
     queryRows.postings = []
+    queryRows.bankTransactions = queryRows.bankTransactions.map(transaction => ({
+      id: transaction.id,
+      bankAccountId: transaction.bankAccountId,
+      amount: transaction.amount,
+      currency: transaction.currency,
+      bookingDate: transaction.bookingDate,
+      valueDate: transaction.valueDate,
+      description: transaction.description,
+      aiConfidence: transaction.aiConfidence,
+      aiProcessingStartedAt: transaction.aiProcessingStartedAt,
+      aiReasoning: transaction.aiReasoning,
+    }))
 
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 

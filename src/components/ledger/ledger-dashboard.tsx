@@ -27,11 +27,12 @@ type LedgerDashboardProps = {
 export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDashboardProps) {
   const zero = useZero()
   const [groups] = useQuery(queries.domain.ledgerAccountGroups())
-  const [accounts] = useQuery(queries.domain.ledgerAccounts())
-  const [ledgerTransactions] = useQuery(queries.domain.ledgerTransactions())
-  const [postings] = useQuery(queries.domain.ledgerPostings())
-  const [bankTransactions] = useQuery(queries.domain.bankTransactions())
-  const [bankAccounts] = useQuery(queries.domain.bankAccounts())
+  const [accounts] = useQuery(queries.domain.ledgerAccountsForDashboard())
+  const bankTransactionsQuery = (view === 'bankAccountTransactions' && bankAccountId ? queries.domain.bankTransactionsForBankAccount({bankAccountId}) : queries.domain.bankTransactionsForDashboard()) as ReturnType<
+    typeof queries.domain.bankTransactionsForDashboard
+  >
+  const [bankTransactions, bankTransactionsStatus] = useQuery(bankTransactionsQuery)
+  const [bankAccounts, bankAccountsStatus] = useQuery(queries.domain.bankAccounts())
   const [isAiRequestPending, setIsAiRequestPending] = useState(false)
   const [isClearPending, setIsClearPending] = useState(false)
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
@@ -40,14 +41,17 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   const model = buildLedgerDashboardModel({
     groups,
     accounts,
-    ledgerTransactions,
-    postings,
     bankTransactions,
     bankAccounts,
     bankAccountIdFilter: view === 'bankAccountTransactions' ? bankAccountId : null,
   })
 
   const selectedBankAccount = view === 'bankAccountTransactions' ? bankAccounts.find((account) => account.id === bankAccountId) : undefined
+  const bankAccountsComplete = bankAccountsStatus.type === 'complete'
+  const bankTransactionsComplete = bankTransactionsStatus.type === 'complete'
+  const selectedBankAccountMissing = view === 'bankAccountTransactions' && !selectedBankAccount && bankAccountsComplete
+  const selectedBankAccountSyncing = view === 'bankAccountTransactions' && !selectedBankAccount && !bankAccountsComplete
+  const transactionRowsSyncing = model.transactionRows.length === 0 && !bankTransactionsComplete
   const showGlobalTransactionActions = view === 'transactions'
   const pageTitle = view === 'bankAccountTransactions' ? (selectedBankAccount?.name ?? 'Bank account') : 'Transactions'
 
@@ -174,16 +178,20 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
       <div className={dashboardClassName}>
         <div className={view === 'transactions' ? 'flex min-h-0 flex-1' : 'grid gap-4'}>
           {view === 'transactions' ? (
-            <TransactionTable
-              rows={model.transactionRows}
-              categorizationAccounts={model.categorizationAccounts}
-              transferAccounts={model.transferAccounts}
-              isAiRequestPending={isAiRequestPending}
-              onCategorizeBankTransaction={categorizeBankTransaction}
-              onConfirmTransaction={confirmTransaction}
-              onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
-              onSaveSplit={saveSplit}
-            />
+            transactionRowsSyncing ? (
+              <p className="p-4 text-sm text-muted-foreground md:p-6 lg:p-8">Syncing transactions…</p>
+            ) : (
+              <TransactionTable
+                rows={model.transactionRows}
+                categorizationAccounts={model.categorizationAccounts}
+                transferAccounts={model.transferAccounts}
+                isAiRequestPending={isAiRequestPending}
+                onCategorizeBankTransaction={categorizeBankTransaction}
+                onConfirmTransaction={confirmTransaction}
+                onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
+                onSaveSplit={saveSplit}
+              />
+            )
           ) : (
             <Card>
               <CardHeader>
@@ -191,8 +199,12 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
                 <CardDescription>Choose a category inline. Use Split only for the rare transaction that spans categories.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {!selectedBankAccount ? (
+                {selectedBankAccountSyncing ? (
+                  <p className="text-sm text-muted-foreground">Syncing bank account…</p>
+                ) : selectedBankAccountMissing ? (
                   <p className="text-sm text-muted-foreground">Bank account not found.</p>
+                ) : transactionRowsSyncing ? (
+                  <p className="text-sm text-muted-foreground">Syncing transactions…</p>
                 ) : (
                   <TransactionTable
                     rows={model.transactionRows}

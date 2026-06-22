@@ -17,12 +17,10 @@ type LedgerPostingRow = {
 }
 
 export function LedgerPostingsPage() {
-  const [accounts] = useQuery(queries.domain.ledgerAccounts())
-  const [ledgerTransactions] = useQuery(queries.domain.ledgerTransactions())
-  const [postings] = useQuery(queries.domain.ledgerPostings())
-  const [bankTransactions] = useQuery(queries.domain.bankTransactions())
+  const [postings, postingsStatus] = useQuery(queries.domain.ledgerPostingsWithRelations())
 
-  const rows = buildLedgerPostingRows({accounts, ledgerTransactions, postings, bankTransactions})
+  const rows = buildLedgerPostingRows({postings})
+  const postingsComplete = postingsStatus.type === 'complete'
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -38,7 +36,7 @@ export function LedgerPostingsPage() {
     <PageLayout breadcrumbs={[{title: 'Ledger'}]} contentClassName="p-0">
       <div className="flex h-full min-h-0 flex-col">
         {rows.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground md:p-6 lg:p-8">No ledger postings yet.</p>
+          <p className="p-4 text-sm text-muted-foreground md:p-6 lg:p-8">{postingsComplete ? 'No ledger postings yet.' : 'Syncing ledger postings…'}</p>
         ) : (
           <div ref={scrollContainerRef} className="h-full min-h-0 flex-1 overflow-auto rounded-md border">
             <table className="grid w-full min-w-[980px] text-sm">
@@ -90,8 +88,6 @@ export function LedgerPostingsPage() {
 }
 
 function buildLedgerPostingRows(input: {
-  accounts: ReadonlyArray<{id: string; name: string}>
-  ledgerTransactions: ReadonlyArray<{id: string; date: string | null}>
   postings: ReadonlyArray<{
     id: string
     ledgerTransactionId: string
@@ -100,21 +96,19 @@ function buildLedgerPostingRows(input: {
     currency: string
     bankTransactionId?: string | null
     sortOrder: number | null
+    account?: {id: string; name: string} | undefined
+    ledgerTransaction?: {id: string; date: string | null} | undefined
+    bankTransaction?: {id: string; bookingDate: string | null; valueDate: string | null} | undefined
   }>
-  bankTransactions: ReadonlyArray<{id: string; bookingDate: string | null; valueDate: string | null}>
 }): LedgerPostingRow[] {
-  const accountsById = new Map(input.accounts.map((account) => [account.id, account]))
-  const ledgerTransactionsById = new Map(input.ledgerTransactions.map((transaction) => [transaction.id, transaction]))
-  const bankTransactionsById = new Map(input.bankTransactions.map((transaction) => [transaction.id, transaction]))
-
   return input.postings
     .map((posting) => {
-      const ledgerTransaction = ledgerTransactionsById.get(posting.ledgerTransactionId)
-      const bankTransaction = posting.bankTransactionId ? bankTransactionsById.get(posting.bankTransactionId) : undefined
+      const ledgerTransaction = posting.ledgerTransaction
+      const bankTransaction = posting.bankTransaction
       return {
         id: posting.id,
         ledgerTransactionId: posting.ledgerTransactionId,
-        accountName: accountsById.get(posting.accountId)?.name ?? 'Unknown account',
+        accountName: posting.account?.name ?? 'Unknown account',
         date: ledgerTransaction?.date ?? bankTransaction?.bookingDate ?? bankTransaction?.valueDate ?? '—',
         amount: posting.amount,
         currency: posting.currency,

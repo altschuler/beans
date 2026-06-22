@@ -23,8 +23,8 @@ Choosing a category creates or replaces the internal ledger interpretation for t
 
 1. load and authorize the bank transaction through team membership
 2. load the bank-linked ledger account for the source bank account
-3. delete any existing interpretation for this bank transaction
-4. create a balanced ledger transaction with one reconciled bank posting and one category posting
+3. reuse any existing interpretation's ledger transaction in place (same id), or create a new one if none exists
+4. rebuild the postings into a balanced ledger transaction with one reconciled bank posting and one category posting
 5. mark the interpretation confirmed by the user
 6. clear stale AI metadata for that bank transaction
 
