@@ -6,12 +6,7 @@ import appStyles from '@/styles/app.css?url'
 
 export const Route = createRootRoute({
   head: () => ({
-    meta: [
-      {charSet: 'utf-8'},
-      {name: 'viewport', content: 'width=device-width, initial-scale=1'},
-      {title: 'Penge'},
-      {name: 'description', content: 'Local-first budgeting app boilerplate'},
-    ],
+    meta: [{charSet: 'utf-8'}, {name: 'viewport', content: 'width=device-width, initial-scale=1'}, {title: 'Penge'}, {name: 'description', content: 'Local-first budgeting app boilerplate'}],
     links: [{rel: 'stylesheet', href: appStyles}],
   }),
   component: RootComponent,

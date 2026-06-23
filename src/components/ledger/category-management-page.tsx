@@ -1,5 +1,4 @@
-import {useState} from 'react'
-import {useQuery, useZero} from '@rocicorp/zero/react'
+import {useQuery} from '@rocicorp/zero/react'
 import {Lock} from 'lucide-react'
 import {uniq} from 'lodash-es'
 import {Currency} from '@/components/currency'
@@ -7,74 +6,77 @@ import {PageLayout} from '@/components/page-layout'
 import {Badge} from '@/components/ui/badge'
 import {Button} from '@/components/ui/button'
 import {DEFAULT_CURRENCY} from '@/lib/money'
-import {runZeroMutation} from '@/lib/run-mutation'
-import {mutators} from '@/zero/mutators'
 import {queries} from '@/zero/queries'
+import {CategoryDialog, GroupDialog} from '@/components/dialogs'
+import {useDialog} from '@/hooks/use-dialogs'
 import {buildCategoryManagementModel, type CategoryManagementAccount, type CategoryManagementGroup} from './category-management-model'
-import {CategoryDialog, GroupDialog, type CategoryFormValues, type GroupFormValues} from './category-management-dialogs'
-
-type DialogState =
-  | {kind: 'none'}
-  | {kind: 'create-group'; returnToCategory: boolean}
-  | {kind: 'edit-group'; group: CategoryManagementGroup}
-  | {kind: 'create-category'; initialGroupId?: string | null}
-  | {kind: 'edit-category'; category: CategoryManagementAccount}
 
 export function CategoryManagementPage() {
-  const zero = useZero()
+  const {showDialog} = useDialog()
   const [teams] = useQuery(queries.domain.teams())
   const [groups] = useQuery(queries.domain.ledgerAccountGroups())
   const [accounts] = useQuery(queries.domain.ledgerAccounts())
   const [postings] = useQuery(queries.domain.ledgerPostings())
-  const [dialog, setDialog] = useState<DialogState>({kind: 'none'})
-  const [pending, setPending] = useState(false)
   const teamId = teams[0]?.id ?? null
-  const teamGroups = teamId ? groups.filter(group => group.teamId === teamId) : []
-  const teamAccounts = teamId ? accounts.filter(account => account.teamId === teamId) : []
-  const teamAccountIds = uniq(teamAccounts.map(account => account.id))
-  const teamPostings = postings.filter(posting => teamAccountIds.includes(posting.accountId))
-  const model = buildCategoryManagementModel({groups: teamGroups, accounts: teamAccounts, postings: teamPostings})
+  const teamGroups = teamId ? groups.filter((group) => group.teamId === teamId) : []
+  const teamAccounts = teamId ? accounts.filter((account) => account.teamId === teamId) : []
+  const teamAccountIds = uniq(teamAccounts.map((account) => account.id))
+  const teamPostings = postings.filter((posting) => teamAccountIds.includes(posting.accountId))
+  const model = buildCategoryManagementModel({
+    groups: teamGroups,
+    accounts: teamAccounts,
+    postings: teamPostings,
+  })
 
-  async function runMutation(mutation: Parameters<typeof zero.mutate>[0], close: () => void) {
-    setPending(true)
-    const ok = await runZeroMutation(zero.mutate(mutation), 'Could not save category changes')
-    if (ok) close()
-    setPending(false)
-  }
-
-  function createGroup(values: GroupFormValues) {
+  async function openCreateGroup() {
     if (!teamId) return
-    const id = crypto.randomUUID()
-    void runMutation(mutators.ledger.createCategoryGroup({id, teamId, name: values.name}), () => {
-      setDialog(dialog.kind === 'create-group' && dialog.returnToCategory ? {kind: 'create-category', initialGroupId: id} : {kind: 'none'})
+
+    await showDialog(GroupDialog, {
+      mode: 'create',
+      teamId,
     })
   }
 
-  function updateGroup(group: CategoryManagementGroup, values: GroupFormValues) {
-    void runMutation(mutators.ledger.updateCategoryGroup({groupId: group.id, name: values.name}), () => setDialog({kind: 'none'}))
-  }
-
-  function deleteGroup(group: CategoryManagementGroup) {
-    void runMutation(mutators.ledger.deleteCategoryGroup({groupId: group.id}), () => setDialog({kind: 'none'}))
-  }
-
-  function createCategory(values: CategoryFormValues) {
+  async function openEditGroup(group: CategoryManagementGroup) {
     if (!teamId) return
-    void runMutation(mutators.ledger.createCategoryAccount({id: crypto.randomUUID(), teamId, ...values}), () => setDialog({kind: 'none'}))
+
+    await showDialog(GroupDialog, {
+      mode: 'edit',
+      teamId,
+      group,
+    })
   }
 
-  function updateCategory(category: CategoryManagementAccount, values: CategoryFormValues) {
-    void runMutation(mutators.ledger.updateCategoryAccount({accountId: category.id, ...values}), () => setDialog({kind: 'none'}))
+  async function openCreateCategory(initialGroupId?: string | null) {
+    if (!teamId) return
+
+    await showDialog(CategoryDialog, {
+      mode: 'create',
+      teamId,
+      groups: model.editableGroups,
+      initialGroupId,
+    })
   }
 
-  function deleteCategory(category: CategoryManagementAccount) {
-    void runMutation(mutators.ledger.deleteCategoryAccount({accountId: category.id}), () => setDialog({kind: 'none'}))
+  async function openEditCategory(category: CategoryManagementAccount) {
+    if (!teamId) return
+
+    await showDialog(CategoryDialog, {
+      mode: 'edit',
+      teamId,
+      category,
+      groups: model.editableGroups,
+    })
   }
 
   const actions = (
     <>
-      <Button type="button" variant="outline" onClick={() => setDialog({kind: 'create-group', returnToCategory: false})}>Add group</Button>
-      <Button type="button" onClick={() => setDialog({kind: 'create-category'})} disabled={!teamId || model.editableGroups.length === 0}>Add category</Button>
+      <Button type="button" variant="outline" onClick={() => void openCreateGroup()}>
+        Add group
+      </Button>
+      <Button type="button" onClick={() => void openCreateCategory()} disabled={!teamId || model.editableGroups.length === 0}>
+        Add category
+      </Button>
     </>
   )
 
@@ -85,7 +87,7 @@ export function CategoryManagementPage() {
           {model.categoryCount} {model.categoryCount === 1 ? 'category' : 'categories'}
         </div>
         <div className="space-y-4 p-3 md:p-4">
-          {model.groups.map(group => (
+          {model.groups.map((group) => (
             <section key={group.id} className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
@@ -93,10 +95,19 @@ export function CategoryManagementPage() {
                   <h2 className="truncate text-sm font-semibold text-muted-foreground">{group.name}</h2>
                   <span className="text-xs text-muted-foreground">{group.accountCount}</span>
                 </div>
-                <Button type="button" variant="outline" aria-label={`Edit group ${group.name}`} disabled={!group.canEdit} title={group.lockReason ?? undefined} onClick={() => setDialog({kind: 'edit-group', group})}>Edit</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  aria-label={`Edit group ${group.name}`}
+                  disabled={!group.canEdit}
+                  title={group.lockReason ?? undefined}
+                  onClick={() => void openEditGroup(group)}
+                >
+                  Edit
+                </Button>
               </div>
               <div className="space-y-2">
-                {group.accounts.map(account => (
+                {group.accounts.map((account) => (
                   <div key={account.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-2">
@@ -110,7 +121,16 @@ export function CategoryManagementPage() {
                       <span className="font-mono text-sm">
                         {account.balance === 'Multiple currencies' ? account.balance : <Currency amount={account.balance} currency={account.balanceCurrency ?? DEFAULT_CURRENCY} />}
                       </span>
-                      <Button type="button" variant="outline" aria-label={`Edit category ${account.name}`} disabled={!account.canEdit} title={account.lockReason ?? undefined} onClick={() => setDialog({kind: 'edit-category', category: account})}>Edit</Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        aria-label={`Edit category ${account.name}`}
+                        disabled={!account.canEdit}
+                        title={account.lockReason ?? undefined}
+                        onClick={() => void openEditCategory(account)}
+                      >
+                        Edit
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -119,48 +139,6 @@ export function CategoryManagementPage() {
           ))}
         </div>
       </div>
-
-      <GroupDialog
-        key={dialog.kind === 'create-group' ? `create-group-${dialog.returnToCategory}` : 'create-group'}
-        mode="create"
-        open={dialog.kind === 'create-group'}
-        pending={pending}
-        onOpenChange={open => !open ? setDialog(dialog.kind === 'create-group' && dialog.returnToCategory ? {kind: 'create-category'} : {kind: 'none'}) : undefined}
-        onSubmit={createGroup}
-      />
-      <GroupDialog
-        key={`edit-group-${dialog.kind === 'edit-group' ? dialog.group.id : 'none'}`}
-        mode="edit"
-        open={dialog.kind === 'edit-group'}
-        group={dialog.kind === 'edit-group' ? dialog.group : null}
-        pending={pending}
-        onOpenChange={open => !open ? setDialog({kind: 'none'}) : undefined}
-        onSubmit={values => dialog.kind === 'edit-group' ? updateGroup(dialog.group, values) : undefined}
-        onDelete={() => dialog.kind === 'edit-group' ? deleteGroup(dialog.group) : undefined}
-      />
-      <CategoryDialog
-        key={`create-category-${dialog.kind === 'create-category' ? (dialog.initialGroupId ?? 'none') : 'none'}`}
-        mode="create"
-        open={dialog.kind === 'create-category'}
-        groups={model.editableGroups}
-        initialGroupId={dialog.kind === 'create-category' ? dialog.initialGroupId : null}
-        pending={pending}
-        onOpenChange={open => !open ? setDialog({kind: 'none'}) : undefined}
-        onSubmit={createCategory}
-        onRequestAddGroup={() => setDialog({kind: 'create-group', returnToCategory: true})}
-      />
-      <CategoryDialog
-        key={`edit-category-${dialog.kind === 'edit-category' ? dialog.category.id : 'none'}`}
-        mode="edit"
-        open={dialog.kind === 'edit-category'}
-        category={dialog.kind === 'edit-category' ? dialog.category : null}
-        groups={model.editableGroups}
-        pending={pending}
-        onOpenChange={open => !open ? setDialog({kind: 'none'}) : undefined}
-        onSubmit={values => dialog.kind === 'edit-category' ? updateCategory(dialog.category, values) : undefined}
-        onRequestAddGroup={() => setDialog({kind: 'create-group', returnToCategory: false})}
-        onDelete={() => dialog.kind === 'edit-category' ? deleteCategory(dialog.category) : undefined}
-      />
     </PageLayout>
   )
 }

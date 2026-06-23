@@ -13,7 +13,7 @@ type TransactionRowProps = {
   onCategorizeBankTransaction: (bankTransactionId: string, selection: CategorySelection) => void
   onConfirmTransaction: (bankTransactionId: string) => void
   onAiCategorizeOne: (bankTransactionId: string) => void
-  onSaveSplit: (row: TransactionTableRowData, splitLines: SplitLine[]) => Promise<boolean>
+  onSaveSplit: (row: TransactionTableRowData, splitLines: SplitLine[]) => boolean
   rowStyle?: CSSProperties
   rowIndex?: number
 }

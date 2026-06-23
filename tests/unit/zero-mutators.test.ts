@@ -340,6 +340,91 @@ describe('ledger Zero mutators', () => {
     expect(clearLedgerCategorizations).not.toHaveBeenCalled()
   })
 
+  it('optimistically creates, updates, and deletes category groups when local constraints allow it', async () => {
+    const {mutators} = await import('@/zero/mutators')
+    const tx = createClientTransaction({
+      ledgerAccountGroups: [ledgerAccountGroup({id: 'existing-group', sortOrder: 4})],
+    })
+    const createRequest = mutators.ledger.createCategoryGroup({id: 'pets-group', teamId: 'team-1', name: 'Pets'})
+    const updateRequest = mutators.ledger.updateCategoryGroup({groupId: 'existing-group', name: 'Everyday'})
+    const deleteRequest = mutators.ledger.deleteCategoryGroup({groupId: 'existing-group'})
+
+    await createRequest.mutator.fn({args: createRequest.args, ctx: {userID: 'user-1'}, tx: tx as never})
+    await updateRequest.mutator.fn({args: updateRequest.args, ctx: {userID: 'user-1'}, tx: tx as never})
+    await deleteRequest.mutator.fn({args: deleteRequest.args, ctx: {userID: 'user-1'}, tx: tx as never})
+
+    expect(tx.operations).toEqual([
+      {
+        table: 'ledgerAccountGroups',
+        kind: 'insert',
+        value: expect.objectContaining({
+          id: 'pets-group',
+          teamId: 'team-1',
+          systemKey: null,
+          name: 'Pets',
+          sortOrder: 5,
+          createdAt: expect.any(Number),
+          updatedAt: expect.any(Number),
+        }),
+      },
+      {
+        table: 'ledgerAccountGroups',
+        kind: 'update',
+        value: expect.objectContaining({id: 'existing-group', name: 'Everyday', updatedAt: expect.any(Number)}),
+      },
+      {table: 'ledgerAccountGroups', kind: 'delete', value: {id: 'existing-group'}},
+    ])
+    expect(createCategoryGroup).not.toHaveBeenCalled()
+    expect(updateCategoryGroup).not.toHaveBeenCalled()
+    expect(deleteCategoryGroup).not.toHaveBeenCalled()
+  })
+
+  it('optimistically creates, updates, and deletes category accounts when local constraints allow it', async () => {
+    const {mutators} = await import('@/zero/mutators')
+    const tx = createClientTransaction({
+      ledgerAccountGroups: [ledgerAccountGroup({id: 'spending-group'}), ledgerAccountGroup({id: 'pets-group', sortOrder: 2})],
+      ledgerAccounts: [categoryAccount('groceries', 'Groceries')],
+    })
+    const createRequest = mutators.ledger.createCategoryAccount({id: 'treats', teamId: 'team-1', groupId: 'pets-group', name: 'Treats', description: 'Pet snacks', type: 'expense'})
+    const updateRequest = mutators.ledger.updateCategoryAccount({accountId: 'groceries', groupId: 'pets-group', name: 'Food', description: 'Supermarkets', type: 'expense'})
+    const deleteRequest = mutators.ledger.deleteCategoryAccount({accountId: 'groceries'})
+
+    await createRequest.mutator.fn({args: createRequest.args, ctx: {userID: 'user-1'}, tx: tx as never})
+    await updateRequest.mutator.fn({args: updateRequest.args, ctx: {userID: 'user-1'}, tx: tx as never})
+    await deleteRequest.mutator.fn({args: deleteRequest.args, ctx: {userID: 'user-1'}, tx: tx as never})
+
+    expect(tx.operations).toEqual([
+      {
+        table: 'ledgerAccounts',
+        kind: 'insert',
+        value: expect.objectContaining({
+          id: 'treats',
+          teamId: 'team-1',
+          groupId: 'pets-group',
+          linkedBankAccountId: null,
+          systemKey: null,
+          type: 'expense',
+          normalBalance: 'credit',
+          name: 'Treats',
+          description: 'Pet snacks',
+          status: 'active',
+          sortOrder: 0,
+          createdAt: expect.any(Number),
+          updatedAt: expect.any(Number),
+        }),
+      },
+      {
+        table: 'ledgerAccounts',
+        kind: 'update',
+        value: expect.objectContaining({id: 'groceries', groupId: 'pets-group', type: 'expense', normalBalance: 'credit', name: 'Food', description: 'Supermarkets'}),
+      },
+      {table: 'ledgerAccounts', kind: 'delete', value: {id: 'groceries'}},
+    ])
+    expect(createCategoryAccount).not.toHaveBeenCalled()
+    expect(updateCategoryAccount).not.toHaveBeenCalled()
+    expect(deleteCategoryAccount).not.toHaveBeenCalled()
+  })
+
   it('does not expose AI orchestration as Zero mutators', async () => {
     const {mutators} = await import('@/zero/mutators')
     const {serverMutators} = await import('@/zero/mutators.server')
@@ -353,6 +438,7 @@ describe('ledger Zero mutators', () => {
 
 type TestRows = {
   bankTransactions?: Array<Record<string, unknown>>
+  ledgerAccountGroups?: Array<Record<string, unknown>>
   ledgerAccounts?: Array<Record<string, unknown>>
   ledgerTransactions?: Array<Record<string, unknown>>
   ledgerPostings?: Array<Record<string, unknown>>
@@ -363,6 +449,7 @@ type TestOperation = {table: string; kind: string; value: unknown}
 function createClientTransaction(rows: TestRows) {
   const rowStore: Record<string, Array<Record<string, unknown>>> = {
     bankTransactions: rows.bankTransactions ?? [],
+    ledgerAccountGroups: rows.ledgerAccountGroups ?? [],
     ledgerAccounts: rows.ledgerAccounts ?? [],
     ledgerTransactions: rows.ledgerTransactions ?? [],
     ledgerPostings: rows.ledgerPostings ?? [],
@@ -383,6 +470,16 @@ function createClientTransaction(rows: TestRows) {
     operations,
     mutate: {
       bankTransactions: {update: record('bankTransactions', 'update')},
+      ledgerAccountGroups: {
+        insert: record('ledgerAccountGroups', 'insert'),
+        update: record('ledgerAccountGroups', 'update'),
+        delete: record('ledgerAccountGroups', 'delete'),
+      },
+      ledgerAccounts: {
+        insert: record('ledgerAccounts', 'insert'),
+        update: record('ledgerAccounts', 'update'),
+        delete: record('ledgerAccounts', 'delete'),
+      },
       ledgerTransactions: {
         insert: record('ledgerTransactions', 'insert'),
         update: record('ledgerTransactions', 'update'),
@@ -427,6 +524,17 @@ function bankTransaction(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function ledgerAccountGroup(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'spending-group',
+    teamId: 'team-1',
+    systemKey: null,
+    name: 'Everyday spending',
+    sortOrder: 0,
+    ...overrides,
+  }
+}
+
 function bankLedgerAccount(overrides: Record<string, unknown> = {}) {
   return {
     id: 'checking',
@@ -443,11 +551,15 @@ function categoryAccount(id: string, name: string) {
   return {
     id,
     teamId: 'team-1',
+    groupId: 'spending-group',
     linkedBankAccountId: null,
     type: 'expense',
+    normalBalance: 'credit',
     status: 'active',
     systemKey: null,
     name,
+    description: '',
+    sortOrder: 0,
   }
 }
 

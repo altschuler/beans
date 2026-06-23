@@ -17,7 +17,7 @@ describe('CategorySelector', () => {
         isAiRequestPending={false}
         onSelect={vi.fn()}
         onAiCategorizeOne={vi.fn()}
-        onSaveSplit={vi.fn(async () => true)}
+        onSaveSplit={vi.fn(() => true)}
       />,
     )
 
@@ -43,7 +43,7 @@ describe('CategorySelector', () => {
         isAiRequestPending={false}
         onSelect={onSelect}
         onAiCategorizeOne={vi.fn()}
-        onSaveSplit={vi.fn(async () => true)}
+        onSaveSplit={vi.fn(() => true)}
       />,
     )
 
@@ -70,7 +70,7 @@ describe('CategorySelector', () => {
         isAiRequestPending={false}
         onSelect={vi.fn()}
         onAiCategorizeOne={onAiCategorizeOne}
-        onSaveSplit={vi.fn(async () => true)}
+        onSaveSplit={vi.fn(() => true)}
       />,
     )
 
@@ -91,7 +91,7 @@ describe('CategorySelector', () => {
         isAiRequestPending={false}
         onSelect={vi.fn()}
         onAiCategorizeOne={vi.fn()}
-        onSaveSplit={vi.fn(async () => true)}
+        onSaveSplit={vi.fn(() => true)}
       />,
     )
 

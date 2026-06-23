@@ -1,5 +1,6 @@
 import {useEffect, type ReactNode} from 'react'
 import {ZeroProvider, useZero} from '@rocicorp/zero/react'
+import {DialogProvider} from '@/hooks/use-dialogs'
 import {mutators} from '@/zero/mutators'
 import {queries} from '@/zero/queries'
 import {schema} from '@/zero/schema'
@@ -17,7 +18,7 @@ export function AppZeroProvider({children, userID}: {children: ReactNode; userID
       mutators={mutators}
     >
       <CoreZeroQueryPreloader />
-      {children}
+      <DialogProvider>{children}</DialogProvider>
     </ZeroProvider>
   )
 }

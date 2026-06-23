@@ -6,9 +6,10 @@ import {PageLayout} from '@/components/page-layout'
 import {TransactionTable, type CategorySelection, type SplitLine, type TransactionTableRow} from '@/components/transaction-table'
 import {Button} from '@/components/ui/button'
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card'
-import {Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from '@/components/ui/dialog'
+import {ClearCategorizationsDialog} from '@/components/dialogs'
 import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from '@/components/ui/dropdown-menu'
 import {toast} from 'sonner'
+import {useDialog} from '@/hooks/use-dialogs'
 import {showErrorToast} from '@/lib/show-error-toast'
 import {runZeroMutation} from '@/lib/run-mutation'
 import {aiCategorizeNeedsReviewBatch, aiCategorizeTransaction} from '@/ledger/ai-categorization-fns'
@@ -26,17 +27,18 @@ type LedgerDashboardProps = {
 
 export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDashboardProps) {
   const zero = useZero()
+  const {showDialog} = useDialog()
   const [groups] = useQuery(queries.domain.ledgerAccountGroups())
   const [accounts] = useQuery(queries.domain.ledgerAccountsForDashboard())
-  const bankTransactionsQuery = (view === 'bankAccountTransactions' && bankAccountId ? queries.domain.bankTransactionsForBankAccount({bankAccountId}) : queries.domain.bankTransactionsForDashboard()) as ReturnType<
-    typeof queries.domain.bankTransactionsForDashboard
-  >
+  const bankTransactionsQuery = (
+    view === 'bankAccountTransactions' && bankAccountId ? queries.domain.bankTransactionsForBankAccount({bankAccountId}) : queries.domain.bankTransactionsForDashboard()
+  ) as ReturnType<typeof queries.domain.bankTransactionsForDashboard>
   const [bankTransactions, bankTransactionsStatus] = useQuery(bankTransactionsQuery)
   const [bankAccounts, bankAccountsStatus] = useQuery(queries.domain.bankAccounts())
   const [isAiRequestPending, setIsAiRequestPending] = useState(false)
-  const [isClearPending, setIsClearPending] = useState(false)
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
   const isAiRequestPendingRef = useRef(false)
+  const isClearDialogOpenRef = useRef(false)
 
   const model = buildLedgerDashboardModel({
     groups,
@@ -95,19 +97,20 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     }
   }
 
-  async function clearCategorizations() {
-    if (isClearPending) return
+  async function requestClearCategorizations() {
+    if (isClearDialogOpenRef.current) return
 
-    setIsClearPending(true)
-    const ok = await runZeroMutation(zero.mutate(mutators.ledger.clearCategorizations({})), 'Could not clear categorizations')
-    if (ok) {
+    isClearDialogOpenRef.current = true
+    setIsClearDialogOpen(true)
+    try {
+      await showDialog(ClearCategorizationsDialog, {})
+    } finally {
+      isClearDialogOpenRef.current = false
       setIsClearDialogOpen(false)
-      toast.success('Cleared ledger categorizations. Imported bank transactions were kept.')
     }
-    setIsClearPending(false)
   }
 
-  async function saveSplit(row: TransactionTableRow, lines: SplitLine[]) {
+  function saveSplit(row: TransactionTableRow, lines: SplitLine[]) {
     return saveDashboardSplitTransaction({
       bankTransactionId: row.bankTransactionId,
       bankAmount: row.amount,
@@ -116,7 +119,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     })
   }
 
-  const aiEligibleReviewCount = model.transactionRows.filter(row => row.needsReview).length
+  const aiEligibleReviewCount = model.transactionRows.filter((row) => row.needsReview).length
 
   const dashboardClassName = view === 'transactions' ? 'flex h-full min-h-0 flex-col' : 'space-y-6'
   const transactionHeaderActions = showGlobalTransactionActions ? (
@@ -124,52 +127,30 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
       <div className="text-sm font-semibold">
         {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
       </div>
-      {model.aiProcessingCount > 0 ? (
-        <div className="text-sm font-semibold text-muted-foreground">AI running · {model.aiProcessingCount} processing</div>
-      ) : null}
+      {model.aiProcessingCount > 0 ? <div className="text-sm font-semibold text-muted-foreground">AI running · {model.aiProcessingCount} processing</div> : null}
       <Button type="button" variant="outline" disabled={aiEligibleReviewCount === 0 || isAiRequestPending} onClick={() => void aiCategorizeBatch()}>
         Auto-categorize
       </Button>
       <SyncAllBankAccountsButton accounts={bankAccounts} variant="outline" />
-      <Dialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" variant="outline" size="icon" aria-label="More transaction actions" title="More transaction actions">
-              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              variant="destructive"
-              disabled={model.transactionRows.length === 0 || isClearPending}
-              onSelect={(event) => {
-                event.preventDefault()
-                setIsClearDialogOpen(true)
-              }}
-            >
-              Clear categorizations
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Clear all ledger categorizations?</DialogTitle>
-            <DialogDescription>
-              Imported bank transactions will be kept. This removes their categories, splits, confirmations, and AI metadata so they need review again.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                Cancel
-              </Button>
-            </DialogClose>
-            <Button type="button" variant="destructive" disabled={isClearPending} onClick={() => void clearCategorizations()}>
-              Clear all categorizations
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="outline" size="icon" aria-label="More transaction actions" title="More transaction actions">
+            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={model.transactionRows.length === 0 || isClearDialogOpen}
+            onSelect={(event) => {
+              event.preventDefault()
+              void requestClearCategorizations()
+            }}
+          >
+            Clear categorizations
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </>
   ) : undefined
 

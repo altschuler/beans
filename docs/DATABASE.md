@@ -52,16 +52,16 @@ When adding a new app/domain table, it is not complete until it is represented i
 
 Writes go through Zero custom mutators: Zod input schemas and optimistic client logic in `src/zero/mutators.ts`, server logic in `src/zero/mutators.server.ts` (and the `*.server.ts` command files it calls). Transaction categorization, splits, confirmation, and clearing apply deterministic optimistic updates in the client replica while the server remains authoritative. Transfer categorization intentionally stays server-authoritative because it depends on server-side counter-transaction matching.
 
-Always run mutations through `runZeroMutation` (`src/lib/run-mutation.ts`); never `await zero.mutate(...)` directly. A mutator call returns `{client, server}` promises that **resolve** with a result detail — they do not reject on failure. A server-side error resolves `.server` with `{type: 'error', ...}` and Zero only logs it to the console, so awaiting the mutation alone silently swallows the error. `runZeroMutation` inspects the resolved detail, shows an error toast, and returns a success boolean:
+Always pass mutations through `runZeroMutation` (`src/lib/run-mutation.ts`); never `await zero.mutate(...)` directly. A mutator call returns `{client, server}` promises that **resolve** with a result detail — they do not reject on failure. A server-side error resolves `.server` with `{type: 'error', ...}` and Zero only logs it to the console, so awaiting the mutation alone silently swallows the error.
+
+Prefer fire-and-forget for normal Zero-backed UI. The optimistic client write should drive the experience: close dialogs, popovers, and menus immediately after the local input is valid, and let `runZeroMutation` toast rare server failures in the background.
 
 ```ts
-// Fire-and-forget: the error toast still fires in the background.
 void runZeroMutation(zero.mutate(mutators.ledger.categorizeTransaction({...})), 'Could not save category')
-
-// Gate success-only follow-ups (closing a dialog, a success toast) on the result.
-const ok = await runZeroMutation(zero.mutate(mutators.ledger.clearCategorizations({})), 'Could not clear')
-if (ok) { /* ... */ }
+closePopover()
 ```
+
+Only await `runZeroMutation` when the next step genuinely requires server acknowledgement rather than optimistic state.
 
 When mocking a failing mutation in tests, resolve `.server` with `{type: 'error', error: {...}}` — do not reject it; rejection does not match Zero's real behavior.
 

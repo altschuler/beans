@@ -11,11 +11,11 @@ type MutationResult = Promise<unknown> | {server: Promise<unknown>}
 type MutationErrorDetail = {type?: 'app' | 'zero'; message?: string}
 
 /**
- * Runs a Zero mutation, showing an error toast if it fails.
+ * Observes a Zero mutation, showing an error toast if it fails.
  *
- * Returns `true` on success and `false` on failure (after toasting), so callers can gate
- * success-only follow-ups (closing a dialog, a success toast). Fire-and-forget callers can
- * ignore the result with `void runZeroMutation(...)` and still get the error toast.
+ * Prefer fire-and-forget (`void runZeroMutation(...)`) for normal Zero-backed UI so the
+ * optimistic client write drives the experience. Await the boolean only for flows that
+ * genuinely need server acknowledgement before continuing.
  */
 export async function runZeroMutation(result: MutationResult, errorMessage: string): Promise<boolean> {
   try {

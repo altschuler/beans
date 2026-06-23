@@ -4,7 +4,7 @@ import {z} from 'zod'
 import {absoluteMoneyAmount} from '@/lib/money'
 import {isCategorizationAccount, validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@/ledger/categorization'
 import {requireUserID} from './context'
-import {zql, type BankTransaction, type LedgerAccount, type LedgerPosting, type LedgerTransaction, type Schema as ZeroSchema} from './schema'
+import {zql, type BankTransaction, type LedgerAccount, type LedgerAccountGroup, type LedgerPosting, type LedgerTransaction, type Schema as ZeroSchema} from './schema'
 
 export const categorySelectionInput = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('category'), accountId: z.string().min(1)}),
@@ -253,8 +253,100 @@ async function optimisticallyClearCategorizations(tx: ClientTx) {
   }
 }
 
+async function optimisticallyCreateCategoryGroup(input: {tx: ClientTx; id: string; teamId: string; name: string}) {
+  const now = Date.now()
+  await input.tx.mutate.ledgerAccountGroups.insert({
+    id: input.id,
+    teamId: input.teamId,
+    systemKey: null,
+    name: input.name,
+    sortOrder: await nextGroupSortOrder(input.tx, input.teamId),
+    createdAt: now,
+    updatedAt: now,
+  })
+}
+
+async function optimisticallyUpdateCategoryGroup(input: {tx: ClientTx; groupId: string; name: string}) {
+  const group = await input.tx.run(zql.ledgerAccountGroups.where('id', input.groupId).one())
+  if (!isEditableGroup(group)) return
+  await input.tx.mutate.ledgerAccountGroups.update({id: group.id, name: input.name, updatedAt: Date.now()})
+}
+
+async function optimisticallyDeleteCategoryGroup(input: {tx: ClientTx; groupId: string}) {
+  const group = await input.tx.run(zql.ledgerAccountGroups.where('id', input.groupId).one())
+  if (!isEditableGroup(group)) return
+  const accounts = await input.tx.run(zql.ledgerAccounts.where('groupId', group.id))
+  if (accounts.length > 0) return
+  await input.tx.mutate.ledgerAccountGroups.delete({id: group.id})
+}
+
+async function optimisticallyCreateCategoryAccount(input: {tx: ClientTx; id: string; teamId: string; groupId: string; name: string; description: string; type: CategoryAccountTypeInput}) {
+  const group = await input.tx.run(zql.ledgerAccountGroups.where('id', input.groupId).one())
+  if (!isEditableGroup(group) || group.teamId !== input.teamId) return
+  const now = Date.now()
+  await input.tx.mutate.ledgerAccounts.insert({
+    id: input.id,
+    teamId: input.teamId,
+    groupId: group.id,
+    linkedBankAccountId: null,
+    systemKey: null,
+    type: input.type,
+    normalBalance: 'credit',
+    name: input.name,
+    description: input.description.trim(),
+    status: 'active',
+    sortOrder: await nextAccountSortOrder(input.tx, group.id),
+    createdAt: now,
+    updatedAt: now,
+  })
+}
+
+async function optimisticallyUpdateCategoryAccount(input: {tx: ClientTx; accountId: string; groupId: string; name: string; description: string; type: CategoryAccountTypeInput}) {
+  const account = await input.tx.run(zql.ledgerAccounts.where('id', input.accountId).one())
+  if (!isEditableCategoryAccount(account)) return
+  const group = await input.tx.run(zql.ledgerAccountGroups.where('id', input.groupId).one())
+  if (!isEditableGroup(group) || group.teamId !== account.teamId) return
+  await input.tx.mutate.ledgerAccounts.update({
+    id: account.id,
+    groupId: group.id,
+    type: input.type,
+    normalBalance: 'credit',
+    name: input.name,
+    description: input.description.trim(),
+    updatedAt: Date.now(),
+  })
+}
+
+async function optimisticallyDeleteCategoryAccount(input: {tx: ClientTx; accountId: string}) {
+  const account = await input.tx.run(zql.ledgerAccounts.where('id', input.accountId).one())
+  if (!isEditableCategoryAccount(account)) return
+  const postings = await input.tx.run(zql.ledgerPostings.where('accountId', account.id))
+  if (postings.length > 0) return
+  await input.tx.mutate.ledgerAccounts.delete({id: account.id})
+}
+
 function isValidOptimisticCategoryAccount(account: LedgerAccount | undefined, teamId: string) {
   return Boolean(account && account.teamId === teamId && isCategorizationAccount({...account, status: account.status ?? 'active'}))
+}
+
+type CategoryAccountTypeInput = z.infer<typeof managedCategoryTypeInput>
+
+function isEditableGroup(group: LedgerAccountGroup | undefined): group is LedgerAccountGroup {
+  return Boolean(group && !group.systemKey)
+}
+
+function isEditableCategoryAccount(account: LedgerAccount | undefined): account is LedgerAccount {
+  return Boolean(account && !account.systemKey && !account.linkedBankAccountId && isCategorizationAccount({...account, status: account.status ?? 'active'}))
+}
+
+async function nextGroupSortOrder(tx: ClientTx, teamId: string) {
+  const groups = await tx.run(zql.ledgerAccountGroups.where('teamId', teamId))
+  return Math.max(-1, ...groups.map(group => group.sortOrder ?? 0)) + 1
+}
+
+async function nextAccountSortOrder(tx: ClientTx, groupId: string) {
+  const accounts = await tx.run(zql.ledgerAccounts.where('groupId', groupId))
+  return Math.max(-1, ...accounts.map(account => account.sortOrder ?? 0)) + 1
 }
 
 function isRecentlyProcessing(value: Date | string | number | null) {
@@ -296,11 +388,29 @@ export const mutators = defineMutators({
       if (tx.location !== 'client') return
       await optimisticallyClearCategorizations(tx)
     }),
-    createCategoryAccount: defineMutator(createCategoryAccountInput, async () => {}),
-    updateCategoryAccount: defineMutator(updateCategoryAccountInput, async () => {}),
-    deleteCategoryAccount: defineMutator(deleteCategoryAccountInput, async () => {}),
-    createCategoryGroup: defineMutator(createCategoryGroupInput, async () => {}),
-    updateCategoryGroup: defineMutator(updateCategoryGroupInput, async () => {}),
-    deleteCategoryGroup: defineMutator(deleteCategoryGroupInput, async () => {}),
+    createCategoryAccount: defineMutator(createCategoryAccountInput, async ({args, tx}) => {
+      if (tx.location !== 'client') return
+      await optimisticallyCreateCategoryAccount({tx, ...args})
+    }),
+    updateCategoryAccount: defineMutator(updateCategoryAccountInput, async ({args, tx}) => {
+      if (tx.location !== 'client') return
+      await optimisticallyUpdateCategoryAccount({tx, ...args})
+    }),
+    deleteCategoryAccount: defineMutator(deleteCategoryAccountInput, async ({args, tx}) => {
+      if (tx.location !== 'client') return
+      await optimisticallyDeleteCategoryAccount({tx, ...args})
+    }),
+    createCategoryGroup: defineMutator(createCategoryGroupInput, async ({args, tx}) => {
+      if (tx.location !== 'client') return
+      await optimisticallyCreateCategoryGroup({tx, ...args})
+    }),
+    updateCategoryGroup: defineMutator(updateCategoryGroupInput, async ({args, tx}) => {
+      if (tx.location !== 'client') return
+      await optimisticallyUpdateCategoryGroup({tx, ...args})
+    }),
+    deleteCategoryGroup: defineMutator(deleteCategoryGroupInput, async ({args, tx}) => {
+      if (tx.location !== 'client') return
+      await optimisticallyDeleteCategoryGroup({tx, ...args})
+    }),
   },
 })

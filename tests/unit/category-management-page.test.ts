@@ -63,6 +63,7 @@ vi.mock('@/zero/mutators', () => ({
   }},
 }))
 
+import {DialogProvider} from '@/hooks/use-dialogs'
 import {CategoryManagementPage} from '@/components/ledger/category-management-page'
 
 describe('CategoryManagementPage', () => {
@@ -71,7 +72,7 @@ describe('CategoryManagementPage', () => {
   })
 
   it('lists the team categories with type and balance and hides bank-linked and other-team data', () => {
-    render(React.createElement(CategoryManagementPage))
+    renderCategoryManagementPage()
 
     expect(screen.getByText('Everyday spending')).toBeInTheDocument()
     expect(screen.getByText('Groceries')).toBeInTheDocument()
@@ -86,7 +87,7 @@ describe('CategoryManagementPage', () => {
   })
 
   it('locks system groups and lets editable groups and categories be edited', () => {
-    render(React.createElement(CategoryManagementPage))
+    renderCategoryManagementPage()
 
     expect(screen.getByLabelText('Locked group')).toBeInTheDocument()
     expect(screen.getByRole('button', {name: 'Edit group System accounts'})).toBeDisabled()
@@ -96,10 +97,10 @@ describe('CategoryManagementPage', () => {
 
   it('dispatches a create-category mutation from the Add category dialog', async () => {
     const user = userEvent.setup()
-    render(React.createElement(CategoryManagementPage))
+    renderCategoryManagementPage()
 
     await user.click(screen.getByRole('button', {name: 'Add category'}))
-    await user.type(screen.getByLabelText('Name'), 'Travel')
+    await user.type(await screen.findByLabelText('Name'), 'Travel')
     await user.click(screen.getByRole('button', {name: 'Save'}))
 
     expect(createCategoryAccount).toHaveBeenCalledWith(
@@ -108,3 +109,7 @@ describe('CategoryManagementPage', () => {
     expect(zeroMutate).toHaveBeenCalledTimes(1)
   })
 })
+
+function renderCategoryManagementPage() {
+  render(React.createElement(DialogProvider, null, React.createElement(CategoryManagementPage)))
+}

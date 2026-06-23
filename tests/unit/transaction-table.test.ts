@@ -28,7 +28,7 @@ describe('TransactionTable', () => {
         onCategorizeBankTransaction: vi.fn(),
         onConfirmTransaction: vi.fn(),
         onAiCategorizeOne: vi.fn(),
-        onSaveSplit: vi.fn(async () => true),
+        onSaveSplit: vi.fn(() => true),
       }),
     )
 
@@ -56,7 +56,7 @@ describe('TransactionTable', () => {
         onCategorizeBankTransaction: vi.fn(),
         onConfirmTransaction: vi.fn(),
         onAiCategorizeOne: vi.fn(),
-        onSaveSplit: vi.fn(async () => true),
+        onSaveSplit: vi.fn(() => true),
       }),
     )
 
@@ -84,7 +84,7 @@ describe('TransactionTable', () => {
         onCategorizeBankTransaction: vi.fn(),
         onConfirmTransaction: vi.fn(),
         onAiCategorizeOne: vi.fn(),
-        onSaveSplit: vi.fn(async () => true),
+        onSaveSplit: vi.fn(() => true),
       }),
     )
 
@@ -112,7 +112,7 @@ describe('TransactionTable', () => {
         onCategorizeBankTransaction: vi.fn(),
         onConfirmTransaction: vi.fn(),
         onAiCategorizeOne: vi.fn(),
-        onSaveSplit: vi.fn(async () => true),
+        onSaveSplit: vi.fn(() => true),
       }),
     )
 
@@ -135,7 +135,7 @@ describe('TransactionTable', () => {
         onCategorizeBankTransaction: vi.fn(),
         onConfirmTransaction: vi.fn(),
         onAiCategorizeOne: vi.fn(),
-        onSaveSplit: vi.fn(async () => true),
+        onSaveSplit: vi.fn(() => true),
       }),
     )
 

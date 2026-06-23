@@ -16,7 +16,7 @@ type CategorySelectorProps = {
   isAiRequestPending: boolean
   onSelect: (bankTransactionId: string, selection: CategorySelection) => void
   onAiCategorizeOne: (bankTransactionId: string) => void
-  onSaveSplit: (row: TransactionTableRow, splitLines: SplitLine[]) => Promise<boolean>
+  onSaveSplit: (row: TransactionTableRow, splitLines: SplitLine[]) => boolean
 }
 
 export function CategorySelector({row, categorizationAccounts, transferAccounts, isAiRequestPending, onSelect, onAiCategorizeOne, onSaveSplit}: CategorySelectorProps) {
@@ -68,8 +68,8 @@ export function CategorySelector({row, categorizationAccounts, transferAccounts,
     setMode('split')
   }
 
-  async function saveSplit() {
-    const didSave = await onSaveSplit(row, splitLines)
+  function saveSplit() {
+    const didSave = onSaveSplit(row, splitLines)
     if (!didSave) return
     closePopover()
   }

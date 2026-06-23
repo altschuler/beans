@@ -13,8 +13,8 @@ type SaveDashboardSplitTransactionInput = {
   mutate: (mutation: SplitTransactionMutation) => MutationResult
 }
 
-/** Returns true when the split was saved, false when validation or the mutation failed (after toasting). */
-export async function saveDashboardSplitTransaction({bankTransactionId, bankAmount, lines, mutate}: SaveDashboardSplitTransactionInput): Promise<boolean> {
+/** Returns true when the split was accepted locally; server failures are toasted in the background. */
+export function saveDashboardSplitTransaction({bankTransactionId, bankAmount, lines, mutate}: SaveDashboardSplitTransactionInput): boolean {
   try {
     validateBankLinkedCategorizationLines({bankAmount, lines})
   } catch (error) {
@@ -22,5 +22,6 @@ export async function saveDashboardSplitTransaction({bankTransactionId, bankAmou
     return false
   }
 
-  return runZeroMutation(mutate(mutators.ledger.splitTransaction({bankTransactionId, lines})), 'Could not save split')
+  void runZeroMutation(mutate(mutators.ledger.splitTransaction({bankTransactionId, lines})), 'Could not save split')
+  return true
 }

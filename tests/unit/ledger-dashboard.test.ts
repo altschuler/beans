@@ -125,6 +125,7 @@ const syncAllBankAccounts = vi.hoisted(() =>
     upserted: 2,
   })),
 )
+const showDialog = vi.hoisted(() => vi.fn(async () => true))
 const renderedButtons = vi.hoisted(
   () =>
     [] as Array<{
@@ -166,7 +167,8 @@ vi.mock('@rocicorp/zero/react', () => ({
     if (query.name === 'ledgerPostings') return [queryRows.postings, {type: queryStatuses.postings}]
     if (query.name === 'bankTransactions') return [queryRows.bankTransactions, {type: queryStatuses.bankTransactions}]
     if (query.name === 'bankTransactionsForDashboard') return [queryRows.bankTransactions, {type: queryStatuses.bankTransactions}]
-    if (query.name === 'bankTransactionsForBankAccount') return [queryRows.bankTransactions.filter(transaction => transaction.bankAccountId === query.bankAccountId), {type: queryStatuses.bankTransactions}]
+    if (query.name === 'bankTransactionsForBankAccount')
+      return [queryRows.bankTransactions.filter((transaction) => transaction.bankAccountId === query.bankAccountId), {type: queryStatuses.bankTransactions}]
     if (query.name === 'bankAccounts') return [queryRows.bankAccounts, {type: queryStatuses.bankAccounts}]
     throw new Error(`Unexpected query: ${query.name}`)
   }),
@@ -229,20 +231,9 @@ vi.mock('@/components/ui/button', async () => {
   }
 })
 
-vi.mock('@/components/ui/dialog', async () => {
-  const ReactModule = await import('react')
-  const passthrough = ({children}: {children: React.ReactNode}) => ReactModule.createElement(ReactModule.Fragment, null, children)
-  return {
-    Dialog: passthrough,
-    DialogClose: passthrough,
-    DialogContent: passthrough,
-    DialogDescription: passthrough,
-    DialogFooter: passthrough,
-    DialogHeader: passthrough,
-    DialogTitle: passthrough,
-    DialogTrigger: ({children}: {children: React.ReactNode}) => ReactModule.createElement(ReactModule.Fragment, null, children),
-  }
-})
+vi.mock('@/hooks/use-dialogs', () => ({
+  useDialog: () => ({hasOpenDialogs: false, showDialog}),
+}))
 
 vi.mock('@/components/ui/dropdown-menu', async () => {
   const ReactModule = await import('react')
@@ -250,8 +241,11 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
   return {
     DropdownMenu: passthrough,
     DropdownMenuContent: passthrough,
-    DropdownMenuItem: ({children, onSelect}: {children: React.ReactNode; onSelect?: () => void}) =>
-      ReactModule.createElement('button', {type: 'button', onClick: onSelect}, children),
+    DropdownMenuItem: ({children, onSelect}: {children: React.ReactNode; onSelect?: (event: {preventDefault: () => void}) => void}) => {
+      const handleSelect = () => onSelect?.({preventDefault: vi.fn()})
+      renderedButtons.push({children, onClick: handleSelect, type: 'button'})
+      return ReactModule.createElement('button', {type: 'button', onClick: handleSelect}, children)
+    },
     DropdownMenuTrigger: ({children}: {children: React.ReactNode}) => ReactModule.createElement(ReactModule.Fragment, null, children),
   }
 })
@@ -289,14 +283,21 @@ vi.mock('@/zero/queries', () => ({
     domain: {
       ledgerAccountGroups: () => ({name: 'ledgerAccountGroups'}),
       ledgerAccounts: () => ({name: 'ledgerAccounts'}),
-      ledgerAccountsForDashboard: () => ({name: 'ledgerAccountsForDashboard'}),
+      ledgerAccountsForDashboard: () => ({
+        name: 'ledgerAccountsForDashboard',
+      }),
       ledgerTransactions: () => ({name: 'ledgerTransactions'}),
       ledgerPostings: () => ({name: 'ledgerPostings'}),
       bankTransactions: () => ({name: 'bankTransactions'}),
-      bankTransactionsForDashboard: () => ({name: 'bankTransactionsForDashboard'}),
+      bankTransactionsForDashboard: () => ({
+        name: 'bankTransactionsForDashboard',
+      }),
       bankTransactionsForBankAccount: (args: {bankAccountId: string}) => {
         requestedBankTransactionsForBankAccountArgs.push(args)
-        return {name: 'bankTransactionsForBankAccount', bankAccountId: args.bankAccountId}
+        return {
+          name: 'bankTransactionsForBankAccount',
+          bankAccountId: args.bankAccountId,
+        }
       },
       bankAccounts: () => ({name: 'bankAccounts'}),
     },
@@ -348,6 +349,7 @@ describe('LedgerDashboard', () => {
       fetched: 2,
       upserted: 2,
     })
+    showDialog.mockResolvedValue(true)
     renderedButtons.length = 0
     renderedPageLayouts.length = 0
     requestedBankTransactionsForBankAccountArgs.length = 0
@@ -644,12 +646,10 @@ describe('LedgerDashboard', () => {
     expect(markup).not.toContain('aria-label="Split transaction"')
   })
 
-
-
   it('enables batch AI when imported rows do not have ledger interpretations yet', () => {
     queryRows.ledgerTransactions = []
     queryRows.postings = []
-    queryRows.bankTransactions = queryRows.bankTransactions.map(transaction => ({
+    queryRows.bankTransactions = queryRows.bankTransactions.map((transaction) => ({
       id: transaction.id,
       bankAccountId: transaction.bankAccountId,
       amount: transaction.amount,
@@ -665,7 +665,7 @@ describe('LedgerDashboard', () => {
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     expect(findButtonByLabelPrefix('Confirm category for')).toBeUndefined()
-    const autoCategorizeButton = renderedButtons.find(button => button.children === 'Auto-categorize')
+    const autoCategorizeButton = renderedButtons.find((button) => button.children === 'Auto-categorize')
     expect(autoCategorizeButton?.disabled).toBe(false)
   })
 
@@ -725,17 +725,38 @@ describe('LedgerDashboard', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     expect(markup).toContain('Clear categorizations')
-    expect(markup).toContain('Imported bank transactions will be kept. This removes their categories, splits, confirmations, and AI metadata so they need review again.')
+    expect(markup).not.toContain('Imported bank transactions will be kept. This removes their categories, splits, confirmations, and AI metadata so they need review again.')
     expect(zeroMutate).not.toHaveBeenCalled()
 
-    findButton('Clear all categorizations')?.onClick?.()
+    findButton('Clear categorizations')?.onClick?.()
     await flushPromises()
 
-    expect(zeroMutate).toHaveBeenCalledWith({
+    expect(showDialog).toHaveBeenCalledWith(expect.any(Function), {})
+    expect(zeroMutate).not.toHaveBeenCalledWith({
       type: 'clearCategorizations',
       input: {},
     })
-    expect(toastSuccess).toHaveBeenCalledWith('Cleared ledger categorizations. Imported bank transactions were kept.')
+  })
+
+  it('does not open duplicate clear confirmation dialogs while one is already active', async () => {
+    let resolveDialog: (value: boolean) => void = () => undefined
+    showDialog.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveDialog = resolve
+        }),
+    )
+    renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    findButton('Clear categorizations')?.onClick?.()
+    findButton('Clear categorizations')?.onClick?.()
+    await flushPromises()
+
+    expect(showDialog).toHaveBeenCalledOnce()
+
+    resolveDialog(false)
+    await flushPromises()
+    expect(zeroMutate).not.toHaveBeenCalled()
   })
 })
 
