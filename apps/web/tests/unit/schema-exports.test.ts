@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest'
 import {
+  agentWorkflowRuns,
   bankAccounts,
   bankConnections,
   bankTransactions,
@@ -12,9 +13,10 @@ import {
 } from '@/db/schema'
 
 describe('banking schema exports', () => {
-  it('exports team and banking tables', () => {
+  it('exports team, workflow, and banking tables', () => {
     expect(teams).toBeDefined()
     expect(teamMembers).toBeDefined()
+    expect(agentWorkflowRuns).toBeDefined()
     expect(bankConnections).toBeDefined()
     expect(bankAccounts).toBeDefined()
     expect(bankTransactions).toBeDefined()

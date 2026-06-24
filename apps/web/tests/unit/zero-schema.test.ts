@@ -15,6 +15,7 @@ describe('zero schema', () => {
         'ledgerAccounts',
         'ledgerTransactions',
         'ledgerPostings',
+        'agentWorkflowRuns',
       ]),
     )
   })
@@ -35,6 +36,20 @@ describe('zero schema', () => {
     expect(columns.syncStatus).toMatchObject({type: 'string', optional: false, serverName: 'sync_status'})
     expect(columns.syncError).toMatchObject({type: 'string', optional: true, serverName: 'sync_error'})
     expect(columns.syncStartedAt).toMatchObject({type: 'number', optional: true, serverName: 'sync_started_at'})
+  })
+
+  it('exposes workflow run fields with server column names', () => {
+    expect(schema.tables.agentWorkflowRuns.columns.flueRunId).toMatchObject({type: 'string', optional: true, serverName: 'flue_run_id'})
+    expect(schema.tables.agentWorkflowRuns.columns.workflowName).toMatchObject({type: 'string', optional: false, serverName: 'workflow_name'})
+    expect(schema.tables.agentWorkflowRuns.columns.teamId).toMatchObject({type: 'string', optional: false, serverName: 'team_id'})
+    expect(schema.tables.agentWorkflowRuns.columns.requestedByUserId).toMatchObject({
+      type: 'string',
+      optional: false,
+      serverName: 'requested_by_user_id',
+    })
+    expect(schema.tables.agentWorkflowRuns.columns.status).toMatchObject({type: 'string', optional: false})
+    expect(schema.tables.agentWorkflowRuns.columns.error).toMatchObject({type: 'string', optional: true})
+    expect(schema.tables.agentWorkflowRuns.columns.finishedAt).toMatchObject({type: 'number', optional: true, serverName: 'finished_at'})
   })
 
   it('exposes ledger fields with server column names', () => {

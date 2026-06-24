@@ -3,6 +3,7 @@ import {z} from 'zod'
 import {zql, type Schema} from './schema'
 import {requireUserID} from './context'
 
+const activeAgentWorkflowRunsByTeamArgs = z.object({teamId: z.string().min(1)})
 const ledgerAccountDetailArgs = z.object({accountId: z.string().min(1)})
 const bankTransactionsForBankAccountArgs = z.object({bankAccountId: z.string().min(1)})
 
@@ -12,6 +13,10 @@ function whereTeamHasMember<TReturn>(team: Query<'teams', Schema, TReturn>, user
 
 function teamForUser(userID: string) {
   return <TReturn>(team: Query<'teams', Schema, TReturn>) => whereTeamHasMember(team, userID)
+}
+
+function whereAgentWorkflowRunBelongsToUser<TReturn>(run: Query<'agentWorkflowRuns', Schema, TReturn>, userID: string): Query<'agentWorkflowRuns', Schema, TReturn> {
+  return run.whereExists('team', teamForUser(userID))
 }
 
 function whereBankAccountBelongsToUser<TReturn>(account: Query<'bankAccounts', Schema, TReturn>, userID: string): Query<'bankAccounts', Schema, TReturn> {
@@ -62,6 +67,13 @@ export const queries = defineQueries({
     bankConnections: defineQuery(({ctx}) => {
       const userID = requireUserID(ctx)
       return zql.bankConnections.whereExists('team', teamForUser(userID)).orderBy('createdAt', 'desc')
+    }),
+    activeAgentWorkflowRunsByTeam: defineQuery(activeAgentWorkflowRunsByTeamArgs, ({ctx, args}) => {
+      const userID = requireUserID(ctx)
+      return whereAgentWorkflowRunBelongsToUser(
+        zql.agentWorkflowRuns.where('teamId', args.teamId).where('status', 'active'),
+        userID,
+      ).orderBy('createdAt', 'desc')
     }),
     bankAccounts: defineQuery(({ctx}) => {
       const userID = requireUserID(ctx)

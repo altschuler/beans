@@ -9,6 +9,7 @@
     "run:categorize": "flue run categorize-transactions --target node --input '{\"userId\":\"local-user\",\"teamId\":\"local-team\",\"limit\":1}'"
   },
   "dependencies": {
+    "@penge/domain": "workspace:*",
     "@flue/postgres": "latest",
     "@flue/runtime": "latest",
     "postgres": "3.4.9",

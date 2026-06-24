@@ -13,6 +13,7 @@
 
 ## Production ready
 
+- Add a soft per-row agent activity marker for Flue categorization. The first agentic workflow will use team-level active workflow state only; a future UI improvement can show “agent is considering this row” as informational activity, not as a claim, lease, or write lock.
 - Replace the first-slice Flue internal service token with a proper least-privilege authorization boundary. The Flue sidecar should not have broad read/write authority over Penge data; long term it should operate through authenticated app/domain APIs or capability-scoped services so every read and write is constrained to the authenticated user's authorized `userId` and `teamId`.
 - Add production zero-cache config before deploy. No production deployment/config exists beyond dev/env-example basics. Separate `ZERO_CVR_DB`/`ZERO_CHANGE_DB`, set `ZERO_ADMIN_PASSWORD`, configure a persistent `ZERO_REPLICA_FILE`, enable CVR garbage collection, and define an explicit publication.
 - Document and harden production Zero cookie deployment. If `zero-cache` runs on a subdomain, Better Auth cookies need appropriate cross-subdomain configuration, and auth cookies must not use `SameSite=None`.

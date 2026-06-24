@@ -5,7 +5,7 @@ import {assertSafeTestDatabaseUrl, getDatabaseName, toMaintenanceDatabaseUrl} fr
 
 export async function resetDatabase() {
   assertSafeTestDatabaseUrl(process.env.DATABASE_URL)
-  await sql`truncate table "ledger_postings", "ledger_transactions", "ledger_accounts", "ledger_account_groups", "bank_transactions", "bank_accounts", "bank_connections", "team_members", "teams", "session", "account", "verification", "user" restart identity cascade`
+  await sql`truncate table "ledger_postings", "ledger_transactions", "ledger_accounts", "ledger_account_groups", "bank_transactions", "bank_accounts", "bank_connections", "agent_workflow_runs", "team_members", "teams", "session", "account", "verification", "user" restart identity cascade`
 }
 
 export async function closeDatabase() {

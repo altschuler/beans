@@ -95,6 +95,33 @@ export const teamMembers = pgTable(
   }),
 )
 
+export const agentWorkflowRuns = pgTable(
+  'agent_workflow_runs',
+  {
+    id: text('id').primaryKey(),
+    flueRunId: text('flue_run_id'),
+    workflowName: text('workflow_name').notNull(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, {onDelete: 'cascade'}),
+    requestedByUserId: text('requested_by_user_id')
+      .notNull()
+      .references(() => user.id, {onDelete: 'restrict'}),
+    status: text('status').notNull(),
+    error: text('error'),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+    finishedAt: timestamp('finished_at', {mode: 'date'}),
+  },
+  table => ({
+    teamIdx: index('agent_workflow_runs_team_idx').on(table.teamId),
+    activeIdx: uniqueIndex('agent_workflow_runs_active_unique')
+      .on(table.teamId, table.workflowName)
+      .where(sql`${table.status} = 'active'`),
+    statusCheck: check('agent_workflow_runs_status_check', sql`${table.status} in ('active', 'completed', 'failed')`),
+  }),
+)
+
 export const bankConnections = pgTable(
   'bank_connections',
   {
@@ -313,6 +340,7 @@ export const userRelations = relations(user, ({many}) => ({
   accounts: many(account),
   personalTeams: many(teams),
   teamMemberships: many(teamMembers),
+  requestedWorkflowRuns: many(agentWorkflowRuns),
 }))
 
 export const sessionRelations = relations(session, ({one}) => ({
@@ -335,6 +363,7 @@ export const teamsRelations = relations(teams, ({one, many}) => ({
     references: [user.id],
   }),
   members: many(teamMembers),
+  agentWorkflowRuns: many(agentWorkflowRuns),
   bankConnections: many(bankConnections),
   bankAccounts: many(bankAccounts),
   ledgerAccountGroups: many(ledgerAccountGroups),
@@ -349,6 +378,17 @@ export const teamMembersRelations = relations(teamMembers, ({one}) => ({
   }),
   user: one(user, {
     fields: [teamMembers.userId],
+    references: [user.id],
+  }),
+}))
+
+export const agentWorkflowRunsRelations = relations(agentWorkflowRuns, ({one}) => ({
+  team: one(teams, {
+    fields: [agentWorkflowRuns.teamId],
+    references: [teams.id],
+  }),
+  requestedByUser: one(user, {
+    fields: [agentWorkflowRuns.requestedByUserId],
     references: [user.id],
   }),
 }))

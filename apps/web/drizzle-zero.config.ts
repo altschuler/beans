@@ -23,6 +23,18 @@ export default drizzleZeroConfig(drizzleSchema, {
       createdAt: true,
       updatedAt: true,
     },
+    agentWorkflowRuns: {
+      id: true,
+      flueRunId: true,
+      workflowName: true,
+      teamId: true,
+      requestedByUserId: true,
+      status: true,
+      error: true,
+      createdAt: true,
+      updatedAt: true,
+      finishedAt: true,
+    },
     bankConnections: {
       id: true,
       teamId: true,

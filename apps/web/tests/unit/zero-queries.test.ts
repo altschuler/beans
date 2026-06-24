@@ -9,6 +9,16 @@ function astFor(query: unknown) {
 }
 
 describe('Zero ledger query shapes', () => {
+  it('lists active workflow runs for an authorized team only', () => {
+    const ast = astFor(queries.domain.activeAgentWorkflowRunsByTeam.fn({ctx: zeroContextFor('user-1'), args: {teamId: 'team-1'}}))
+
+    expect(ast.table).toBe('agentWorkflowRuns')
+    expect(conditionIncludesSimple(ast.where, 'teamId', 'team-1')).toBe(true)
+    expect(conditionIncludesSimple(ast.where, 'status', 'active')).toBe(true)
+    expect(conditionHasExistsPath(ast.where, ['team', 'members'], {field: 'userId', value: 'user-1'})).toBe(true)
+  })
+
+
   it('narrows ledger account detail by account id while retaining team authorization and related data', () => {
     const ast = astFor(queries.domain.ledgerAccountDetail.fn({ctx: zeroContextFor('user-1'), args: {accountId: 'account-1'}}))
 
