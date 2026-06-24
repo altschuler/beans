@@ -9,6 +9,7 @@ Penge uses [Better Auth](https://www.better-auth.com/) for identity, credentials
   - email/password auth enabled,
   - `tanstackStartCookies()` so TanStack Start request/response cookies work correctly,
   - `BETTER_AUTH_URL` and `BETTER_AUTH_SECRET` from the environment.
+- Better Auth trusts the configured `BETTER_AUTH_URL` origin automatically. For local worktrees or fallback dev ports, add comma-separated patterns to `BETTER_AUTH_TRUSTED_ORIGINS`, for example `https://localhost:*`.
 - `src/routes/api/auth/$.ts` forwards Better Auth API requests to `auth.handler(request)`. Client calls such as sign-in, sign-up, sign-out, and session cookie management go through this route.
 - `src/auth/client.ts` creates the browser `authClient` without an explicit base URL so Better Auth uses the current origin. This avoids absolute localhost HTTPS fetches during TanStack Start SPA shell generation.
 - `src/components/auth/auth-form.tsx` signs users up or in with `authClient.signUp.email(...)` and `authClient.signIn.email(...)`.
@@ -110,6 +111,7 @@ The database already stores `team_members.role`. Today the app only creates `own
 
 - Keep `BETTER_AUTH_SECRET` private and strong in non-development environments.
 - Keep `BETTER_AUTH_URL` and `VITE_PUBLIC_APP_URL` aligned with the deployed origin.
+- Keep `BETTER_AUTH_TRUSTED_ORIGINS` narrow in shared and production environments; wildcard localhost patterns are for local development only.
 - Keep auth/session/account/verification data server-only and excluded from Zero.
 - Do not import `src/auth/server.ts` into client components or shared client-rendered modules.
 - Do not rely on hidden UI, route context, request body fields, or client-side Zero filters for authorization.
