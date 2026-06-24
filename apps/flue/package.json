@@ -1,0 +1,22 @@
+{
+  "name": "@penge/flue",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "flue dev --target node",
+    "build": "flue build --target node",
+    "typecheck": "tsc --noEmit",
+    "run:categorize": "flue run categorize-transactions --target node --input '{\"userId\":\"local-user\",\"teamId\":\"local-team\",\"limit\":1}'"
+  },
+  "dependencies": {
+    "@flue/postgres": "latest",
+    "@flue/runtime": "latest",
+    "postgres": "3.4.9",
+    "valibot": "latest"
+  },
+  "devDependencies": {
+    "@flue/cli": "latest",
+    "@types/node": "25.9.3",
+    "typescript": "6.0.3"
+  }
+}

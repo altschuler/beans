@@ -1,24 +1,26 @@
 # Database
 
-Postgres is the durable database. Drizzle defines the database schema in `src/db/schema.ts`, and migrations live in `drizzle/`.
+Postgres is the durable database. The web app's Drizzle schema lives in `apps/web/src/db/schema.ts`, and web app migrations live in `apps/web/drizzle/`.
+
+Flue runtime persistence also uses Postgres through `@flue/postgres`, but it owns separate `flue_*` tables. Those tables store Flue sessions, submissions, workflow runs, and events; they are not Penge domain tables and must not be exposed through Zero.
 
 Zero is the required sync layer for app/domain data. Any user-facing application data that should be available to the client must be exposed through Zero rather than fetched directly from server routes or ad-hoc client APIs.
 
 ## Generated files are read-only
 
-Never hand-edit generated database artifacts. Change the source files (`src/db/schema.ts`, `drizzle-zero.config.ts`, or related generator inputs) and rerun the appropriate generator instead.
+Never hand-edit generated database artifacts. Change the source files (`apps/web/src/db/schema.ts`, `apps/web/drizzle-zero.config.ts`, or related generator inputs) and rerun the appropriate generator instead.
 
-Generated files include `src/zero/schema.ts`, Drizzle migration metadata under `drizzle/meta/`, and generated migration files under `drizzle/`.
+Generated files include `apps/web/src/zero/schema.ts`, Drizzle migration metadata under `apps/web/drizzle/meta/`, and generated migration files under `apps/web/drizzle/`.
 
 ## App/domain data must use Zero
 
 Use Zero for all app/domain tables and queries:
 
-- Define tables in `src/db/schema.ts`.
-- Include app/domain tables in `drizzle-zero.config.ts`.
-- Regenerate the Zero schema with `just zero-generate` or `pnpm zero:generate`.
-- Do not hand-edit `src/zero/schema.ts`; it is generated.
-- Add Zero queries in `src/zero/queries.ts` for client-readable domain data.
+- Define tables in `apps/web/src/db/schema.ts`.
+- Include app/domain tables in `apps/web/drizzle-zero.config.ts`.
+- Regenerate the Zero schema with `just zero-generate` or `pnpm zero:generate` from the workspace root.
+- Do not hand-edit `apps/web/src/zero/schema.ts`; it is generated.
+- Add Zero queries in `apps/web/src/zero/queries.ts` for client-readable domain data.
 - Keep query authorization scoped by the authenticated user, usually through team membership.
 
 Current Zero-synced app/domain tables:
@@ -50,9 +52,9 @@ When adding a new app/domain table, it is not complete until it is represented i
 
 ## Client mutations
 
-Writes go through Zero custom mutators: Zod input schemas and optimistic client logic in `src/zero/mutators.ts`, server logic in `src/zero/mutators.server.ts` (and the `*.server.ts` command files it calls). Transaction categorization, splits, confirmation, and clearing apply deterministic optimistic updates in the client replica while the server remains authoritative. Transfer categorization intentionally stays server-authoritative because it depends on server-side counter-transaction matching.
+Writes go through Zero custom mutators: Zod input schemas and optimistic client logic in `apps/web/src/zero/mutators.ts`, server logic in `apps/web/src/zero/mutators.server.ts` (and the `*.server.ts` command files it calls). Transaction categorization, splits, confirmation, and clearing apply deterministic optimistic updates in the client replica while the server remains authoritative. Transfer categorization intentionally stays server-authoritative because it depends on server-side counter-transaction matching.
 
-Always pass mutations through `runZeroMutation` (`src/lib/run-mutation.ts`); never `await zero.mutate(...)` directly. A mutator call returns `{client, server}` promises that **resolve** with a result detail — they do not reject on failure. A server-side error resolves `.server` with `{type: 'error', ...}` and Zero only logs it to the console, so awaiting the mutation alone silently swallows the error.
+Always pass mutations through `runZeroMutation` (`apps/web/src/lib/run-mutation.ts`); never `await zero.mutate(...)` directly. A mutator call returns `{client, server}` promises that **resolve** with a result detail — they do not reject on failure. A server-side error resolves `.server` with `{type: 'error', ...}` and Zero only logs it to the console, so awaiting the mutation alone silently swallows the error.
 
 Prefer fire-and-forget for normal Zero-backed UI. The optimistic client write should drive the experience: close dialogs, popovers, and menus immediately after the local input is valid, and let `runZeroMutation` toast rare server failures in the background.
 
@@ -69,7 +71,7 @@ When mocking a failing mutation in tests, resolve `.server` with `{type: 'error'
 
 Zero must not be used for authentication, session, account credential, verification, or other security-sensitive storage.
 
-These tables are intentionally excluded in `drizzle-zero.config.ts`:
+These tables are intentionally excluded in `apps/web/drizzle-zero.config.ts`:
 
 - `user`
 - `session`
@@ -86,10 +88,10 @@ just db-migrate
 just zero-generate
 ```
 
-Use `just zero-generate` after changing Drizzle tables or `drizzle-zero.config.ts`.
+Use `just zero-generate` after changing Drizzle tables or `apps/web/drizzle-zero.config.ts`.
 
 ## Zero dev replica resets
 
-`zero-cache-dev` keeps a local SQLite replica. In dev, keep it under `.zero-cache/` via `ZERO_REPLICA_FILE` so `just db-reset` can remove it.
+`zero-cache-dev` keeps a local SQLite replica. In dev, keep it under `apps/web/.zero-cache/` via `ZERO_REPLICA_FILE` so `just db-reset` can remove it.
 
 After migrations that rewrite existing synced data without changing Zero column types (for example changing money `number` semantics from decimal major units to scale-4 integers), reset the Zero replica before restarting the app. Zero's client schema hash is derived from generated table/column shape, so representation-only changes may not invalidate cached replica rows by themselves.

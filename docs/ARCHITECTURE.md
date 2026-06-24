@@ -2,6 +2,22 @@
 
 For product/system-design explanations, use `docs/reference/` alongside this architecture map. The reference docs describe current behavior and intentionally synthesize implemented specs rather than preserving all historical spec details.
 
+## Workspace layout
+
+Penge is a pnpm monorepo:
+
+- `apps/web/` is the TanStack Start application. It owns the browser UI, Better Auth, Zero, Drizzle schema/migrations, and web-facing server functions.
+- `apps/flue/` is a Flue sidecar service scaffold. It owns Flue agents, workflows, tools, model calls, and Flue runtime persistence.
+- `packages/domain/` is reserved for shared domain/database code extracted when both apps need the same implementation boundary.
+
+Run commands from the workspace root by default. Package-local source paths in docs generally refer to `apps/web/src/...` for web code and `apps/flue/src/...` for Flue code.
+
+## Flue sidecar boundary
+
+Flue runs as a separate Node-target service, not inside the TanStack Start runtime. The web app should authenticate users and call Flue over an internal service boundary for agent workflows. Flue may update Postgres through trusted domain logic; Zero observes committed domain-table changes and syncs them back to clients. Flue does not talk to Zero directly.
+
+First-slice web-to-Flue auth uses `PENGE_FLUE_INTERNAL_TOKEN` and passes trusted `userId` plus `teamId` in workflow input. This is temporary tech debt tracked in `docs/TODO.md`; the long-term goal is a least-privilege API/capability boundary where Flue cannot read or write data outside the authenticated user's authorized scope.
+
 ## Client/server import boundaries
 
 TanStack Start builds client and server environments from overlapping route modules, so server-only dependencies must be explicit.
@@ -26,7 +42,7 @@ Shared modules, route components, and `createServerFn` wrappers should stay mark
 
 Zero is the required read and write path for app/domain data that is exposed through the Zero schema.
 
-If an app/domain table is included in `drizzle-zero.config.ts`, then user-facing reads and writes for that table must go through Zero queries and Zero mutators. Do not add TanStack server functions, ad-hoc route handlers, or direct client-callable APIs for ordinary CRUD or domain updates on Zero-backed tables.
+If an app/domain table is included in `apps/web/drizzle-zero.config.ts`, then user-facing reads and writes for that table must go through Zero queries and Zero mutators. Do not add TanStack server functions, ad-hoc route handlers, or direct client-callable APIs for ordinary CRUD or domain updates on Zero-backed tables.
 
 Server functions are reserved for special cases where Zero is not the right boundary, including:
 

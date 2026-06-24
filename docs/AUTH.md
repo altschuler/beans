@@ -4,25 +4,25 @@ Penge uses [Better Auth](https://www.better-auth.com/) for identity, credentials
 
 ## Broad authentication flow
 
-- `src/auth/server.ts` creates the server-side Better Auth instance with:
+- `apps/web/src/auth/server.ts` creates the server-side Better Auth instance with:
   - the Drizzle adapter backed by Postgres,
   - email/password auth enabled,
   - `tanstackStartCookies()` so TanStack Start request/response cookies work correctly,
   - `BETTER_AUTH_URL` and `BETTER_AUTH_SECRET` from the environment.
 - Better Auth trusts the configured `BETTER_AUTH_URL` origin automatically. For local worktrees or fallback dev ports, add comma-separated patterns to `BETTER_AUTH_TRUSTED_ORIGINS`, for example `https://localhost:*`.
-- `src/routes/api/auth/$.ts` forwards Better Auth API requests to `auth.handler(request)`. Client calls such as sign-in, sign-up, sign-out, and session cookie management go through this route.
-- `src/auth/client.ts` creates the browser `authClient` without an explicit base URL so Better Auth uses the current origin. This avoids absolute localhost HTTPS fetches during TanStack Start SPA shell generation.
-- `src/components/auth/auth-form.tsx` signs users up or in with `authClient.signUp.email(...)` and `authClient.signIn.email(...)`.
-- Better Auth persists auth records in the Drizzle tables `user`, `session`, `account`, and `verification` from `src/db/schema.ts`.
+- `apps/web/src/routes/api/auth/$.ts` forwards Better Auth API requests to `auth.handler(request)`. Client calls such as sign-in, sign-up, sign-out, and session cookie management go through this route.
+- `apps/web/src/auth/client.ts` creates the browser `authClient` without an explicit base URL so Better Auth uses the current origin. This avoids absolute localhost HTTPS fetches during TanStack Start SPA shell generation.
+- `apps/web/src/components/auth/auth-form.tsx` signs users up or in with `authClient.signUp.email(...)` and `authClient.signIn.email(...)`.
+- Better Auth persists auth records in the Drizzle tables `user`, `session`, `account`, and `verification` from `apps/web/src/db/schema.ts`.
 - Better Auth reads the session token from request cookies and returns the current `{ user, session }` via `auth.api.getSession({ headers })`.
 
 ## Session helpers
 
 Use the existing helpers instead of calling Better Auth directly throughout the app:
 
-- `getSession()` in `src/auth/session.ts` is a TanStack `createServerFn` for optional session reads from route loaders/server functions.
-- `ensureSession()` in `src/auth/session.ts` is a TanStack `createServerFn` for authenticated server functions. It throws when no valid session exists.
-- `getSessionFromRequest(request)` in `src/auth/session.server.ts` is for route/API handlers that already have a `Request` object and need to return an HTTP response such as `401 Unauthorized`.
+- `getSession()` in `apps/web/src/auth/session.ts` is a TanStack `createServerFn` for optional session reads from route loaders/server functions.
+- `ensureSession()` in `apps/web/src/auth/session.ts` is a TanStack `createServerFn` for authenticated server functions. It throws when no valid session exists.
+- `getSessionFromRequest(request)` in `apps/web/src/auth/session.server.ts` is for route/API handlers that already have a `Request` object and need to return an HTTP response such as `401 Unauthorized`.
 
 Modules that import the Better Auth server instance, the Drizzle adapter, Postgres, secrets, or other server-only dependencies must stay server-only. Add `import '@tanstack/react-start/server-only'` to those modules and avoid importing them from client components.
 
@@ -30,7 +30,7 @@ Modules that import the Better Auth server instance, the Drizzle adapter, Postgr
 
 Authenticated pages live under the `/_protected` route tree.
 
-Penge runs TanStack Start in SPA mode for Zero. Protected app routes must not depend on route-level server `beforeLoad` for ordinary page rendering. `src/routes/_protected.tsx` renders `ProtectedAppGate`, which uses the Better Auth client session hook in the browser. When there is no client session it redirects to `/login` with the current route as `redirect`. When a session exists, it calls `ensureCurrentUserPersonalTeam()` as a client-triggered server function, then mounts `AppZeroProvider` and the app shell.
+Penge runs TanStack Start in SPA mode for Zero. Protected app routes must not depend on route-level server `beforeLoad` for ordinary page rendering. `apps/web/src/routes/_protected.tsx` renders `ProtectedAppGate`, which uses the Better Auth client session hook in the browser. When there is no client session it redirects to `/login` with the current route as `redirect`. When a session exists, it calls `ensureCurrentUserPersonalTeam()` as a client-triggered server function, then mounts `AppZeroProvider` and the app shell.
 
 Use this pattern for app pages that require a signed-in user. Public pages, such as `/` and `/login`, should not call `ensureSession()` just to render. Server functions, API routes, Zero query endpoints, and Zero mutator endpoints still authenticate and authorize server-side.
 
@@ -60,7 +60,7 @@ For authenticated server functions:
 
 Examples:
 
-- `src/banking/banking-fns.ts` calls `ensureSession()` before listing institutions, listing banking data, starting bank links, or syncing accounts.
+- `apps/web/src/banking/banking-fns.ts` calls `ensureSession()` before listing institutions, listing banking data, starting bank links, or syncing accounts.
 - `syncBankAccount` authorizes with `requireAccessibleBankAccount(bankAccountId, session.user.id)` before using the provider account.
 
 ### Repository/database access
@@ -79,9 +79,9 @@ For route handlers with a raw `Request`, use `getSessionFromRequest(request)` an
 
 Examples:
 
-- `src/routes/api/zero/query.ts`
-- `src/routes/api/zero/mutate.ts`
-- `src/routes/api/gocardless/callback.ts`
+- `apps/web/src/routes/api/zero/query.ts`
+- `apps/web/src/routes/api/zero/mutate.ts`
+- `apps/web/src/routes/api/gocardless/callback.ts`
 
 After authentication, build server-side context from the session, for example `const ctx: ZeroContext = { userID: session.user.id }`.
 
@@ -90,13 +90,27 @@ After authentication, build server-side context from the session, for example `c
 Zero is used for app/domain data, not auth data.
 
 - Do not expose Better Auth tables (`user`, `session`, `account`, `verification`) through Zero.
-- Keep those tables disabled in `drizzle-zero.config.ts`.
+- Keep those tables disabled in `apps/web/drizzle-zero.config.ts`.
 - Zero query and mutate endpoints must authenticate the request and pass the authenticated `userID` into `ZeroContext`.
 - Every Zero query must filter data by `ctx.userID`, usually through team membership.
 
-Current examples in `src/zero/queries.ts` scope teams, team members, bank connections, bank accounts, and bank transactions to the authenticated user.
+Current examples in `apps/web/src/zero/queries.ts` scope teams, team members, bank connections, bank accounts, and bank transactions to the authenticated user.
 
 If Zero mutators are added, they must follow the same rule: authenticate at the endpoint, derive `userID` from the session, and authorize each write against team membership or a stricter permission check.
+
+### Flue sidecar calls
+
+The Flue sidecar in `apps/flue` is an internal service. The first scaffold uses a shared `PENGE_FLUE_INTERNAL_TOKEN` for web-to-Flue calls; this is temporary and tracked in `docs/TODO.md`.
+
+For first-slice workflows:
+
+1. `apps/web` authenticates the browser user normally.
+2. `apps/web` derives the trusted `userId` and authorized `teamId` server-side.
+3. `apps/web` calls Flue with `Authorization: Bearer $PENGE_FLUE_INTERNAL_TOKEN`.
+4. Workflow input includes both `userId` and `teamId`.
+5. Flue tools scope every domain read/write by both values and never allow model-selected user/team scope.
+
+Long term, Flue should operate through a least-privilege authorization boundary, such as authenticated app/domain APIs or capability-scoped services, so broad database access is not available to the agent runtime.
 
 ### Role-based authorization
 
@@ -113,7 +127,7 @@ The database already stores `team_members.role`. Today the app only creates `own
 - Keep `BETTER_AUTH_URL` and `VITE_PUBLIC_APP_URL` aligned with the deployed origin.
 - Keep `BETTER_AUTH_TRUSTED_ORIGINS` narrow in shared and production environments; wildcard localhost patterns are for local development only.
 - Keep auth/session/account/verification data server-only and excluded from Zero.
-- Do not import `src/auth/server.ts` into client components or shared client-rendered modules.
+- Do not import `apps/web/src/auth/server.ts` into client components or shared client-rendered modules.
 - Do not rely on hidden UI, route context, request body fields, or client-side Zero filters for authorization.
 - Authorize again in every server function, route handler, Zero query, and Zero mutator that touches protected data.
 - Prefer small helper functions with names like `requireAccessible...` for reusable authorization checks.

@@ -11,16 +11,16 @@ This document is the source of truth for UI and UX consistency. Read it before c
 
 ## shadcn-first rule
 
-Use shadcn primitives from `src/components/ui/` for common UI building blocks: buttons, cards, dialogs, dropdown menus, inputs, labels, popovers, separators, sheets, sidebars, skeletons, toasts, and tooltips.
+Use shadcn primitives from `apps/web/src/components/ui/` for common UI building blocks: buttons, cards, dialogs, dropdown menus, inputs, labels, popovers, separators, sheets, sidebars, skeletons, toasts, and tooltips.
 
 - Add missing primitives through shadcn-style components rather than inventing unrelated APIs.
-- Keep generic primitives in `src/components/ui/`.
-- Keep app-specific composition outside `src/components/ui/`, for example in `src/components/layout/`, `src/components/ledger/`, or feature folders.
+- Keep generic primitives in `apps/web/src/components/ui/`.
+- Keep app-specific composition outside `apps/web/src/components/ui/`, for example in `apps/web/src/components/layout/`, `apps/web/src/components/ledger/`, or feature folders.
 - Do not hard-code styles inside shadcn primitives unless the token system cannot express the need.
 
 ## Design tokens
 
-Tokens live in `src/styles/app.css`. Use Tailwind utilities backed by these tokens rather than raw color values.
+Tokens live in `apps/web/src/styles/app.css`. Use Tailwind utilities backed by these tokens rather than raw color values.
 
 ### Color tokens
 
@@ -107,7 +107,7 @@ Financial review views should be dense and scannable.
 
 ## Money display
 
-Use the shared `Currency` component from `src/components/currency.tsx` for visible money amounts. It accepts canonical scale-4 integer amounts and renders a decimal value followed by the currency code, such as `-100.00 DKK`.
+Use the shared `Currency` component from `apps/web/src/components/currency.tsx` for visible money amounts. It accepts canonical scale-4 integer amounts and renders a decimal value followed by the currency code, such as `-100.00 DKK`.
 
 Callers own layout classes, so financial table cells should pass or wrap with right-aligned `font-mono` styling. Do not format money ad hoc in components unless the value is an editable form input boundary.
 
@@ -145,5 +145,5 @@ Use `lucide-react` for all UI icons.
 
 1. Check whether an existing shadcn primitive already solves the problem.
 2. Check whether an existing semantic token expresses the visual intent.
-3. If a new token is needed, add light and dark values in `src/styles/app.css` and document it here.
+3. If a new token is needed, add light and dark values in `apps/web/src/styles/app.css` and document it here.
 4. Keep one-off arbitrary values local, rare, and justified by layout constraints.

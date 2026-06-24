@@ -47,7 +47,7 @@ If meaningful coverage is not practical, say so explicitly instead of adding a w
 - Test Zero queries and mutators with authenticated context and team-membership boundaries.
 - Test server-side domain commands through returned results and persisted rows when persistence is the behavior.
 - Prefer pure model tests for ledger, accounting, and view-model calculations before component tests.
-- Add Drizzle schema and Zero schema exposure tests when changing tables or `drizzle-zero.config.ts`.
+- Add Drizzle schema and Zero schema exposure tests when changing tables or `apps/web/drizzle-zero.config.ts`.
 - Mock external providers, AI/model calls, and browser-only APIs at the boundary, then assert the app outcome.
 
 ## UI Component Tests
@@ -62,12 +62,12 @@ When components use shared `@/components/ui` primitives, prefer rendering the re
 
 Use shared helpers instead of repeating setup noise:
 
-- `tests/helpers/db.ts` for database reset, migration, and shutdown helpers.
-- `tests/helpers/seed.ts` and `tests/fixtures/users.ts` for test users.
-- `tests/helpers/auth.ts` for creating Better Auth users in Vitest tests.
-- `tests/helpers/zero.ts` for Zero context setup.
-- `tests/helpers/assertions.ts` for shared Vitest assertions.
-- `e2e/helpers/auth.ts` and `e2e/helpers/assertions.ts` for Playwright flows.
+- `apps/web/tests/helpers/db.ts` for database reset, migration, and shutdown helpers.
+- `apps/web/tests/helpers/seed.ts` and `apps/web/tests/fixtures/users.ts` for test users.
+- `apps/web/tests/helpers/auth.ts` for creating Better Auth users in Vitest tests.
+- `apps/web/tests/helpers/zero.ts` for Zero context setup.
+- `apps/web/tests/helpers/assertions.ts` for shared Vitest assertions.
+- `apps/web/e2e/helpers/auth.ts` and `apps/web/e2e/helpers/assertions.ts` for Playwright flows.
 
 ## Builders And Scenarios
 
@@ -83,5 +83,5 @@ just test-e2e
 just check
 ```
 
-Focused Vitest runs can use `pnpm test path/to/file.test.ts`.
-Focused Playwright runs can use `pnpm test:e2e path/to/file.spec.ts`.
+Focused Vitest runs from the workspace root can use `pnpm --filter @penge/web test path/to/file.test.ts`, with paths relative to `apps/web`.
+Focused Playwright runs can use `pnpm --filter @penge/web test:e2e path/to/file.spec.ts`, with paths relative to `apps/web`.

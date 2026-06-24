@@ -1,0 +1,1 @@
+export const domainPackageReady = true
