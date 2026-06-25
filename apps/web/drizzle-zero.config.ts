@@ -1,6 +1,6 @@
 import {string as zeroString} from '@rocicorp/zero'
 import {drizzleZeroConfig} from 'drizzle-zero'
-import * as drizzleSchema from './src/db/schema'
+import * as drizzleSchema from '@penge/domain/schema'
 
 export default drizzleZeroConfig(drizzleSchema, {
   tables: {

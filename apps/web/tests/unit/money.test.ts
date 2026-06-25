@@ -7,7 +7,7 @@ import {
   formatMoneyDecimal,
   moneySign,
   parseDecimalMoneyToAmount,
-} from '@/lib/money'
+} from '@penge/domain/money'
 
 describe('parseDecimalMoneyToAmount', () => {
   it('parses decimal money strings to scale-4 integer amounts', () => {

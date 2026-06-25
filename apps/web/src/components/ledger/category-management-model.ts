@@ -1,6 +1,6 @@
 import {groupBy, sumBy} from 'lodash-es'
-import {absoluteMoneyAmount} from '@/lib/money'
-import {deriveLedgerAccountBalances, deriveSingleBalanceCurrency} from '@/ledger/categorization'
+import {absoluteMoneyAmount} from '@penge/domain/money'
+import {deriveLedgerAccountBalances, deriveSingleBalanceCurrency} from '@penge/domain/categorization'
 
 export const CATEGORY_ACCOUNT_TYPES = ['expense', 'income', 'savings'] as const
 export type CategoryAccountType = (typeof CATEGORY_ACCOUNT_TYPES)[number]

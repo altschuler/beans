@@ -1,5 +1,5 @@
 import {sum} from 'lodash-es'
-import {absoluteMoneyAmount, assertSafeMoneyAmount, parseDecimalMoneyToAmount} from '@/lib/money'
+import {absoluteMoneyAmount, assertSafeMoneyAmount, parseDecimalMoneyToAmount} from './money'
 
 export type CategorizationLineInput = {
   accountId: string

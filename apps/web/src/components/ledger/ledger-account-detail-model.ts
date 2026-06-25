@@ -1,6 +1,6 @@
 import {groupBy, keyBy} from 'lodash-es'
-import {MONEY_FACTOR} from '@/lib/money'
-import {deriveLedgerAccountBalances, deriveSingleBalanceCurrency} from '@/ledger/categorization'
+import {MONEY_FACTOR} from '@penge/domain/money'
+import {deriveLedgerAccountBalances, deriveSingleBalanceCurrency} from '@penge/domain/categorization'
 
 export type AccountDetailPeriod = 'weekly' | 'monthly'
 export type AccountDetailMode = 'spending' | 'linked_bank' | 'envelope_activity'

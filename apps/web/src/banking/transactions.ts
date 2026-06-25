@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto'
-import {parseDecimalMoneyToAmount} from '@/lib/money'
+import {parseDecimalMoneyToAmount} from '@penge/domain/money'
 import type {GoCardlessTransaction} from './gocardless/types'
 
 export type BankTransactionStatus = 'booked' | 'pending'

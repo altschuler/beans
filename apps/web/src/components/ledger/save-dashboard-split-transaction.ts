@@ -1,4 +1,4 @@
-import {validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@/ledger/categorization'
+import {validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@penge/domain/categorization'
 import {runZeroMutation} from '@/lib/run-mutation'
 import {showErrorToast} from '@/lib/show-error-toast'
 import {mutators} from '@/zero/mutators'

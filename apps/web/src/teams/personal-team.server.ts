@@ -3,7 +3,7 @@ import '@tanstack/react-start/server-only'
 import {eq} from 'drizzle-orm'
 import {ensureSession} from '@/auth/session'
 import {db} from '@/db/client'
-import {teamMembers, teams} from '@/db/schema'
+import {teamMembers, teams} from '@penge/domain/schema'
 import {seedDefaultLedgerChartForTeam} from '@/ledger/repository.server'
 import {ensurePersonalTeamForUser, type TeamRepository} from './personal-team'
 

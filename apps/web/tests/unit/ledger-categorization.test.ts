@@ -4,7 +4,7 @@ import {
   deriveLedgerAccountBalances,
   isRealCategorizationAccount,
   validateLedgerPostingsBalance,
-} from '@/ledger/categorization'
+} from '@penge/domain/categorization'
 
 const uuid = (id: string) => id as `${string}-${string}-${string}-${string}-${string}`
 

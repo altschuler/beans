@@ -1,4 +1,4 @@
-import {formatMoneyAmount} from '@/lib/money'
+import {formatMoneyAmount} from '@penge/domain/money'
 
 type CurrencyProps = {
   amount: number

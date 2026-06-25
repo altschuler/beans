@@ -1,8 +1,8 @@
 import {defineMutator, defineMutators, type Transaction} from '@rocicorp/zero'
 import {groupBy, uniq} from 'lodash-es'
 import {z} from 'zod'
-import {absoluteMoneyAmount} from '@/lib/money'
-import {isCategorizationAccount, validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@/ledger/categorization'
+import {absoluteMoneyAmount} from '@penge/domain/money'
+import {isCategorizationAccount, validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@penge/domain/categorization'
 import {requireUserID} from './context'
 import {zql, type BankTransaction, type LedgerAccount, type LedgerAccountGroup, type LedgerPosting, type LedgerTransaction, type Schema as ZeroSchema} from './schema'
 

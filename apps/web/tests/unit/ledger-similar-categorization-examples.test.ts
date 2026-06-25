@@ -11,8 +11,8 @@ import {
   teamMembers,
   teams,
   user,
-} from '@/db/schema'
-import {parseDecimalMoneyToAmount} from '@/lib/money'
+} from '@penge/domain/schema'
+import {parseDecimalMoneyToAmount} from '@penge/domain/money'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 
 async function seedFixture() {

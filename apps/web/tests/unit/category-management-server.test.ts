@@ -1,7 +1,7 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest'
 import {eq} from 'drizzle-orm'
 import {db} from '@/db/client'
-import {bankAccounts, bankConnections, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers, teams, user} from '@/db/schema'
+import {bankAccounts, bankConnections, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers, teams, user} from '@penge/domain/schema'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 
 const baseNow = new Date('2026-06-21T10:00:00.000Z')

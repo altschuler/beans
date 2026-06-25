@@ -3,7 +3,7 @@ import '@tanstack/react-start/server-only'
 import {and, eq} from 'drizzle-orm'
 import type {DrizzleTransaction as ZeroDrizzleTransaction} from '@rocicorp/zero/server/adapters/drizzle'
 import type {Database} from '@/db/client'
-import {ledgerAccountGroups, ledgerAccounts, ledgerPostings, teamMembers} from '@/db/schema'
+import {ledgerAccountGroups, ledgerAccounts, ledgerPostings, teamMembers} from '@penge/domain/schema'
 
 export const MANAGED_CATEGORY_TYPES = ['expense', 'income', 'savings'] as const
 export type ManagedCategoryType = (typeof MANAGED_CATEGORY_TYPES)[number]

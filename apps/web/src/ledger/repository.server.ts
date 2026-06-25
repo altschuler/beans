@@ -3,7 +3,7 @@ import '@tanstack/react-start/server-only'
 import {and, eq} from 'drizzle-orm'
 import {keyBy} from 'lodash-es'
 import type {Database} from '@/db/client'
-import {ledgerAccountGroups, ledgerAccounts} from '@/db/schema'
+import {ledgerAccountGroups, ledgerAccounts} from '@penge/domain/schema'
 import {buildDefaultLedgerChartForTeam, SYSTEM_LEDGER_ACCOUNT_KEYS} from './default-chart'
 
 type DrizzleExecutor = Pick<Database, 'select' | 'insert' | 'update' | 'delete'>

@@ -2,7 +2,7 @@ import '@tanstack/react-start/server-only'
 
 import {and, desc, eq, isNotNull, ne} from 'drizzle-orm'
 import {db} from '@/db/client'
-import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, ledgerPostings, teamMembers} from '@/db/schema'
+import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, ledgerPostings, teamMembers} from '@penge/domain/schema'
 import {ensureLedgerAccountForBankAccount} from '@/ledger/repository.server'
 import type {GoCardlessAccountDetails} from './gocardless/types'
 import type {BankAccountSyncRepository} from './sync'

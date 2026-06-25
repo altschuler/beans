@@ -11,7 +11,7 @@ import {
   teamMembers,
   teams,
   user,
-} from '@/db/schema'
+} from '@penge/domain/schema'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 
 const baseNow = new Date('2026-06-18T10:00:00.000Z')

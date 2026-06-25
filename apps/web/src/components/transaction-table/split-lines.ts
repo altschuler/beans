@@ -1,5 +1,5 @@
 import {sum} from 'lodash-es'
-import {absoluteMoneyAmount, DEFAULT_CURRENCY, formatMoneyDecimal, parseDecimalMoneyToAmount} from '@/lib/money'
+import {absoluteMoneyAmount, DEFAULT_CURRENCY, formatMoneyDecimal, parseDecimalMoneyToAmount} from '@penge/domain/money'
 import type {CategorizationAccountOption, SplitLine, TransactionTableRow} from './types'
 
 const MINIMUM_SPLIT_LINES = 2

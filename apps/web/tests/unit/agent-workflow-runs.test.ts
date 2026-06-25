@@ -1,7 +1,7 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest'
 import {eq} from 'drizzle-orm'
 import {db, sql} from '@/db/client'
-import {agentWorkflowRuns, teamMembers, teams, user} from '@/db/schema'
+import {agentWorkflowRuns, teamMembers, teams, user} from '@penge/domain/schema'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 import {
   ActiveWorkflowRunExistsError,

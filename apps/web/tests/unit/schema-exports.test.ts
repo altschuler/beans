@@ -10,7 +10,7 @@ import {
   ledgerTransactions,
   teamMembers,
   teams,
-} from '@/db/schema'
+} from '@penge/domain/schema'
 
 describe('banking schema exports', () => {
   it('exports team, workflow, and banking tables', () => {

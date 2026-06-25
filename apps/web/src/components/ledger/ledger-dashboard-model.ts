@@ -1,6 +1,6 @@
 import {groupBy, keyBy, uniq, uniqBy} from 'lodash-es'
-import {absoluteMoneyAmount, formatMoneyDecimal} from '@/lib/money'
-import {deriveLedgerAccountBalances, isCategorizationAccount} from '@/ledger/categorization'
+import {absoluteMoneyAmount, formatMoneyDecimal} from '@penge/domain/money'
+import {deriveLedgerAccountBalances, isCategorizationAccount} from '@penge/domain/categorization'
 
 export type LedgerDashboardGroup = {id: string; name: string; sortOrder: number | null}
 export type LedgerDashboardAccount = {
