@@ -210,18 +210,25 @@ async function rewriteOptimisticInterpretation(input: {
     await input.tx.mutate.ledgerPostings.insert(posting)
   }
 
-  await input.tx.mutate.bankTransactions.update({
-    id: input.bankTransaction.id,
-    aiConfidence: null,
-    aiReasoning: null,
-    aiProcessingStartedAt: null,
-    updatedAt: now,
-  })
+  const affectedBankTransactionIds = uniq([
+    input.bankTransaction.id,
+    ...(input.existing?.postings.flatMap(posting => (posting.bankTransactionId ? [posting.bankTransactionId] : [])) ?? []),
+  ])
+  for (const bankTransactionId of affectedBankTransactionIds) {
+    const bankTransaction = bankTransactionId === input.bankTransaction.id ? input.bankTransaction : await input.tx.run(zql.bankTransactions.where('id', bankTransactionId).one())
+    if (!bankTransaction) continue
+    await input.tx.mutate.bankTransactions.update({
+      id: bankTransaction.id,
+      ...(bankTransaction.id === input.bankTransaction.id ? {aiConfidence: null, aiReasoning: null, aiProcessingStartedAt: null} : {}),
+      categorizationRevision: (bankTransaction.categorizationRevision ?? 0) + 1,
+      updatedAt: now,
+    })
+  }
 }
 
 async function optimisticallyConfirmTransaction(input: {tx: ClientTx; userId: string; bankTransactionId: string}) {
   const bankTransaction = await input.tx.run(zql.bankTransactions.where('id', input.bankTransactionId).one())
-  if (bankTransaction && isRecentlyProcessing(bankTransaction.aiProcessingStartedAt ?? null)) return
+  if (!bankTransaction || isRecentlyProcessing(bankTransaction.aiProcessingStartedAt ?? null)) return
 
   const bankPosting = await input.tx.run(zql.ledgerPostings.where('bankTransactionId', input.bankTransactionId).one())
   if (!bankPosting) return
@@ -236,6 +243,17 @@ async function optimisticallyConfirmTransaction(input: {tx: ClientTx; userId: st
     userConfirmedBy: input.userId,
     updatedAt: now,
   })
+  const postings = await input.tx.run(zql.ledgerPostings.where('ledgerTransactionId', transaction.id))
+  const bankTransactionIds = uniq([input.bankTransactionId, ...postings.flatMap(posting => (posting.bankTransactionId ? [posting.bankTransactionId] : []))])
+  for (const bankTransactionId of bankTransactionIds) {
+    const row = bankTransactionId === bankTransaction.id ? bankTransaction : await input.tx.run(zql.bankTransactions.where('id', bankTransactionId).one())
+    if (!row) continue
+    await input.tx.mutate.bankTransactions.update({
+      id: row.id,
+      categorizationRevision: (row.categorizationRevision ?? 0) + 1,
+      updatedAt: now,
+    })
+  }
 }
 
 async function optimisticallyClearCategorizations(tx: ClientTx) {
@@ -245,7 +263,19 @@ async function optimisticallyClearCategorizations(tx: ClientTx) {
 
   for (const transaction of ledgerTransactions) {
     const transactionPostings = postingsByTransactionId[transaction.id] ?? []
-    if (!transactionPostings.some(posting => posting.bankTransactionId)) continue
+    const bankTransactionIds = uniq(transactionPostings.flatMap(posting => (posting.bankTransactionId ? [posting.bankTransactionId] : [])))
+    if (bankTransactionIds.length === 0) continue
+    const now = Date.now()
+    for (const bankTransactionId of bankTransactionIds) {
+      const bankTransaction = await tx.run(zql.bankTransactions.where('id', bankTransactionId).one())
+      if (bankTransaction) {
+        await tx.mutate.bankTransactions.update({
+          id: bankTransaction.id,
+          categorizationRevision: (bankTransaction.categorizationRevision ?? 0) + 1,
+          updatedAt: now,
+        })
+      }
+    }
     for (const posting of transactionPostings) {
       await tx.mutate.ledgerPostings.delete({id: posting.id})
     }

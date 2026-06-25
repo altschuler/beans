@@ -2,7 +2,7 @@ import '@tanstack/react-start/server-only'
 
 import {openai} from '@ai-sdk/openai'
 import {generateObject} from 'ai'
-import {and, desc, eq, inArray, isNull, lt, or} from 'drizzle-orm'
+import {and, desc, eq, inArray, isNull, lt, or, sql} from 'drizzle-orm'
 import {uniq} from 'lodash-es'
 import {z} from 'zod'
 import {db, type Database} from '@/db/client'
@@ -190,7 +190,11 @@ async function claimAiCategorizationWork(tx: DrizzleTransaction, input: AiCatego
   const [freshProcessingCutoff, transactionIds] = [aiProcessingFreshCutoff(now), transactions.map(transaction => transaction.id)]
   const claimedRows = await tx
     .update(bankTransactions)
-    .set({aiProcessingStartedAt: now, updatedAt: now})
+    .set({
+      aiProcessingStartedAt: now,
+      updatedAt: now,
+      categorizationRevision: sql`${bankTransactions.categorizationRevision} + 1`,
+    })
     .where(
       and(
         inArray(bankTransactions.id, transactionIds),
@@ -307,6 +311,7 @@ async function recordAiConfidenceWithoutCategory(tx: DrizzleTransaction, userId:
       aiReasoning: normalizeAiReasoning(aiReasoning),
       aiProcessingStartedAt: null,
       updatedAt: now,
+      categorizationRevision: sql`${bankTransactions.categorizationRevision} + 1`,
     })
     .where(inArray(bankTransactions.id, authorizedIds))
     .returning({id: bankTransactions.id})
@@ -322,7 +327,11 @@ async function clearAiProcessingStartedAt(userId: string, bankTransactionIds: st
 
   await db
     .update(bankTransactions)
-    .set({aiProcessingStartedAt: null, updatedAt: new Date()})
+    .set({
+      aiProcessingStartedAt: null,
+      updatedAt: new Date(),
+      categorizationRevision: sql`${bankTransactions.categorizationRevision} + 1`,
+    })
     .where(and(inArray(bankTransactions.id, authorizedIds), eq(bankTransactions.aiProcessingStartedAt, processingStartedAt)))
 }
 

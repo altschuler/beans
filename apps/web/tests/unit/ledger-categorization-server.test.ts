@@ -262,6 +262,11 @@ async function currentInterpretationForBankTransaction(bankTransactionId: string
   return {bankPosting, transaction, postings}
 }
 
+async function categorizationRevisionFor(bankTransactionId: string) {
+  const [row] = await sql`select categorization_revision from bank_transactions where id = ${bankTransactionId}`
+  return row?.categorization_revision
+}
+
 describe('posting-based ledger categorization server functions', () => {
   beforeAll(() => migrateDatabase())
   beforeEach(async () => {
@@ -372,6 +377,149 @@ describe('posting-based ledger categorization server functions', () => {
     expect(transaction).toMatchObject({source: 'bank_import', status: 'confirmed', categorizedBy: 'user', description: null, date: '2026-06-20'})
   })
 
+  it('bumps the categorization revision for manual category and split writes', async () => {
+    const {categorizeBankTransaction, splitBankTransaction} = await import('@/ledger/categorization.server')
+    expect(await categorizationRevisionFor('bank-transaction-1')).toBe(0)
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transaction-1',
+        selection: {kind: 'category', accountId: 'groceries'},
+      }),
+    )
+
+    expect(await categorizationRevisionFor('bank-transaction-1')).toBe(1)
+
+    await db.transaction(tx =>
+      splitBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transaction-1',
+        lines: [
+          {accountId: 'groceries', amount: '70.00'},
+          {accountId: 'household', amount: '30.00'},
+        ],
+      }),
+    )
+
+    expect(await categorizationRevisionFor('bank-transaction-1')).toBe(2)
+  })
+
+  it('rejects stale expected categorization revisions without changing the interpretation', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const before = await currentInterpretationForBankTransaction('bank-transaction-1')
+
+    await expect(
+      db.transaction(tx =>
+        categorizeBankTransaction(tx, {
+          userId: 'user-1',
+          bankTransactionId: 'bank-transaction-1',
+          selection: {kind: 'category', accountId: 'groceries'},
+          expectedCategorizationRevision: 1,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'categorization_revision_conflict',
+      bankTransactionId: 'bank-transaction-1',
+      expectedCategorizationRevision: 1,
+      actualCategorizationRevision: 0,
+    })
+
+    expect(await categorizationRevisionFor('bank-transaction-1')).toBe(0)
+    const after = await currentInterpretationForBankTransaction('bank-transaction-1')
+    expect(after?.transaction).toEqual(before?.transaction)
+    expect(after?.postings).toEqual(before?.postings)
+  })
+
+  it('returns a structured revision conflict for concurrent CAS first-time categorizations', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-concurrent-cas-category', amount: -1_000_000, description: 'Concurrent CAS purchase'})
+
+    await sql`
+      create or replace function test_sleep_on_concurrent_cas_posting()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        if new.bank_transaction_id = 'bank-concurrent-cas-category' then
+          perform pg_sleep(0.2);
+        end if;
+        return new;
+      end;
+      $$
+    `
+    await sql`drop trigger if exists test_sleep_on_concurrent_cas_posting on ledger_postings`
+    await sql`
+      create trigger test_sleep_on_concurrent_cas_posting
+      before insert on ledger_postings
+      for each row
+      execute function test_sleep_on_concurrent_cas_posting()
+    `
+
+    let results: PromiseSettledResult<boolean>[]
+    try {
+      results = await Promise.allSettled([
+        db.transaction(tx =>
+          categorizeBankTransaction(tx, {
+            userId: 'user-1',
+            bankTransactionId: 'bank-concurrent-cas-category',
+            selection: {kind: 'category', accountId: 'groceries'},
+            expectedCategorizationRevision: 0,
+          }),
+        ),
+        db.transaction(tx =>
+          categorizeBankTransaction(tx, {
+            userId: 'user-1',
+            bankTransactionId: 'bank-concurrent-cas-category',
+            selection: {kind: 'category', accountId: 'household'},
+            expectedCategorizationRevision: 0,
+          }),
+        ),
+      ])
+    } finally {
+      await sql`drop trigger if exists test_sleep_on_concurrent_cas_posting on ledger_postings`
+      await sql`drop function if exists test_sleep_on_concurrent_cas_posting()`
+    }
+
+    const fulfilled = results.filter(result => result.status === 'fulfilled')
+    const rejected = results.filter(result => result.status === 'rejected')
+    expect(fulfilled).toHaveLength(1)
+    expect((fulfilled[0] as PromiseFulfilledResult<boolean>).value).toBe(true)
+    expect(rejected).toHaveLength(1)
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+      code: 'categorization_revision_conflict',
+      bankTransactionId: 'bank-concurrent-cas-category',
+      expectedCategorizationRevision: 0,
+      actualCategorizationRevision: 1,
+    })
+    expect(await categorizationRevisionFor('bank-concurrent-cas-category')).toBe(1)
+  })
+
+  it('protects confirmed interpretations from AI overwrite even without an optional status guard', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await db.update(ledgerTransactions).set({status: 'confirmed', categorizedBy: 'ai'}).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
+    const before = await currentInterpretationForBankTransaction('bank-transaction-1')
+
+    const didCategorize = await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transaction-1',
+        selection: {kind: 'category', accountId: 'groceries'},
+        status: 'confirmed',
+        categorizedBy: 'ai',
+        aiConfidence: 2,
+        aiReasoning: 'Would overwrite a confirmed row.',
+        expectedCategorizationRevision: 0,
+      }),
+    )
+
+    const after = await currentInterpretationForBankTransaction('bank-transaction-1')
+    expect(didCategorize).toBe(false)
+    expect(after?.transaction).toEqual(before?.transaction)
+    expect(after?.postings).toEqual(before?.postings)
+    expect(await categorizationRevisionFor('bank-transaction-1')).toBe(0)
+  })
+
   it('rejects transfer categorization when no counter bank transaction matches', async () => {
     const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-source', amount: -10_000_000, description: 'Transfer to savings'})
@@ -409,6 +557,23 @@ describe('posting-based ledger categorization server functions', () => {
       {accountId: 'bank-ledger-account-2', amount: 10_000_000, bankTransactionId: 'bank-transfer-counter-match', sortOrder: 1},
     ])
     expect(new Set(transferPostings.map(posting => posting.ledgerTransactionId)).size).toBe(1)
+  })
+
+  it('bumps both bank transaction revisions when creating a transfer interpretation', async () => {
+    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-source-revision', bankAccountId: 'bank-account-1', amount: -10_000_000, description: 'Transfer out', bookingDate: '2026-06-20'})
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-counter-revision', bankAccountId: 'bank-account-2', amount: 10_000_000, description: 'Transfer in', bookingDate: '2026-06-21'})
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transfer-source-revision',
+        selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+      }),
+    )
+
+    expect(await categorizationRevisionFor('bank-transfer-source-revision')).toBe(1)
+    expect(await categorizationRevisionFor('bank-transfer-counter-revision')).toBe(1)
   })
 
   it('rejects exact counter transfer candidates outside the two-day date window', async () => {
@@ -795,6 +960,26 @@ describe('posting-based ledger categorization server functions', () => {
     expect(transaction?.userConfirmedBy).toBe('user-1')
   })
 
+  it('bumps the categorization revision when a user confirms an interpretation', async () => {
+    const {confirmBankTransactionInterpretation} = await import('@/ledger/categorization.server')
+    await db.delete(ledgerPostings).where(eq(ledgerPostings.id, 'ledger-transaction-1-uncat-posting'))
+    await db.insert(ledgerPostings).values({
+      id: 'posting-groceries-confirm-revision',
+      ledgerTransactionId: 'ledger-transaction-1',
+      accountId: 'groceries',
+      amount: 1_000_000,
+      currency: 'DKK',
+      bankTransactionId: null,
+      sortOrder: 1,
+      createdAt: baseNow,
+      updatedAt: baseNow,
+    })
+
+    await db.transaction(tx => confirmBankTransactionInterpretation(tx, {userId: 'user-1', bankTransactionId: 'bank-transaction-1'}))
+
+    expect(await categorizationRevisionFor('bank-transaction-1')).toBe(1)
+  })
+
   it('rejects confirmation while AI processing is fresh', async () => {
     const {confirmBankTransactionInterpretation} = await import('@/ledger/categorization.server')
     const processingStartedAt = new Date()
@@ -1071,7 +1256,8 @@ describe('posting-based ledger categorization server functions', () => {
     const bankRowsAfter = await db.select().from(bankTransactions).orderBy(bankTransactions.id)
     expect(result).toEqual({cleared: 1})
     expect(postings).toEqual([])
-    expect(bankRowsAfter).toEqual(bankRowsBefore)
+    expect(bankRowsAfter.map(row => row.id)).toEqual(bankRowsBefore.map(row => row.id))
+    expect(await categorizationRevisionFor('bank-transaction-1')).toBe(1)
   })
 
   it('rejects categorization when the reconciled posting amount differs from the bank transaction amount', async () => {

@@ -1,0 +1,1 @@
+ALTER TABLE "bank_transactions" ADD COLUMN "categorization_revision" integer DEFAULT 0 NOT NULL;

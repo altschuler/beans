@@ -200,6 +200,7 @@ export const bankTransactions = pgTable(
     aiConfidence: integer('ai_confidence'),
     aiProcessingStartedAt: timestamp('ai_processing_started_at', {mode: 'date'}),
     aiReasoning: text('ai_reasoning'),
+    categorizationRevision: integer('categorization_revision').notNull().default(0),
     createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
     updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
   },

@@ -80,6 +80,7 @@ export default drizzleZeroConfig(drizzleSchema, {
       aiConfidence: true,
       aiProcessingStartedAt: true,
       aiReasoning: true,
+      categorizationRevision: true,
       createdAt: true,
       updatedAt: true,
     },

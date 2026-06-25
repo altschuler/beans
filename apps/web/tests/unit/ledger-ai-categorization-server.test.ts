@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest'
-import {and, eq, isNull} from 'drizzle-orm'
+import {and, eq, isNull, sql} from 'drizzle-orm'
 import {z} from 'zod'
 import {db} from '@/db/client'
 import {
@@ -508,6 +508,11 @@ async function currentAiInterpretationForBankTransaction(bankTransactionId: stri
   return {bankPosting, ledgerTransaction, postings}
 }
 
+async function categorizationRevisionFor(bankTransactionId: string) {
+  const [row] = await db.execute<{categorization_revision: number}>(sql`select categorization_revision from bank_transactions where id = ${bankTransactionId}`)
+  return row?.categorization_revision
+}
+
 describe('aiCategorizeBankTransactions', () => {
   beforeAll(() => migrateDatabase())
   beforeEach(async () => {
@@ -590,6 +595,7 @@ describe('aiCategorizeBankTransactions', () => {
     expect(result).toEqual({requested: 1, suggested: 1, applied: 0, confirmed: 0, stillNeedsReview: 1, skipped: 0})
     expect(bankTransaction).toMatchObject({aiConfidence: 0, aiReasoning: 'Too ambiguous', aiProcessingStartedAt: null})
     expect(bankPostings).toEqual([])
+    expect(await categorizationRevisionFor('bank-transaction-1')).toBe(2)
   })
 
   it('includes similar confirmed examples in each model transaction', async () => {

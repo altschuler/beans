@@ -1,6 +1,6 @@
 import '@tanstack/react-start/server-only'
 
-import {and, eq, inArray, isNotNull, isNull} from 'drizzle-orm'
+import {and, eq, inArray, isNotNull, isNull, sql} from 'drizzle-orm'
 import {keyBy, uniq} from 'lodash-es'
 import {absoluteMoneyAmount, formatMoneyDecimal} from '@/lib/money'
 import type {DrizzleTransaction as ZeroDrizzleTransaction} from '@rocicorp/zero/server/adapters/drizzle'
@@ -37,6 +37,7 @@ type ApplyBankTransactionInterpretationInput = {
   aiReasoning?: string | null
   categorizedBy?: LedgerTransactionCategorizedBy | null
   requiredExistingStatus?: LedgerTransactionFinalStatus
+  expectedCategorizationRevision?: number
 }
 
 type CategorizeBankTransactionInput = {
@@ -48,12 +49,14 @@ type CategorizeBankTransactionInput = {
   aiReasoning?: string | null
   categorizedBy?: LedgerTransactionCategorizedBy | null
   requiredExistingStatus?: LedgerTransactionFinalStatus
+  expectedCategorizationRevision?: number
 }
 
 type SplitBankTransactionInput = {
   userId: string
   bankTransactionId: string
   lines: CategorizationLineInput[]
+  expectedCategorizationRevision?: number
 }
 
 type ConfirmBankTransactionInterpretationInput = {
@@ -82,6 +85,7 @@ type LoadedBankTransactionForCategorization = {
     valueDate: string | null
     description: string
     aiProcessingStartedAt: Date | null
+    categorizationRevision: number
   }
   sourceLedgerAccount: {id: string; linkedBankAccountId: string | null; teamId: string}
 }
@@ -96,6 +100,19 @@ const AI_PROCESSING_STALE_AFTER_MS = 30 * 60 * 1000
 const MAX_AI_REASONING_LENGTH = 500
 const TRANSFER_MATCH_DATE_WINDOW_DAYS = 2
 const TRANSFER_CONFIRM_INVALID_MESSAGE = 'Transfer is not valid and cannot be confirmed'
+
+export class CategorizationRevisionConflictError extends Error {
+  readonly code = 'categorization_revision_conflict'
+
+  constructor(
+    readonly bankTransactionId: string,
+    readonly expectedCategorizationRevision: number,
+    readonly actualCategorizationRevision: number,
+  ) {
+    super('Bank transaction categorization changed, please re-read before writing')
+    this.name = 'CategorizationRevisionConflictError'
+  }
+}
 
 export function normalizeAiReasoning(reasoning: string) {
   return reasoning.trim().slice(0, MAX_AI_REASONING_LENGTH)
@@ -112,6 +129,7 @@ export async function categorizeBankTransaction(tx: DrizzleTransaction, input: C
     aiReasoning: input.aiReasoning,
     categorizedBy: input.categorizedBy,
     requiredExistingStatus: input.requiredExistingStatus,
+    expectedCategorizationRevision: input.expectedCategorizationRevision,
   })
 }
 
@@ -120,6 +138,7 @@ export async function splitBankTransaction(tx: DrizzleTransaction, input: SplitB
     userId: input.userId,
     bankTransactionId: input.bankTransactionId,
     interpretation: {kind: 'split', lines: input.lines},
+    expectedCategorizationRevision: input.expectedCategorizationRevision,
   })
 }
 
@@ -127,11 +146,15 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
   const loaded = await loadBankTransactionForCategorization(tx, input.userId, input.bankTransactionId)
   const existing = await loadExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
 
+  const isAiCategorization = input.categorizedBy === 'ai'
+  if (isAiCategorization && existing && isProtectedFromAiOverwrite(existing.ledgerTransaction)) {
+    return false
+  }
+
   if (input.requiredExistingStatus && existing && existing.ledgerTransaction.status !== input.requiredExistingStatus) {
     return false
   }
 
-  const isAiCategorization = input.categorizedBy === 'ai'
   if (isAiCategorization && input.interpretation.kind === 'transfer') {
     throw new Error('AI categorization cannot create transfers')
   }
@@ -141,6 +164,16 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
   }
 
   const now = new Date()
+  const targetRevisionClaimed = input.expectedCategorizationRevision !== undefined
+  if (targetRevisionClaimed) {
+    await bumpCategorizationRevisions(tx, {
+      bankTransactionIds: [loaded.bankTransaction.id],
+      targetBankTransactionId: loaded.bankTransaction.id,
+      expectedCategorizationRevision: input.expectedCategorizationRevision,
+      now,
+    })
+  }
+  const existingBankTransactionIds = existing ? await loadBankTransactionIdsForLedgerTransaction(tx, existing.ledgerTransaction.id) : []
   // Re-categorization updates the existing ledger transaction in place (reusing its id) rather than
   // deleting and re-inserting, so Zero syncs an update instead of a delete+insert and id-keyed lookups
   // stay stable. Postings are still fully rebuilt.
@@ -199,6 +232,12 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
 
     await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: Boolean(existing), postings})
     await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
+    await bumpCategorizationRevisions(tx, {
+      bankTransactionIds: targetRevisionClaimed
+        ? [...existingBankTransactionIds, counterBankTransaction.id].filter(id => id !== loaded.bankTransaction.id)
+        : [...existingBankTransactionIds, loaded.bankTransaction.id, counterBankTransaction.id],
+      now,
+    })
     return true
   }
 
@@ -231,6 +270,12 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
   } else {
     await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
   }
+  await bumpCategorizationRevisions(tx, {
+    bankTransactionIds: targetRevisionClaimed
+      ? existingBankTransactionIds.filter(id => id !== loaded.bankTransaction.id)
+      : [...existingBankTransactionIds, loaded.bankTransaction.id],
+    now,
+  })
   return true
 }
 
@@ -255,7 +300,10 @@ export async function clearLedgerCategorizations(tx: DrizzleTransaction, input: 
   if (rows.length === 0) return {cleared: 0}
 
   const transactionIds = uniq(rows.map(row => row.ledgerTransactionId))
+  const bankTransactionIds = rows.flatMap(row => (row.bankPostingBankTransactionId ? [row.bankPostingBankTransactionId] : []))
+  const now = new Date()
   await tx.delete(ledgerTransactions).where(inArray(ledgerTransactions.id, transactionIds))
+  await bumpCategorizationRevisions(tx, {bankTransactionIds, now})
 
   return {cleared: transactionIds.length}
 }
@@ -288,6 +336,11 @@ export async function confirmBankTransactionInterpretation(tx: DrizzleTransactio
   if (!updatedTransaction) {
     throw new Error('Transaction was changed concurrently, please retry')
   }
+
+  await bumpCategorizationRevisions(tx, {
+    bankTransactionIds: await loadBankTransactionIdsForLedgerTransaction(tx, ledgerTransaction.id),
+    now,
+  })
 }
 
 
@@ -314,6 +367,7 @@ async function loadBankTransactionForCategorization(
         valueDate: bankTransactions.valueDate,
         description: bankTransactions.description,
         aiProcessingStartedAt: bankTransactions.aiProcessingStartedAt,
+        categorizationRevision: bankTransactions.categorizationRevision,
       },
       sourceLedgerAccount: {
         id: ledgerAccounts.id,
@@ -343,6 +397,8 @@ async function loadExistingInterpretationForBankTransaction(tx: DrizzleTransacti
         teamId: ledgerTransactions.teamId,
         source: ledgerTransactions.source,
         status: ledgerTransactions.status,
+        userConfirmedAt: ledgerTransactions.userConfirmedAt,
+        userConfirmedBy: ledgerTransactions.userConfirmedBy,
       },
       bankPosting: {
         id: ledgerPostings.id,
@@ -389,6 +445,19 @@ async function loadExistingInterpretationForBankTransaction(tx: DrizzleTransacti
     bankPosting: {...existing.bankPosting, bankTransactionId: existingBankTransactionId},
     bankTransaction: existing.bankTransaction,
   }
+}
+
+function isProtectedFromAiOverwrite(ledgerTransaction: {status: string; userConfirmedAt?: Date | null; userConfirmedBy?: string | null}) {
+  return ledgerTransaction.status !== 'needs_review' || Boolean(ledgerTransaction.userConfirmedAt || ledgerTransaction.userConfirmedBy)
+}
+
+async function loadBankTransactionIdsForLedgerTransaction(tx: DrizzleTransaction, ledgerTransactionId: string) {
+  const rows = await tx
+    .select({bankTransactionId: ledgerPostings.bankTransactionId})
+    .from(ledgerPostings)
+    .where(and(eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId), isNotNull(ledgerPostings.bankTransactionId)))
+
+  return rows.flatMap(row => (row.bankTransactionId ? [row.bankTransactionId] : []))
 }
 
 type RewriteLedgerTransactionFields = {
@@ -768,6 +837,61 @@ async function validatePersistedTransactionBalance(tx: DrizzleTransaction, ledge
     .from(ledgerPostings)
     .where(eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId))
   validateLedgerPostingsBalance(postings)
+}
+
+async function bumpCategorizationRevisions(
+  tx: DrizzleTransaction,
+  input: {
+    bankTransactionIds: string[]
+    targetBankTransactionId?: string
+    expectedCategorizationRevision?: number
+    now: Date
+  },
+) {
+  const bankTransactionIds = uniq(input.bankTransactionIds)
+  if (bankTransactionIds.length === 0) return
+
+  if (input.expectedCategorizationRevision !== undefined && input.targetBankTransactionId) {
+    const [updatedTarget] = await tx
+      .update(bankTransactions)
+      .set({
+        categorizationRevision: sql`${bankTransactions.categorizationRevision} + 1`,
+        updatedAt: input.now,
+      })
+      .where(
+        and(
+          eq(bankTransactions.id, input.targetBankTransactionId),
+          eq(bankTransactions.categorizationRevision, input.expectedCategorizationRevision),
+        ),
+      )
+      .returning({id: bankTransactions.id})
+
+    if (!updatedTarget) {
+      const [current] = await tx
+        .select({categorizationRevision: bankTransactions.categorizationRevision})
+        .from(bankTransactions)
+        .where(eq(bankTransactions.id, input.targetBankTransactionId))
+        .limit(1)
+      throw new CategorizationRevisionConflictError(
+        input.targetBankTransactionId,
+        input.expectedCategorizationRevision,
+        current?.categorizationRevision ?? -1,
+      )
+    }
+
+    const remainingIds = bankTransactionIds.filter(id => id !== input.targetBankTransactionId)
+    if (remainingIds.length === 0) return
+    await bumpCategorizationRevisions(tx, {bankTransactionIds: remainingIds, now: input.now})
+    return
+  }
+
+  await tx
+    .update(bankTransactions)
+    .set({
+      categorizationRevision: sql`${bankTransactions.categorizationRevision} + 1`,
+      updatedAt: input.now,
+    })
+    .where(inArray(bankTransactions.id, bankTransactionIds))
 }
 
 async function recordBankTransactionAiResult(

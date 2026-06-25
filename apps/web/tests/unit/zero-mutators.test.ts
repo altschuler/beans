@@ -241,7 +241,7 @@ describe('ledger Zero mutators', () => {
       {
         table: 'bankTransactions',
         kind: 'update',
-        value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, aiProcessingStartedAt: null}),
+        value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, aiProcessingStartedAt: null, categorizationRevision: 1}),
       },
     ])
     expect(categorizeBankTransaction).not.toHaveBeenCalled()
@@ -267,12 +267,12 @@ describe('ledger Zero mutators', () => {
   it('optimistically replaces an existing interpretation with split postings', async () => {
     const {mutators} = await import('@/zero/mutators')
     const tx = createClientTransaction({
-      bankTransactions: [bankTransaction()],
+      bankTransactions: [bankTransaction(), bankTransaction({id: 'counter-bank-transaction', bankAccountId: 'bank-account-2', amount: 1_000_000, categorizationRevision: 3})],
       ledgerAccounts: [bankLedgerAccount(), categoryAccount('groceries', 'Groceries'), categoryAccount('household', 'Household')],
       ledgerTransactions: [ledgerTransaction()],
       ledgerPostings: [
         posting({id: 'old-bank-posting', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0}),
-        posting({id: 'old-category-posting', accountId: 'groceries', amount: 1_000_000, bankTransactionId: null, sortOrder: 1}),
+        posting({id: 'old-counter-bank-posting', accountId: 'savings', amount: 1_000_000, bankTransactionId: 'counter-bank-transaction', sortOrder: 1}),
       ],
     })
     const request = mutators.ledger.splitTransaction({
@@ -288,11 +288,12 @@ describe('ledger Zero mutators', () => {
     expect(tx.operations).toEqual([
       {table: 'ledgerTransactions', kind: 'update', value: expect.objectContaining({id: 'ledger-transaction-1', status: 'confirmed', categorizedBy: 'user', userConfirmedBy: 'user-1'})},
       {table: 'ledgerPostings', kind: 'delete', value: {id: 'old-bank-posting'}},
-      {table: 'ledgerPostings', kind: 'delete', value: {id: 'old-category-posting'}},
+      {table: 'ledgerPostings', kind: 'delete', value: {id: 'old-counter-bank-posting'}},
       {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0})},
       {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries', amount: 700_000, bankTransactionId: null, sortOrder: 1})},
       {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'household', amount: 300_000, bankTransactionId: null, sortOrder: 2})},
-      {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, aiProcessingStartedAt: null})},
+      {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, aiProcessingStartedAt: null, categorizationRevision: 1})},
+      {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'counter-bank-transaction', categorizationRevision: 4})},
     ])
     expect(splitBankTransaction).not.toHaveBeenCalled()
   })
@@ -300,9 +301,12 @@ describe('ledger Zero mutators', () => {
   it('optimistically confirms the current interpretation by bank transaction id', async () => {
     const {mutators} = await import('@/zero/mutators')
     const tx = createClientTransaction({
-      bankTransactions: [bankTransaction()],
+      bankTransactions: [bankTransaction(), bankTransaction({id: 'counter-bank-transaction', bankAccountId: 'bank-account-2', amount: 1_000_000, categorizationRevision: 3})],
       ledgerTransactions: [ledgerTransaction({status: 'needs_review', categorizedBy: 'ai'})],
-      ledgerPostings: [posting({id: 'bank-posting', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0})],
+      ledgerPostings: [
+        posting({id: 'bank-posting', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0}),
+        posting({id: 'counter-bank-posting', accountId: 'savings', amount: 1_000_000, bankTransactionId: 'counter-bank-transaction', sortOrder: 1}),
+      ],
     })
     const request = mutators.ledger.confirmTransaction({bankTransactionId: 'bank-transaction-1'})
 
@@ -314,6 +318,16 @@ describe('ledger Zero mutators', () => {
         kind: 'update',
         value: expect.objectContaining({id: 'ledger-transaction-1', status: 'confirmed', userConfirmedBy: 'user-1'}),
       },
+      {
+        table: 'bankTransactions',
+        kind: 'update',
+        value: expect.objectContaining({id: 'bank-transaction-1', categorizationRevision: 1}),
+      },
+      {
+        table: 'bankTransactions',
+        kind: 'update',
+        value: expect.objectContaining({id: 'counter-bank-transaction', categorizationRevision: 4}),
+      },
     ])
     expect(confirmBankTransactionInterpretation).not.toHaveBeenCalled()
   })
@@ -321,6 +335,7 @@ describe('ledger Zero mutators', () => {
   it('optimistically clears bank-import interpretations and their postings', async () => {
     const {mutators} = await import('@/zero/mutators')
     const tx = createClientTransaction({
+      bankTransactions: [bankTransaction()],
       ledgerTransactions: [ledgerTransaction(), ledgerTransaction({id: 'manual-transaction', source: 'manual'})],
       ledgerPostings: [
         posting({id: 'bank-posting', ledgerTransactionId: 'ledger-transaction-1', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0}),
@@ -333,6 +348,7 @@ describe('ledger Zero mutators', () => {
     await request.mutator.fn({args: request.args, ctx: {userID: 'user-1'}, tx: tx as never})
 
     expect(tx.operations).toEqual([
+      {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'bank-transaction-1', categorizationRevision: 1})},
       {table: 'ledgerPostings', kind: 'delete', value: {id: 'bank-posting'}},
       {table: 'ledgerPostings', kind: 'delete', value: {id: 'category-posting'}},
       {table: 'ledgerTransactions', kind: 'delete', value: {id: 'ledger-transaction-1'}},
@@ -520,6 +536,7 @@ function bankTransaction(overrides: Record<string, unknown> = {}) {
     aiConfidence: 1,
     aiReasoning: 'AI suggestion',
     aiProcessingStartedAt: null,
+    categorizationRevision: 0,
     ...overrides,
   }
 }
