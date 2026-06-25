@@ -176,6 +176,28 @@ describe('Flue categorization write tools', () => {
     expect(await currentInterpretationForBankTransaction('bank-transaction-1')).toBeNull()
   })
 
+  it('rejects user-confirmed needs-review rows without bumping the revision', async () => {
+    await seedUserConfirmedNeedsReviewInterpretation('bank-transaction-2')
+    const before = await currentInterpretationForBankTransaction('bank-transaction-2')
+    const tools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'app-run-1', writeExecutor: db})
+
+    await expect(tools.applyInterpretation.run({
+      input: {
+        bankTransactionId: 'bank-transaction-2',
+        expectedCategorizationRevision: 0,
+        confidence: 2,
+        reasoning: 'Would overwrite a user-confirmed review row.',
+        interpretation: {kind: 'category', categoryAccountId: 'groceries'},
+      },
+    })).resolves.toEqual({ok: false, status: 'rejected', error: 'Bank transaction is not writable in this workflow scope'})
+
+    const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-2'))
+    const after = await currentInterpretationForBankTransaction('bank-transaction-2')
+    expect(bankTransaction?.categorizationRevision).toBe(0)
+    expect(after?.ledgerTransaction).toEqual(before?.ledgerTransaction)
+    expect(after?.postings).toEqual(before?.postings)
+  })
+
   it('rejects invalid categories, unsafe transfers, unbalanced splits, target violations, and protected rows without partial writes', async () => {
     await seedConfirmedInterpretation('bank-transaction-2')
     const unrestrictedTools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'app-run-1', writeExecutor: db})
@@ -325,14 +347,25 @@ function bankTransaction(id: string, bankAccountId: string, amount: number, desc
 }
 
 async function seedConfirmedInterpretation(bankTransactionId: string) {
+  await seedExistingInterpretation(bankTransactionId, {status: 'confirmed', categorizedBy: 'user', userConfirmedAt: now, userConfirmedBy: 'user-1'})
+}
+
+async function seedUserConfirmedNeedsReviewInterpretation(bankTransactionId: string) {
+  await seedExistingInterpretation(bankTransactionId, {status: 'needs_review', categorizedBy: 'ai', userConfirmedAt: now, userConfirmedBy: 'user-1'})
+}
+
+async function seedExistingInterpretation(
+  bankTransactionId: string,
+  input: {status: string; categorizedBy: string; userConfirmedAt: Date | null; userConfirmedBy: string | null},
+) {
   await db.insert(ledgerTransactions).values({
     id: `ledger-${bankTransactionId}`,
     teamId: 'team-1',
     source: 'bank_import',
-    status: 'confirmed',
-    categorizedBy: 'user',
-    userConfirmedAt: now,
-    userConfirmedBy: 'user-1',
+    status: input.status,
+    categorizedBy: input.categorizedBy,
+    userConfirmedAt: input.userConfirmedAt,
+    userConfirmedBy: input.userConfirmedBy,
     date: '2026-06-25',
     description: null,
     createdAt: now,
