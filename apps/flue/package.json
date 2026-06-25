@@ -6,7 +6,7 @@
     "dev": "flue dev --target node",
     "build": "flue build --target node",
     "typecheck": "tsc --noEmit",
-    "run:categorize": "flue run categorize-transactions --target node --input '{\"userId\":\"local-user\",\"teamId\":\"local-team\",\"limit\":1}'"
+    "run:categorize": "flue run categorize-transactions --target node --input '{\"appRunId\":\"local-app-run\",\"userId\":\"local-user\",\"teamId\":\"local-team\"}'"
   },
   "dependencies": {
     "@penge/domain": "workspace:*",
