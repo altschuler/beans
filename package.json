@@ -15,5 +15,11 @@
     "db:migrate": "pnpm --filter @penge/web db:migrate",
     "zero:generate": "pnpm --filter @penge/web zero:generate",
     "check": "pnpm --filter @penge/web check && pnpm --filter @penge/flue typecheck && pnpm --filter @penge/domain typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.3",
+    "typescript-eslint": "8.61.1"
   }
 }

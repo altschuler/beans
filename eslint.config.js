@@ -6,14 +6,14 @@ import tseslint from 'typescript-eslint'
 export default tseslint.config(
   {
     ignores: [
-      '.output',
-      '.vinxi',
-      'dist',
-      'build',
-      'coverage',
-      'playwright-report',
-      'test-results',
-      'node_modules',
+      '**/.output/**',
+      '**/.vinxi/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/coverage/**',
+      '**/playwright-report/**',
+      '**/test-results/**',
+      '**/node_modules/**',
       'src/routeTree.gen.ts',
     ],
   },
