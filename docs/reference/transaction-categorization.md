@@ -49,9 +49,9 @@ The server validates the target bank account and searches for an unreconciled op
 
 ## Status dot and confirmation
 
-The status dot is an attention marker, not a raw AI confidence display.
+The status dot is an attention marker, not a raw AI confidence display. Active Flue categorization is shown as a team-level workflow indicator; the row dot reflects the row's latest persisted categorization state.
 
-- gray/spinner: AI processing is fresh
+- gray/spinner: legacy row-level AI processing is fresh, when present
 - red: uncategorized or AI could not categorize
 - yellow: AI suggested a plausible category and review is recommended
 - softer green: AI categorized with high confidence, but the user has not explicitly confirmed it

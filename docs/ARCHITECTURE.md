@@ -7,8 +7,8 @@ For product/system-design explanations, use `docs/reference/` alongside this arc
 Penge is a pnpm monorepo:
 
 - `apps/web/` is the TanStack Start application. It owns the browser UI, Better Auth, Zero, Drizzle schema/migrations, and web-facing server functions.
-- `apps/flue/` is a Flue sidecar service scaffold. It owns Flue agents, workflows, tools, model calls, and Flue runtime persistence.
-- `packages/domain/` is reserved for shared domain/database code extracted when both apps need the same implementation boundary.
+- `apps/flue/` is the Flue sidecar service. It owns Flue agents, workflows, tools, model calls, and Flue runtime persistence.
+- `packages/domain/` contains shared domain/database code used by both the web app and Flue, including schema exports, categorization services, read projections, money helpers, and workflow-run repository helpers.
 
 Run commands from the workspace root by default. Package-local source paths in docs generally refer to `apps/web/src/...` for web code and `apps/flue/src/...` for Flue code.
 

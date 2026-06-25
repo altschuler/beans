@@ -100,9 +100,9 @@ If Zero mutators are added, they must follow the same rule: authenticate at the 
 
 ### Flue sidecar calls
 
-The Flue sidecar in `apps/flue` is an internal service. The first scaffold uses a shared `PENGE_FLUE_INTERNAL_TOKEN` for web-to-Flue calls; this is temporary and tracked in `docs/TODO.md`.
+The Flue sidecar in `apps/flue` is an internal service. The first workflow version uses a shared `PENGE_FLUE_INTERNAL_TOKEN` for web-to-Flue calls; this is temporary and tracked in `docs/TODO.md`.
 
-For first-slice workflows:
+For current Flue workflows:
 
 1. `apps/web` authenticates the browser user normally.
 2. `apps/web` derives the trusted `userId` and authorized `teamId` server-side.

@@ -27,6 +27,7 @@ Current Zero-synced app/domain tables:
 
 - `teams`
 - `team_members`
+- `agent_workflow_runs`
 - `bank_connections`
 - `bank_accounts`
 - `bank_transactions`
@@ -49,6 +50,8 @@ Current stored money columns:
 These columns are Postgres `bigint` values exposed by Drizzle and Zero as `number`. Keep safe-integer database checks on stored money columns, and do not reintroduce `numeric(18,4)` or decimal-string storage for synced money amounts.
 
 When adding a new app/domain table, it is not complete until it is represented in both Drizzle and Zero generation config, and the generated Zero schema has been updated.
+
+`agent_workflow_runs` is the app-owned workflow visibility projection. It is Zero-synced so clients can observe active team workflows, while the separate `flue_*` runtime tables remain internal to Flue.
 
 ## Client mutations
 
