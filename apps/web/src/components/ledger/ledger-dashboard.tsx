@@ -18,6 +18,9 @@ import {queries} from '@/zero/queries'
 import {buildLedgerDashboardModel} from './ledger-dashboard-model'
 import {saveDashboardSplitTransaction} from './save-dashboard-split-transaction'
 
+const CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME = 'categorize-transactions'
+const PENDING_TEAM_ID_SENTINEL = '__pending_team__'
+
 type LedgerDashboardView = 'transactions' | 'bankAccountTransactions'
 
 type LedgerDashboardProps = {
@@ -35,6 +38,9 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   ) as ReturnType<typeof queries.domain.bankTransactionsForDashboard>
   const [bankTransactions, bankTransactionsStatus] = useQuery(bankTransactionsQuery)
   const [bankAccounts, bankAccountsStatus] = useQuery(queries.domain.bankAccounts())
+  const selectedBankAccount = view === 'bankAccountTransactions' ? bankAccounts.find((account) => account.id === bankAccountId) : undefined
+  const activeTeamId = (view === 'bankAccountTransactions' ? selectedBankAccount?.teamId : bankAccounts[0]?.teamId) ?? null
+  const [activeWorkflowRuns] = useQuery(queries.domain.activeAgentWorkflowRunsByTeam({teamId: activeTeamId ?? PENDING_TEAM_ID_SENTINEL}))
   const [isAiRequestPending, setIsAiRequestPending] = useState(false)
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
   const isAiRequestPendingRef = useRef(false)
@@ -48,7 +54,8 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     bankAccountIdFilter: view === 'bankAccountTransactions' ? bankAccountId : null,
   })
 
-  const selectedBankAccount = view === 'bankAccountTransactions' ? bankAccounts.find((account) => account.id === bankAccountId) : undefined
+  const isCategorizeWorkflowActive = Boolean(activeTeamId && activeWorkflowRuns.some((run) => run.workflowName === CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME))
+  const isAiStartDisabled = isAiRequestPending || isCategorizeWorkflowActive
   const bankAccountsComplete = bankAccountsStatus.type === 'complete'
   const bankTransactionsComplete = bankTransactionsStatus.type === 'complete'
   const selectedBankAccountMissing = view === 'bankAccountTransactions' && !selectedBankAccount && bankAccountsComplete
@@ -71,8 +78,8 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     isAiRequestPendingRef.current = true
     setIsAiRequestPending(true)
     try {
-      await aiCategorizeNeedsReviewBatch({data: {limit: 25}})
-      toast.success('AI categorization finished. Review any transactions still marked needs review.')
+      await aiCategorizeNeedsReviewBatch({data: {}})
+      toast.success('AI categorization started. You can keep reviewing while it runs.')
     } catch (error) {
       showErrorToast(error, 'AI categorization failed. Try again.')
     } finally {
@@ -88,7 +95,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     setIsAiRequestPending(true)
     try {
       await aiCategorizeTransaction({data: {bankTransactionId}})
-      toast.success('AI categorization finished. Review the transaction if it still needs review.')
+      toast.success('AI categorization started for this transaction.')
     } catch (error) {
       showErrorToast(error, 'AI could not categorize this transaction.')
     } finally {
@@ -127,8 +134,9 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
       <div className="text-sm font-semibold">
         {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
       </div>
+      {isCategorizeWorkflowActive ? <div className="text-sm font-semibold text-muted-foreground">AI categorization is running for this team</div> : null}
       {model.aiProcessingCount > 0 ? <div className="text-sm font-semibold text-muted-foreground">AI running · {model.aiProcessingCount} processing</div> : null}
-      <Button type="button" variant="outline" disabled={aiEligibleReviewCount === 0 || isAiRequestPending} onClick={() => void aiCategorizeBatch()}>
+      <Button type="button" variant="outline" disabled={aiEligibleReviewCount === 0 || isAiStartDisabled} onClick={() => void aiCategorizeBatch()}>
         Auto-categorize
       </Button>
       <SyncAllBankAccountsButton accounts={bankAccounts} variant="outline" />
@@ -166,7 +174,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
                 rows={model.transactionRows}
                 categorizationAccounts={model.categorizationAccounts}
                 transferAccounts={model.transferAccounts}
-                isAiRequestPending={isAiRequestPending}
+                isAiRequestPending={isAiStartDisabled}
                 onCategorizeBankTransaction={categorizeBankTransaction}
                 onConfirmTransaction={confirmTransaction}
                 onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
@@ -191,7 +199,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
                     rows={model.transactionRows}
                     categorizationAccounts={model.categorizationAccounts}
                     transferAccounts={model.transferAccounts}
-                    isAiRequestPending={isAiRequestPending}
+                    isAiRequestPending={isAiStartDisabled}
                     onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
                     onConfirmTransaction={(bankTransactionId) => void confirmTransaction(bankTransactionId)}
                     onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}

@@ -106,9 +106,10 @@ For first-slice workflows:
 
 1. `apps/web` authenticates the browser user normally.
 2. `apps/web` derives the trusted `userId` and authorized `teamId` server-side.
-3. `apps/web` calls Flue with `Authorization: Bearer $PENGE_FLUE_INTERNAL_TOKEN`.
-4. Workflow input includes both `userId` and `teamId`.
-5. Flue tools scope every domain read/write by both values and never allow model-selected user/team scope.
+3. `apps/web` reserves an app-visible `agent_workflow_runs` row and sends its id as `appRunId`.
+4. `apps/web` calls Flue at `PENGE_FLUE_BASE_URL` with `Authorization: Bearer $PENGE_FLUE_INTERNAL_TOKEN`.
+5. Workflow input includes `appRunId`, `userId`, `teamId`, and optional workflow target constraints such as `targetBankTransactionIds`.
+6. Flue tools scope every domain read/write by the trusted values and never allow model-selected user/team scope.
 
 Long term, Flue should operate through a least-privilege authorization boundary, such as authenticated app/domain APIs or capability-scoped services, so broad database access is not available to the agent runtime.
 

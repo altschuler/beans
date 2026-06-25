@@ -18,6 +18,17 @@ Flue runs as a separate Node-target service, not inside the TanStack Start runti
 
 First-slice web-to-Flue auth uses `PENGE_FLUE_INTERNAL_TOKEN` and passes trusted `userId` plus `teamId` in workflow input. This is temporary tech debt tracked in `docs/TODO.md`; the long-term goal is a least-privilege API/capability boundary where Flue cannot read or write data outside the authenticated user's authorized scope.
 
+For local development, run the web app and Flue sidecar as separate processes. The web app needs `PENGE_FLUE_BASE_URL` pointing at the Flue server and `PENGE_FLUE_INTERNAL_TOKEN`; the Flue app needs the same token and should use a non-web port. The example env files use:
+
+```txt
+apps/web/.env:  PENGE_FLUE_BASE_URL=http://localhost:3001
+apps/web/.env:  PENGE_FLUE_INTERNAL_TOKEN=change-me
+apps/flue/.env: PORT=3001
+apps/flue/.env: PENGE_FLUE_INTERNAL_TOKEN=change-me
+```
+
+Start them from the workspace root with `pnpm dev:web` and `pnpm dev:flue` (or equivalent package-filtered commands).
+
 ## Client/server import boundaries
 
 TanStack Start builds client and server environments from overlapping route modules, so server-only dependencies must be explicit.

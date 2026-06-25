@@ -14,12 +14,12 @@ Keep Zero mutators short. Do not perform long-running external calls inside a Ze
 For external orchestration, use a server function, server-only service, or the Flue sidecar instead:
 
 1. authenticate and authorize server-side
-2. make short committed database updates to record visible state, such as `processingStartedAt`
+2. make short committed database updates to record visible state, such as an `agent_workflow_runs` row or other processing marker
 3. call the external service outside any Zero mutator or long-lived database transaction
-4. make short committed database updates with the result
-5. clear transient processing state in a `finally` path
+4. make short committed database updates with the result or admission failure
+5. clear transient processing state in a `finally` path when the orchestration owns transient state
 
-Flue workflows live in `apps/flue` and run as a sidecar service. The web app should pass trusted scope such as `userId` and `teamId`; Flue tools must not let the model choose authorization scope. Flue should update domain tables through trusted server/domain logic, not through Zero.
+Flue workflows live in `apps/flue` and run as a sidecar service. The web app should reserve app-visible workflow state before invoking Flue, then pass trusted scope such as `appRunId`, `userId`, and `teamId`; Flue tools must not let the model choose authorization scope. Flue should update domain tables through trusted server/domain logic, not through Zero.
 
 If the work needs durable retry, use an outbox table or background worker rather than relying on an in-request async task.
 

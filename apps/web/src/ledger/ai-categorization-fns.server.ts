@@ -1,6 +1,6 @@
 import '@tanstack/react-start/server-only'
 
-import {aiCategorizeBankTransactions} from './ai-categorization.server'
+import {startFlueCategorizeNeedsReviewWorkflow, startFlueCategorizeTransactionWorkflow} from './flue-categorization-workflow.server'
 
 export type AiCategorizeTransactionInput = {
   bankTransactionId: string
@@ -11,9 +11,10 @@ export type AiCategorizeNeedsReviewBatchInput = {
 }
 
 export async function runAiCategorizeTransactionForUser(userId: string, data: AiCategorizeTransactionInput) {
-  return aiCategorizeBankTransactions({userId, bankTransactionIds: [data.bankTransactionId]})
+  return startFlueCategorizeTransactionWorkflow({userId, bankTransactionId: data.bankTransactionId})
 }
 
-export async function runAiCategorizeNeedsReviewBatchForUser(userId: string, data: AiCategorizeNeedsReviewBatchInput) {
-  return aiCategorizeBankTransactions({userId, limit: data.limit})
+export async function runAiCategorizeNeedsReviewBatchForUser(userId: string, data: AiCategorizeNeedsReviewBatchInput = {}) {
+  void data
+  return startFlueCategorizeNeedsReviewWorkflow({userId})
 }

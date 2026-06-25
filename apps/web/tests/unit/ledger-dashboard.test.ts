@@ -89,7 +89,8 @@ const queryRows = vi.hoisted(() => ({
       }
     }
   }>,
-  bankAccounts: [] as Array<{id: string; name: string; syncStatus?: string}>,
+  bankAccounts: [] as Array<{id: string; name: string; teamId?: string; syncStatus?: string}>,
+  activeWorkflowRuns: [] as Array<{id: string; workflowName: string; teamId: string; status: string}>,
 }))
 
 const zeroMutate = vi.hoisted(() => vi.fn(async () => undefined))
@@ -148,6 +149,7 @@ const renderedPageLayouts = vi.hoisted(
     }>,
 )
 const requestedBankTransactionsForBankAccountArgs = vi.hoisted(() => [] as Array<{bankAccountId: string}>)
+const requestedActiveWorkflowRunsByTeamArgs = vi.hoisted(() => [] as Array<{teamId: string}>)
 const requestedQueryNames = vi.hoisted(() => [] as string[])
 
 vi.mock('sonner', () => ({
@@ -158,7 +160,7 @@ vi.mock('sonner', () => ({
 }))
 
 vi.mock('@rocicorp/zero/react', () => ({
-  useQuery: vi.fn((query: {name: string; bankAccountId?: string}) => {
+  useQuery: vi.fn((query: {name: string; bankAccountId?: string; teamId?: string}) => {
     requestedQueryNames.push(query.name)
     if (query.name === 'ledgerAccountGroups') return [queryRows.groups, {type: queryStatuses.groups}]
     if (query.name === 'ledgerAccounts') return [queryRows.accounts, {type: queryStatuses.accounts}]
@@ -170,6 +172,8 @@ vi.mock('@rocicorp/zero/react', () => ({
     if (query.name === 'bankTransactionsForBankAccount')
       return [queryRows.bankTransactions.filter((transaction) => transaction.bankAccountId === query.bankAccountId), {type: queryStatuses.bankTransactions}]
     if (query.name === 'bankAccounts') return [queryRows.bankAccounts, {type: queryStatuses.bankAccounts}]
+    if (query.name === 'activeAgentWorkflowRunsByTeam')
+      return [queryRows.activeWorkflowRuns.filter((run) => run.teamId === query.teamId && run.status === 'active'), {type: 'complete'}]
     throw new Error(`Unexpected query: ${query.name}`)
   }),
   useZero: vi.fn(() => ({mutate: zeroMutate})),
@@ -300,6 +304,10 @@ vi.mock('@/zero/queries', () => ({
         }
       },
       bankAccounts: () => ({name: 'bankAccounts'}),
+      activeAgentWorkflowRunsByTeam: (args: {teamId: string}) => {
+        requestedActiveWorkflowRunsByTeamArgs.push(args)
+        return {name: 'activeAgentWorkflowRunsByTeam', teamId: args.teamId}
+      },
     },
   },
 }))
@@ -353,6 +361,7 @@ describe('LedgerDashboard', () => {
     renderedButtons.length = 0
     renderedPageLayouts.length = 0
     requestedBankTransactionsForBankAccountArgs.length = 0
+    requestedActiveWorkflowRunsByTeamArgs.length = 0
     requestedQueryNames.length = 0
     queryStatuses.groups = 'complete'
     queryStatuses.accounts = 'complete'
@@ -452,7 +461,8 @@ describe('LedgerDashboard', () => {
         },
       },
     ]
-    queryRows.bankAccounts = [{id: 'bank-account-1', name: 'Checking'}]
+    queryRows.bankAccounts = [{id: 'bank-account-1', name: 'Checking', teamId: 'team-1'}]
+    queryRows.activeWorkflowRuns = []
   })
 
   it('shows a sync all accounts action', () => {
@@ -549,7 +559,7 @@ describe('LedgerDashboard', () => {
         aiReasoning: null,
       },
     ]
-    queryRows.bankAccounts = [...queryRows.bankAccounts, {id: 'bank-account-2', name: 'Savings'}]
+    queryRows.bankAccounts = [...queryRows.bankAccounts, {id: 'bank-account-2', name: 'Savings', teamId: 'team-1'}]
 
     const markup = renderToStaticMarkup(
       React.createElement(LedgerDashboard, {
@@ -696,17 +706,41 @@ describe('LedgerDashboard', () => {
     expect(findButtonByLabelPrefix('Confirm category for Netto.')).toBeUndefined()
   })
 
-  it('runs the batch AI server function with the server cap', async () => {
+  it('starts the batch AI workflow without the old synchronous limit', async () => {
     renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     findButton('Auto-categorize')?.onClick?.()
     await flushPromises()
 
     expect(aiCategorizeNeedsReviewBatch).toHaveBeenCalledWith({
-      data: {limit: 25},
+      data: {},
     })
     expect(zeroMutate).not.toHaveBeenCalledWith(expect.objectContaining({type: 'aiCategorizeNeedsReviewBatch'}))
-    expect(toastSuccess).toHaveBeenCalledWith('AI categorization finished. Review any transactions still marked needs review.')
+    expect(toastSuccess).toHaveBeenCalledWith('AI categorization started. You can keep reviewing while it runs.')
+  })
+
+  it('shows team-level active AI workflow state and disables batch AI starts', () => {
+    queryRows.ledgerTransactions = []
+    queryRows.postings = []
+    queryRows.bankTransactions = queryRows.bankTransactions.map((transaction) => ({
+      id: transaction.id,
+      bankAccountId: transaction.bankAccountId,
+      amount: transaction.amount,
+      currency: transaction.currency,
+      bookingDate: transaction.bookingDate,
+      valueDate: transaction.valueDate,
+      description: transaction.description,
+      aiConfidence: null,
+      aiProcessingStartedAt: null,
+      aiReasoning: null,
+    }))
+    queryRows.activeWorkflowRuns = [{id: 'app-run-1', workflowName: 'categorize-transactions', teamId: 'team-1', status: 'active'}]
+
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    expect(requestedActiveWorkflowRunsByTeamArgs).toContainEqual({teamId: 'team-1'})
+    expect(markup).toContain('AI categorization is running for this team')
+    expect(findButton('Auto-categorize')?.disabled).toBe(true)
   })
 
   it('confirms the current transaction category through a narrow Zero mutator', async () => {
