@@ -7,7 +7,7 @@ export const Route = createFileRoute('/api/gocardless/callback')({
         const url = new URL(request.url)
         const reference = url.searchParams.get('ref')
         const teamId = url.searchParams.get('teamId')
-        const appUrl = process.env.VITE_PUBLIC_APP_URL ?? 'https://localhost:3000'
+        const appUrl = process.env.VITE_PUBLIC_APP_URL ?? 'https://localhost:3100'
 
         if (!reference || !teamId) {
           return Response.redirect(`${appUrl}/app?bankLink=missing-params`, 302)

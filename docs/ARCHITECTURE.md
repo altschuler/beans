@@ -21,9 +21,9 @@ First-slice web-to-Flue auth uses `PENGE_FLUE_INTERNAL_TOKEN` and passes trusted
 For local development, run the web app and Flue sidecar as separate processes. The web app needs `PENGE_FLUE_BASE_URL` pointing at the Flue server and `PENGE_FLUE_INTERNAL_TOKEN`; the Flue app needs the same token and should use a non-web port. The example env files use:
 
 ```txt
-apps/web/.env:  PENGE_FLUE_BASE_URL=http://localhost:3001
+apps/web/.env:  PENGE_FLUE_BASE_URL=http://localhost:3101
 apps/web/.env:  PENGE_FLUE_INTERNAL_TOKEN=change-me
-apps/flue/.env: PORT=3001
+apps/flue/.env: PORT=3101
 apps/flue/.env: PENGE_FLUE_INTERNAL_TOKEN=change-me
 ```
 

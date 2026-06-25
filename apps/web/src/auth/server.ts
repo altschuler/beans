@@ -6,7 +6,7 @@ import {tanstackStartCookies} from 'better-auth/tanstack-start'
 import {db} from '@/db/client'
 import * as schema from '@penge/domain/schema'
 
-const authBaseURL = process.env.BETTER_AUTH_URL ?? 'https://localhost:3000'
+const authBaseURL = process.env.BETTER_AUTH_URL ?? 'https://localhost:3100'
 const authSecret = process.env.BETTER_AUTH_SECRET
 
 export const auth = betterAuth({

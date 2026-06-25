@@ -1,4 +1,4 @@
-import {defineWorkflow, type ToolDefinition, type WorkflowRouteHandler} from '@flue/runtime'
+import {defineWorkflow, observe, type FlueEvent, type ToolDefinition, type WorkflowRouteHandler} from '@flue/runtime'
 import * as v from 'valibot'
 import transactionCategorizer from '../agents/transaction-categorizer'
 import {createCategorizationReadTools} from '../agent-tools/read-tools'
@@ -54,6 +54,12 @@ export const route: WorkflowRouteHandler = async (c, next) => {
   await next()
 }
 
+export const runs = route
+
+observe((event) => {
+  void recordCategorizationWorkflowRunStart(event)
+})
+
 export default defineWorkflow({
   agent: transactionCategorizer,
   input: inputSchema,
@@ -79,7 +85,6 @@ export async function executeCategorizationWorkflow(input: {
   const createTools = input.createTools ?? createScopedCategorizationTools
 
   try {
-    await lifecycle.attachFlueRunId({appRunId: input.input.appRunId, flueRunId: input.harness.name})
     const session = await input.harness.session()
     await session.prompt(buildCategorizationWorkflowPrompt(input.input), {
       tools: createTools(input.input) as ToolDefinition[],
@@ -90,6 +95,16 @@ export async function executeCategorizationWorkflow(input: {
     await lifecycle.markFailed({appRunId: input.input.appRunId, error: errorMessage(error)})
     throw error
   }
+}
+
+export async function recordCategorizationWorkflowRunStart(
+  event: FlueEvent | {type: string; runId?: string; workflowName?: string; input?: unknown},
+  lifecycle: Pick<CategorizationWorkflowLifecycle, 'attachFlueRunId'> = domainWorkflowLifecycle,
+) {
+  if (event.type !== 'run_start' || event.workflowName !== CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME || typeof event.runId !== 'string') return
+  const input = event.input
+  if (!isCategorizeTransactionsWorkflowInput(input)) return
+  await lifecycle.attachFlueRunId({appRunId: input.appRunId, flueRunId: event.runId})
 }
 
 export function buildCategorizationWorkflowPrompt(input: CategorizeTransactionsWorkflowInput) {
@@ -128,6 +143,14 @@ function createScopedCategorizationTools(input: CategorizeTransactionsWorkflowIn
     ...createCategorizationReadTools(input),
     ...createCategorizationWriteTools(input),
   ]
+}
+
+function isCategorizeTransactionsWorkflowInput(input: unknown): input is CategorizeTransactionsWorkflowInput {
+  return typeof input === 'object'
+    && input !== null
+    && typeof (input as CategorizeTransactionsWorkflowInput).appRunId === 'string'
+    && typeof (input as CategorizeTransactionsWorkflowInput).userId === 'string'
+    && typeof (input as CategorizeTransactionsWorkflowInput).teamId === 'string'
 }
 
 const domainWorkflowLifecycle: CategorizationWorkflowLifecycle = {

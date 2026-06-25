@@ -37,7 +37,7 @@ just setup
 just dev
 ```
 
-App: https://localhost:3000  
+App: https://localhost:3100  
 Zero cache: http://localhost:4848
 
 Run the Flue sidecar separately when working on agent workflows:
@@ -46,7 +46,7 @@ Run the Flue sidecar separately when working on agent workflows:
 just dev-flue
 ```
 
-Flue dev server: http://localhost:3583
+Flue dev server: http://localhost:3101
 
 ## Database
 

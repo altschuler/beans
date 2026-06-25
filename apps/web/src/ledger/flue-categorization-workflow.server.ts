@@ -158,7 +158,7 @@ async function invokeFlueCategorizeTransactionsWorkflow(input: CategorizeTransac
       authorization: `Bearer ${token}`,
       'content-type': 'application/json',
     },
-    body: JSON.stringify({input}),
+    body: JSON.stringify(input),
   })
 
   if (!response.ok) {

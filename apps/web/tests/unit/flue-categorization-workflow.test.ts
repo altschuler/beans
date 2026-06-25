@@ -3,6 +3,9 @@ import {
   CATEGORIZE_TRANSACTIONS_WORKFLOW_LIMITS,
   buildCategorizationWorkflowPrompt,
   executeCategorizationWorkflow,
+  recordCategorizationWorkflowRunStart,
+  route,
+  runs,
 } from '../../../flue/src/workflows/categorize-transactions'
 
 type PromptFn = (text: string, options?: {tools?: TestTool[]}) => Promise<unknown>
@@ -36,7 +39,26 @@ describe('Flue categorize-transactions workflow', () => {
     expect(rowPrompt).toContain('Do not write any transaction whose canWrite flag is false')
   })
 
-  it('attaches the Flue run id, provides scoped tools, and completes the app workflow run on success', async () => {
+  it('records the real Flue run id from run start events', async () => {
+    const lifecycle = {
+      attachFlueRunId: vi.fn(async () => undefined),
+    }
+
+    await recordCategorizationWorkflowRunStart({
+      type: 'run_start',
+      runId: 'run_01REAL',
+      workflowName: 'categorize-transactions',
+      input: {appRunId: 'app-run-1', userId: 'user-1', teamId: 'team-1'},
+    }, lifecycle)
+
+    expect(lifecycle.attachFlueRunId).toHaveBeenCalledWith({appRunId: 'app-run-1', flueRunId: 'run_01REAL'})
+  })
+
+  it('exposes protected run streams with the same middleware as workflow submission', () => {
+    expect(runs).toBe(route)
+  })
+
+  it('provides scoped tools and completes the app workflow run on success', async () => {
     const prompt = vi.fn(async () => ({text: 'done', usage: {}, model: {provider: 'test', id: 'model'}}))
     const harness = fakeHarness('flue-run-1', prompt)
     const tools = [fakeTool('searchBankTransactions'), fakeTool('applyInterpretation')]
@@ -58,7 +80,7 @@ describe('Flue categorize-transactions workflow', () => {
       createTools: () => tools,
     })).resolves.toEqual({status: 'completed'})
 
-    expect(lifecycle.attachFlueRunId).toHaveBeenCalledWith({appRunId: 'app-run-1', flueRunId: 'flue-run-1'})
+    expect(lifecycle.attachFlueRunId).not.toHaveBeenCalled()
     expect(prompt).toHaveBeenCalledWith(expect.stringContaining('bank-transaction-1'), {tools})
     expect(lifecycle.markCompleted).toHaveBeenCalledWith({appRunId: 'app-run-1'})
     expect(lifecycle.markFailed).not.toHaveBeenCalled()

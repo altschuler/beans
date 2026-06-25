@@ -8,7 +8,7 @@ import {getLocalHttpsConfig} from './vite.local-https'
 
 export default defineConfig(({command}) => ({
   server: {
-    port: 3000,
+    port: 3100,
     ...(command === 'serve' ? {https: getLocalHttpsConfig()} : {}),
   },
   plugins: [

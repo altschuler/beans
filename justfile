@@ -12,10 +12,12 @@ setup:
 dev:
   just db-up
   pnpm db:migrate
-  pnpm dev
+  pnpm --parallel --stream --filter @penge/web --filter @penge/flue dev
 
 dev-web:
-  just dev
+  just db-up
+  pnpm db:migrate
+  pnpm dev:web
 
 dev-flue:
   pnpm dev:flue

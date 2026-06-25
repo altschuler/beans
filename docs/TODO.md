@@ -11,6 +11,11 @@
   - Keep the current stacked flow intact: Add category → Add group should return to category creation, and successful group creation should pass the new group id back as `initialGroupId`.
   - Once only the active dialog is rendered, remove unnecessary `key` reset props and reduce inline `dialog.kind === ... ? ... : ...` guards.
 
+## Local development configuration
+
+- Make local service ports easy to change from one documented place. Current web defaults are duplicated across `apps/web/package.json` (`dev:app` Vite CLI `--port`), `apps/web/vite.config.ts` (`server.port`), `apps/web/.env.example` (`ZERO_QUERY_URL`, `ZERO_MUTATE_URL`, `BETTER_AUTH_URL`, `VITE_PUBLIC_APP_URL`, `PENGE_FLUE_BASE_URL`), `apps/web/playwright.config.ts` (`use.baseURL`, `webServer.url`), `apps/web/tests/setup/env.ts` (test env fallbacks), `apps/web/src/auth/server.ts` (`BETTER_AUTH_URL` fallback), `apps/web/src/banking/banking-fns.ts` (`VITE_PUBLIC_APP_URL` fallback), `apps/web/src/routes/api/gocardless/callback.ts` (`VITE_PUBLIC_APP_URL` fallback), and `README.md`. Local untracked `apps/web/.env` also needs to mirror these values when present.
+- Current Flue defaults are split across `apps/flue/package.json` (`flue dev --port`), `apps/flue/.env.example` (`PORT`), `apps/web/.env.example` (`PENGE_FLUE_BASE_URL`), `docs/ARCHITECTURE.md`, and `README.md`. Local untracked `apps/flue/.env` also needs to mirror these values when present. `justfile` and root `package.json` start these package scripts indirectly, so they should remain part of any future port-configuration review even when they do not contain numeric ports.
+
 ## Production ready
 
 - Add a soft per-row agent activity marker for Flue categorization. The first agentic workflow will use team-level active workflow state only; a future UI improvement can show “agent is considering this row” as informational activity, not as a claim, lease, or write lock.

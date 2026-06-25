@@ -22,7 +22,7 @@ export const startBankLink = createServerFn({method: 'POST'})
     await ensureSession()
     const teamId = await ensureCurrentUserPersonalTeamServer()
     const reference = crypto.randomUUID()
-    const appUrl = process.env.VITE_PUBLIC_APP_URL ?? 'https://localhost:3000'
+    const appUrl = process.env.VITE_PUBLIC_APP_URL ?? 'https://localhost:3100'
     const client = createGoCardlessClient()
     const institution = await client.getInstitution(data.institutionId)
     const accountSelection = institution.supported_features?.includes('account_selection') ?? false
