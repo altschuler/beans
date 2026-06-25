@@ -1,5 +1,6 @@
 # Inbox
 
+- 2026-06-25: `pnpm check` currently reaches Playwright then fails in `e2e/smoke.spec.ts` because `/login` never exposes `data-testid="auth-toggle"` within 10s. Lint, typecheck, and unit tests can pass before this, so verify/fix the login smoke separately before using `pnpm check` as a clean merge gate.
 - 2026-06-25: Pi subagent async `context-builder` fanout for Section 3 domain extraction failed immediately with stale-run reconciliation before writing child results. If this repeats, skip the fanout and inspect locally rather than waiting on status polling.
 - 2026-06-25: `drizzle-zero generate` marks DB-default columns as optional in the generated client schema and warns that Zero clients cannot rely on database defaults. When adding synced columns with defaults (e.g. `bank_transactions.categorization_revision`), optimistic mutators must set/update them explicitly and type code should handle `null`/missing local values.
 - 2026-06-22: Pi subagent async runs can fill `/tmp` quickly; this run exhausted the 30G tmpfs under `/tmp/pi-subagents-uid-1000`. If subagent status calls fail with `ENOSPC`, clear stale files under that Pi temp directory before continuing verification.

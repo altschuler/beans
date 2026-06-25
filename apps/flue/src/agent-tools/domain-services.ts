@@ -1,6 +1,7 @@
 export {db} from '@penge/domain/db'
 export {
   CategorizationRevisionConflictError,
+  applyAgentBankTransactionInterpretation,
   categorizeBankTransaction,
   clearLedgerCategorizations,
   confirmBankTransactionInterpretation,

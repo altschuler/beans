@@ -23,10 +23,13 @@ type BankTransactionInterpretation =
   | {kind: 'category'; accountId: string}
   | {kind: 'split'; lines: CategorizationLineInput[]}
   | {kind: 'transfer'; accountId: string}
+  | {kind: 'transfer'; counterBankTransactionId: string}
 
 type ApplyBankTransactionInterpretationInput = {
   userId: string
+  teamId?: string
   bankTransactionId: string
+  targetBankTransactionIds?: string[]
   interpretation: BankTransactionInterpretation
   status?: LedgerTransactionFinalStatus
   aiConfidence?: LedgerTransactionAiConfidence | null
@@ -53,6 +56,23 @@ type SplitBankTransactionInput = {
   bankTransactionId: string
   lines: CategorizationLineInput[]
   expectedCategorizationRevision?: number
+}
+
+export type AgentInterpretationInput =
+  | {kind: 'unable'}
+  | {kind: 'category'; categoryAccountId: string}
+  | {kind: 'split'; lines: CategorizationLineInput[]}
+  | {kind: 'transfer'; counterBankTransactionId: string}
+
+export type ApplyAgentBankTransactionInterpretationInput = {
+  userId: string
+  teamId: string
+  bankTransactionId: string
+  targetBankTransactionIds?: string[]
+  expectedCategorizationRevision: number
+  confidence: LedgerTransactionAiConfidence
+  reasoning: string
+  interpretation: AgentInterpretationInput
 }
 
 type ConfirmBankTransactionInterpretationInput = {
@@ -141,8 +161,67 @@ export async function splitBankTransaction(tx: DrizzleTransaction, input: SplitB
   })
 }
 
+export async function applyAgentBankTransactionInterpretation(tx: DrizzleTransaction, input: ApplyAgentBankTransactionInterpretationInput) {
+  if ((input.interpretation.kind === 'category' || input.interpretation.kind === 'transfer') && input.confidence === 0) {
+    throw new Error('Category and transfer interpretations require confidence 1 or 2')
+  }
+
+  if (input.interpretation.kind === 'unable') {
+    return recordUnableAgentInterpretation(tx, input)
+  }
+
+  if (input.interpretation.kind === 'category') {
+    return applyBankTransactionInterpretation(tx, {
+      userId: input.userId,
+      teamId: input.teamId,
+      bankTransactionId: input.bankTransactionId,
+      targetBankTransactionIds: input.targetBankTransactionIds,
+      interpretation: {kind: 'category', accountId: input.interpretation.categoryAccountId},
+      status: input.confidence === 2 ? 'confirmed' : 'needs_review',
+      aiConfidence: input.confidence,
+      aiReasoning: input.reasoning,
+      categorizedBy: 'ai',
+      requiredExistingStatus: 'needs_review',
+      expectedCategorizationRevision: input.expectedCategorizationRevision,
+    })
+  }
+
+  if (input.interpretation.kind === 'split') {
+    return applyBankTransactionInterpretation(tx, {
+      userId: input.userId,
+      teamId: input.teamId,
+      bankTransactionId: input.bankTransactionId,
+      targetBankTransactionIds: input.targetBankTransactionIds,
+      interpretation: {kind: 'split', lines: input.interpretation.lines},
+      status: 'needs_review',
+      aiConfidence: 1,
+      aiReasoning: input.reasoning,
+      categorizedBy: 'ai',
+      requiredExistingStatus: 'needs_review',
+      expectedCategorizationRevision: input.expectedCategorizationRevision,
+    })
+  }
+
+  return applyBankTransactionInterpretation(tx, {
+    userId: input.userId,
+    teamId: input.teamId,
+    bankTransactionId: input.bankTransactionId,
+    targetBankTransactionIds: input.targetBankTransactionIds,
+    interpretation: {kind: 'transfer', counterBankTransactionId: input.interpretation.counterBankTransactionId},
+    status: input.confidence === 2 ? 'confirmed' : 'needs_review',
+    aiConfidence: input.confidence,
+    aiReasoning: input.reasoning,
+    categorizedBy: 'ai',
+    requiredExistingStatus: 'needs_review',
+    expectedCategorizationRevision: input.expectedCategorizationRevision,
+  })
+}
+
 async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input: ApplyBankTransactionInterpretationInput) {
   const loaded = await loadBankTransactionForCategorization(tx, input.userId, input.bankTransactionId)
+  if (input.teamId && loaded.teamId !== input.teamId) return false
+  if (input.targetBankTransactionIds && !input.targetBankTransactionIds.includes(loaded.bankTransaction.id)) return false
+
   const existing = await loadExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
 
   const isAiCategorization = input.categorizedBy === 'ai'
@@ -154,9 +233,6 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
     return false
   }
 
-  if (isAiCategorization && input.interpretation.kind === 'transfer') {
-    throw new Error('AI categorization cannot create transfers')
-  }
   const normalizedAiReasoning = isAiCategorization ? requireAiReasoning(input.aiReasoning) : null
   if (!isAiCategorization && isRecentlyProcessing(loaded.bankTransaction.aiProcessingStartedAt)) {
     throw new Error('Bank transaction is already being categorized')
@@ -191,29 +267,30 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
   }
 
   if (input.interpretation.kind === 'transfer') {
-    const transferAccount = await loadTransferLedgerAccount(tx, loaded.teamId, input.interpretation.accountId)
-    if (transferAccount.linkedBankAccountId === loaded.bankTransaction.bankAccountId) {
-      throw new Error('Cannot transfer to the same bank account')
-    }
+    const transferTarget = 'counterBankTransactionId' in input.interpretation
+      ? await loadTransferTargetForCounterBankTransaction(tx, {
+          teamId: loaded.teamId,
+          sourceBankTransactionId: loaded.bankTransaction.id,
+          counterBankTransactionId: input.interpretation.counterBankTransactionId,
+          sourceBankAccountId: loaded.bankTransaction.bankAccountId,
+          sourceAmount: loaded.bankTransaction.amount,
+          currency: loaded.bankTransaction.currency,
+        })
+      : await loadTransferTargetForLedgerAccount(tx, {
+          teamId: loaded.teamId,
+          sourceBankTransactionId: loaded.bankTransaction.id,
+          transferLedgerAccountId: input.interpretation.accountId,
+          sourceBankAccountId: loaded.bankTransaction.bankAccountId,
+          sourceAmount: loaded.bankTransaction.amount,
+          currency: loaded.bankTransaction.currency,
+          sourceDate: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
+        })
 
     // Claim and clear the existing interpretation before counter matching: the guarded UPDATE is the
     // optimistic-concurrency check and clearing its postings frees the previous counter for re-matching.
     if (existing) {
       const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, writeFields)
       if (!claimed) return false
-    }
-
-    const counterBankTransaction = await findExactCounterBankTransaction({
-      tx,
-      teamId: loaded.teamId,
-      sourceBankTransactionId: loaded.bankTransaction.id,
-      targetBankAccountId: transferAccount.linkedBankAccountId!,
-      sourceAmount: loaded.bankTransaction.amount,
-      currency: loaded.bankTransaction.currency,
-      sourceDate: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
-    })
-    if (!counterBankTransaction) {
-      throw new Error('No matching transfer was found')
     }
 
     const postings = buildBankTransactionTransferPostings({
@@ -224,17 +301,21 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
         amount: loaded.bankTransaction.amount,
         currency: loaded.bankTransaction.currency,
       },
-      targetLedgerAccountId: transferAccount.id,
-      counterBankTransactionId: counterBankTransaction.id,
+      targetLedgerAccountId: transferTarget.transferAccount.id,
+      counterBankTransactionId: transferTarget.counterBankTransaction.id,
       now,
     })
 
     await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: Boolean(existing), postings})
-    await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
+    if (isAiCategorization) {
+      await recordBankTransactionAiResult(tx, loaded.bankTransaction.id, input.aiConfidence ?? null, normalizedAiReasoning, now)
+    } else {
+      await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
+    }
     await bumpCategorizationRevisions(tx, {
       bankTransactionIds: targetRevisionClaimed
-        ? [...existingBankTransactionIds, counterBankTransaction.id].filter(id => id !== loaded.bankTransaction.id)
-        : [...existingBankTransactionIds, loaded.bankTransaction.id, counterBankTransaction.id],
+        ? [...existingBankTransactionIds, transferTarget.counterBankTransaction.id].filter(id => id !== loaded.bankTransaction.id)
+        : [...existingBankTransactionIds, loaded.bankTransaction.id, transferTarget.counterBankTransaction.id],
       now,
     })
     return true
@@ -275,6 +356,27 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
       : [...existingBankTransactionIds, loaded.bankTransaction.id],
     now,
   })
+  return true
+}
+
+async function recordUnableAgentInterpretation(tx: DrizzleTransaction, input: ApplyAgentBankTransactionInterpretationInput) {
+  if (input.confidence !== 0) throw new Error('Unable interpretations require confidence 0')
+  const normalizedAiReasoning = requireAiReasoning(input.reasoning)
+  const loaded = await loadBankTransactionForCategorization(tx, input.userId, input.bankTransactionId)
+  if (loaded.teamId !== input.teamId) return false
+  if (input.targetBankTransactionIds && !input.targetBankTransactionIds.includes(loaded.bankTransaction.id)) return false
+
+  const existing = await loadExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
+  if (existing && isProtectedFromAiOverwrite(existing.ledgerTransaction)) return false
+
+  const now = new Date()
+  await bumpCategorizationRevisions(tx, {
+    bankTransactionIds: [loaded.bankTransaction.id],
+    targetBankTransactionId: loaded.bankTransaction.id,
+    expectedCategorizationRevision: input.expectedCategorizationRevision,
+    now,
+  })
+  await recordBankTransactionAiResult(tx, loaded.bankTransaction.id, 0, normalizedAiReasoning, now)
   return true
 }
 
@@ -533,6 +635,94 @@ async function writeRebuiltInterpretation(
     categorizedBy: input.categorizedBy,
     now: input.now,
   })
+}
+
+async function loadTransferTargetForLedgerAccount(
+  tx: DrizzleTransaction,
+  input: {
+    teamId: string
+    sourceBankTransactionId: string
+    transferLedgerAccountId: string
+    sourceBankAccountId: string
+    sourceAmount: number
+    currency: string
+    sourceDate: string | null
+  },
+) {
+  const transferAccount = await loadTransferLedgerAccount(tx, input.teamId, input.transferLedgerAccountId)
+  if (transferAccount.linkedBankAccountId === input.sourceBankAccountId) {
+    throw new Error('Cannot transfer to the same bank account')
+  }
+
+  const counterBankTransaction = await findExactCounterBankTransaction({
+    tx,
+    teamId: input.teamId,
+    sourceBankTransactionId: input.sourceBankTransactionId,
+    targetBankAccountId: transferAccount.linkedBankAccountId!,
+    sourceAmount: input.sourceAmount,
+    currency: input.currency,
+    sourceDate: input.sourceDate,
+  })
+  if (!counterBankTransaction) {
+    throw new Error('No matching transfer was found')
+  }
+
+  return {transferAccount, counterBankTransaction}
+}
+
+async function loadTransferTargetForCounterBankTransaction(
+  tx: DrizzleTransaction,
+  input: {
+    teamId: string
+    sourceBankTransactionId: string
+    counterBankTransactionId: string
+    sourceBankAccountId: string
+    sourceAmount: number
+    currency: string
+  },
+) {
+  const [row] = await tx
+    .select({
+      counterBankTransaction: {
+        id: bankTransactions.id,
+        bankAccountId: bankTransactions.bankAccountId,
+        amount: bankTransactions.amount,
+        currency: bankTransactions.currency,
+      },
+      transferAccount: {
+        id: ledgerAccounts.id,
+        teamId: ledgerAccounts.teamId,
+        type: ledgerAccounts.type,
+        status: ledgerAccounts.status,
+        linkedBankAccountId: ledgerAccounts.linkedBankAccountId,
+      },
+      existingPostingId: ledgerPostings.id,
+      teamId: bankAccounts.teamId,
+    })
+    .from(bankTransactions)
+    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+    .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
+    .leftJoin(ledgerPostings, eq(ledgerPostings.bankTransactionId, bankTransactions.id))
+    .where(eq(bankTransactions.id, input.counterBankTransactionId))
+    .limit(1)
+
+  if (
+    !row ||
+    row.teamId !== input.teamId ||
+    row.transferAccount.teamId !== input.teamId ||
+    row.transferAccount.type !== 'bank' ||
+    row.transferAccount.status !== 'active' ||
+    !row.transferAccount.linkedBankAccountId ||
+    row.counterBankTransaction.id === input.sourceBankTransactionId ||
+    row.counterBankTransaction.bankAccountId === input.sourceBankAccountId ||
+    row.counterBankTransaction.amount !== -input.sourceAmount ||
+    row.counterBankTransaction.currency !== input.currency ||
+    row.existingPostingId
+  ) {
+    throw new Error('Invalid transfer counter transaction')
+  }
+
+  return {transferAccount: row.transferAccount, counterBankTransaction: row.counterBankTransaction}
 }
 
 async function loadTransferLedgerAccount(tx: DrizzleTransaction, teamId: string, accountId: string): Promise<TransferLedgerAccount> {
