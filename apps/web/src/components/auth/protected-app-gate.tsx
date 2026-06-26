@@ -2,6 +2,7 @@ import {useEffect, useState, type ReactNode} from 'react'
 import {useRouter, useRouterState} from '@tanstack/react-router'
 import {authClient} from '@/auth/client'
 import {Shell} from '@/components/layout/shell'
+import {AppFlueProvider} from '@/components/flue/app-flue-provider'
 import {AppZeroProvider} from '@/components/zero/app-zero-provider'
 import {ensureCurrentUserPersonalTeam} from '@/teams/personal-team-fns'
 import {resolveAuthRedirectTarget} from './redirect'
@@ -96,9 +97,11 @@ export function ProtectedAppView({children, state}: ProtectedAppViewProps) {
 
   return (
     <AppZeroProvider userID={state.user.id}>
-      <Shell userEmail={state.user.email} userName={state.user.name}>
-        {children}
-      </Shell>
+      <AppFlueProvider>
+        <Shell userEmail={state.user.email} userName={state.user.name} userId={state.user.id}>
+          {children}
+        </Shell>
+      </AppFlueProvider>
     </AppZeroProvider>
   )
 }

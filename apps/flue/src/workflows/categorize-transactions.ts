@@ -131,8 +131,8 @@ Mission:
 8. Never invent account ids, never ignore target constraints, and never write rows outside the trusted scope.
 
 Operational rules:
-- Always read a transaction's categorizationRevision before calling applyInterpretation.
-- If applyInterpretation returns a conflict, re-read before deciding whether another attempt is still valid; never blindly replay stale writes.
+- Always read a transaction's categorizationRevision before calling applyCategorizationSuggestion.
+- If applyCategorizationSuggestion returns a conflict, re-read before deciding whether another attempt is still valid; never blindly replay stale writes.
 - Do not write any transaction whose canWrite flag is false.
 - Keep reasoning concise, display-safe, and free of private chain-of-thought. Do not reveal private chain-of-thought or internal deliberation.
 - Stop with a short summary when the workflow is exhausted or capped. No detailed counts are required.`

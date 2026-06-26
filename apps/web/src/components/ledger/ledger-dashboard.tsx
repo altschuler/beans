@@ -129,88 +129,96 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   const aiEligibleReviewCount = model.transactionRows.filter((row) => row.needsReview).length
 
   const dashboardClassName = view === 'transactions' ? 'flex h-full min-h-0 flex-col' : 'space-y-6'
-  const transactionHeaderActions = showGlobalTransactionActions ? (
-    <>
-      <div className="text-sm font-semibold">
-        {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
+  function renderTransactionHeaderActions() {
+    if (!showGlobalTransactionActions) return undefined
+
+    return (
+      <>
+        <div className="text-sm font-semibold">
+          {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
+        </div>
+        {isCategorizeWorkflowActive ? <div className="text-sm font-semibold text-muted-foreground">AI categorization is running for this team</div> : null}
+        {model.aiProcessingCount > 0 ? <div className="text-sm font-semibold text-muted-foreground">AI running · {model.aiProcessingCount} processing</div> : null}
+        <Button type="button" variant="outline" disabled={aiEligibleReviewCount === 0 || isAiStartDisabled} onClick={() => void aiCategorizeBatch()}>
+          Auto-categorize
+        </Button>
+        <SyncAllBankAccountsButton accounts={bankAccounts} variant="outline" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="outline" size="icon" aria-label="More transaction actions" title="More transaction actions">
+              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={model.transactionRows.length === 0 || isClearDialogOpen}
+              onSelect={(event) => {
+                event.preventDefault()
+                void requestClearCategorizations()
+              }}
+            >
+              Clear categorizations
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </>
+    )
+  }
+
+  const dashboardContent = (
+    <div className={dashboardClassName}>
+      <div className={view === 'transactions' ? 'flex min-h-0 flex-1' : 'grid gap-4'}>
+        {view === 'transactions' ? (
+          transactionRowsSyncing ? (
+            <p className="p-4 text-sm text-muted-foreground md:p-6 lg:p-8">Syncing transactions…</p>
+          ) : (
+            <TransactionTable
+              rows={model.transactionRows}
+              categorizationAccounts={model.categorizationAccounts}
+              transferAccounts={model.transferAccounts}
+              isAiRequestPending={isAiStartDisabled}
+              onCategorizeBankTransaction={categorizeBankTransaction}
+              onConfirmTransaction={confirmTransaction}
+              onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
+              onSaveSplit={saveSplit}
+            />
+          )
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>Transactions</CardTitle>
+              <CardDescription>Choose a category inline. Use Split only for the rare transaction that spans categories.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {selectedBankAccountSyncing ? (
+                <p className="text-sm text-muted-foreground">Syncing bank account…</p>
+              ) : selectedBankAccountMissing ? (
+                <p className="text-sm text-muted-foreground">Bank account not found.</p>
+              ) : transactionRowsSyncing ? (
+                <p className="text-sm text-muted-foreground">Syncing transactions…</p>
+              ) : (
+                <TransactionTable
+                  rows={model.transactionRows}
+                  categorizationAccounts={model.categorizationAccounts}
+                  transferAccounts={model.transferAccounts}
+                  isAiRequestPending={isAiStartDisabled}
+                  onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
+                  onConfirmTransaction={(bankTransactionId) => void confirmTransaction(bankTransactionId)}
+                  onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
+                  onSaveSplit={saveSplit}
+                />
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
-      {isCategorizeWorkflowActive ? <div className="text-sm font-semibold text-muted-foreground">AI categorization is running for this team</div> : null}
-      {model.aiProcessingCount > 0 ? <div className="text-sm font-semibold text-muted-foreground">AI running · {model.aiProcessingCount} processing</div> : null}
-      <Button type="button" variant="outline" disabled={aiEligibleReviewCount === 0 || isAiStartDisabled} onClick={() => void aiCategorizeBatch()}>
-        Auto-categorize
-      </Button>
-      <SyncAllBankAccountsButton accounts={bankAccounts} variant="outline" />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" size="icon" aria-label="More transaction actions" title="More transaction actions">
-            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={model.transactionRows.length === 0 || isClearDialogOpen}
-            onSelect={(event) => {
-              event.preventDefault()
-              void requestClearCategorizations()
-            }}
-          >
-            Clear categorizations
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </>
-  ) : undefined
+    </div>
+  )
 
   return (
-    <PageLayout breadcrumbs={[{title: pageTitle}]} actions={transactionHeaderActions} contentClassName="p-0">
-      <div className={dashboardClassName}>
-        <div className={view === 'transactions' ? 'flex min-h-0 flex-1' : 'grid gap-4'}>
-          {view === 'transactions' ? (
-            transactionRowsSyncing ? (
-              <p className="p-4 text-sm text-muted-foreground md:p-6 lg:p-8">Syncing transactions…</p>
-            ) : (
-              <TransactionTable
-                rows={model.transactionRows}
-                categorizationAccounts={model.categorizationAccounts}
-                transferAccounts={model.transferAccounts}
-                isAiRequestPending={isAiStartDisabled}
-                onCategorizeBankTransaction={categorizeBankTransaction}
-                onConfirmTransaction={confirmTransaction}
-                onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
-                onSaveSplit={saveSplit}
-              />
-            )
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Transactions</CardTitle>
-                <CardDescription>Choose a category inline. Use Split only for the rare transaction that spans categories.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {selectedBankAccountSyncing ? (
-                  <p className="text-sm text-muted-foreground">Syncing bank account…</p>
-                ) : selectedBankAccountMissing ? (
-                  <p className="text-sm text-muted-foreground">Bank account not found.</p>
-                ) : transactionRowsSyncing ? (
-                  <p className="text-sm text-muted-foreground">Syncing transactions…</p>
-                ) : (
-                  <TransactionTable
-                    rows={model.transactionRows}
-                    categorizationAccounts={model.categorizationAccounts}
-                    transferAccounts={model.transferAccounts}
-                    isAiRequestPending={isAiStartDisabled}
-                    onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
-                    onConfirmTransaction={(bankTransactionId) => void confirmTransaction(bankTransactionId)}
-                    onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
-                    onSaveSplit={saveSplit}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
+    <PageLayout breadcrumbs={[{title: pageTitle}]} actions={renderTransactionHeaderActions()} contentClassName="p-0">
+      {dashboardContent}
     </PageLayout>
   )
 }

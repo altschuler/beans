@@ -10,6 +10,7 @@
     "./money": "./src/money.ts",
     "./read-projections": "./src/read-projections.ts",
     "./schema": "./src/schema.ts",
+    "./team-data-assistant-id": "./src/team-data-assistant-id.ts",
     "./workflow-runs": "./src/workflow-runs.ts"
   },
   "scripts": {

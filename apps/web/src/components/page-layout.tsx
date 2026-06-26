@@ -1,5 +1,6 @@
 import {type ReactNode} from 'react'
 import {Link} from '@tanstack/react-router'
+import {TeamChatSidebarTrigger} from '@/components/flue/team-chat-sidebar'
 import {Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator} from '@/components/ui/breadcrumb'
 import {Separator} from '@/components/ui/separator'
 import {SidebarTrigger} from '@/components/ui/sidebar'
@@ -36,11 +37,10 @@ export function PageLayout({breadcrumbs, actions, children, contentClassName}: P
             </BreadcrumbList>
           </Breadcrumb>
         </div>
-        {actions ? (
-          <div data-slot="page-layout-actions" className="flex flex-wrap items-center gap-3 md:ml-auto md:justify-end">
-            {actions}
-          </div>
-        ) : null}
+        <div data-slot="page-layout-actions" className="flex flex-wrap items-center gap-3 md:ml-auto md:justify-end">
+          <TeamChatSidebarTrigger />
+          {actions}
+        </div>
       </header>
       <div data-slot="page-layout-content" className={cn('min-h-0 flex-1 overflow-auto', contentClassName)}>
         {children}

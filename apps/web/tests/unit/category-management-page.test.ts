@@ -36,6 +36,10 @@ vi.mock('@rocicorp/zero/react', () => ({
   useZero: vi.fn(() => ({mutate: zeroMutate})),
 }))
 
+vi.mock('@/auth/client', () => ({
+  authClient: {useSession: () => ({data: {user: {id: 'user-1'}}})},
+}))
+
 // PageLayout owns the app frame and router context; render a thin stand-in so the
 // test exercises page-owned behavior without mounting the full shell.
 vi.mock('@/components/page-layout', () => ({
@@ -79,6 +83,8 @@ describe('CategoryManagementPage', () => {
     expect(screen.getByText('Food shops')).toBeInTheDocument()
     expect(screen.getByText('Expense')).toBeInTheDocument()
     expect(screen.getByText('100.00 DKK')).toBeInTheDocument()
+    expect(screen.queryByRole('button', {name: 'Ask Penge'})).not.toBeInTheDocument()
+    expect(screen.queryByTestId('team-chat-panel')).not.toBeInTheDocument()
 
     // Bank-linked accounts are not categories, and other teams' data must never leak.
     expect(screen.queryByText('Checking')).not.toBeInTheDocument()

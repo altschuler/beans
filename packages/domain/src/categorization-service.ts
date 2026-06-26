@@ -41,7 +41,9 @@ type ApplyBankTransactionInterpretationInput = {
 
 type CategorizeBankTransactionInput = {
   userId: string
+  teamId?: string
   bankTransactionId: string
+  targetBankTransactionIds?: string[]
   selection: {kind: 'category'; accountId: string} | {kind: 'transfer'; accountId: string}
   status?: LedgerTransactionFinalStatus
   aiConfidence?: LedgerTransactionAiConfidence | null
@@ -53,7 +55,9 @@ type CategorizeBankTransactionInput = {
 
 type SplitBankTransactionInput = {
   userId: string
+  teamId?: string
   bankTransactionId: string
+  targetBankTransactionIds?: string[]
   lines: CategorizationLineInput[]
   expectedCategorizationRevision?: number
 }
@@ -141,7 +145,9 @@ export function normalizeAiReasoning(reasoning: string) {
 export async function categorizeBankTransaction(tx: DrizzleTransaction, input: CategorizeBankTransactionInput) {
   return applyBankTransactionInterpretation(tx, {
     userId: input.userId,
+    teamId: input.teamId,
     bankTransactionId: input.bankTransactionId,
+    targetBankTransactionIds: input.targetBankTransactionIds,
     interpretation: input.selection,
     status: input.status,
     aiConfidence: input.aiConfidence,
@@ -155,7 +161,9 @@ export async function categorizeBankTransaction(tx: DrizzleTransaction, input: C
 export async function splitBankTransaction(tx: DrizzleTransaction, input: SplitBankTransactionInput) {
   return applyBankTransactionInterpretation(tx, {
     userId: input.userId,
+    teamId: input.teamId,
     bankTransactionId: input.bankTransactionId,
+    targetBankTransactionIds: input.targetBankTransactionIds,
     interpretation: {kind: 'split', lines: input.lines},
     expectedCategorizationRevision: input.expectedCategorizationRevision,
   })

@@ -1,6 +1,6 @@
 import {defineTool, type JsonValue, type ToolDefinition} from '@flue/runtime'
 import * as v from 'valibot'
-import {applyAgentBankTransactionInterpretation, CategorizationRevisionConflictError, db} from './domain-services'
+import {applyAgentBankTransactionInterpretation, categorizeBankTransaction, CategorizationRevisionConflictError, db, splitBankTransaction} from './domain-services'
 import type {Database} from '@penge/domain/db'
 import type {TrustedToolScope} from '@penge/domain/read-projections'
 
@@ -22,7 +22,7 @@ const interpretationSchema = v.variant('kind', [
   v.object({kind: v.literal('transfer'), counterBankTransactionId: nonEmptyStringSchema}),
 ])
 
-const applyInterpretationInput = v.object({
+const applyCategorizationSuggestionInput = v.object({
   bankTransactionId: nonEmptyStringSchema,
   expectedCategorizationRevision: v.number(),
   confidence: confidenceSchema,
@@ -30,17 +30,32 @@ const applyInterpretationInput = v.object({
   interpretation: interpretationSchema,
 })
 
+const userConfirmedInterpretationSchema = v.variant('kind', [
+  v.object({kind: v.literal('category'), categoryAccountId: nonEmptyStringSchema}),
+  v.object({
+    kind: v.literal('split'),
+    lines: v.array(v.object({categoryAccountId: nonEmptyStringSchema, amount: nonEmptyStringSchema})),
+  }),
+  v.object({kind: v.literal('transfer'), transferLedgerAccountId: nonEmptyStringSchema}),
+])
+
+const applyCategorizationInput = v.object({
+  bankTransactionId: nonEmptyStringSchema,
+  expectedCategorizationRevision: v.number(),
+  interpretation: userConfirmedInterpretationSchema,
+})
+
 export function createCategorizationWriteTools(input: CategorizationWriteToolScope): ToolDefinition[] {
   const {writeExecutor = db, userId, teamId, appRunId: _appRunId, targetBankTransactionIds} = input
 
   return [
     defineTool({
-      name: 'applyInterpretation',
+      name: 'applyCategorizationSuggestion',
       description:
         'Apply one guarded categorization interpretation for a scoped bank transaction. The runtime supplies user, team, run, and target scope; never replay a stale write blindly after a conflict.',
-      input: applyInterpretationInput,
+      input: applyCategorizationSuggestionInput,
       async run({input}) {
-        const validationError = validateApplyInterpretationInput(input)
+        const validationError = validateApplyCategorizationSuggestionInput(input)
         if (validationError) return toJsonValue({ok: false, status: 'rejected', error: validationError})
 
         try {
@@ -77,7 +92,66 @@ export function createCategorizationWriteTools(input: CategorizationWriteToolSco
   ]
 }
 
-function validateApplyInterpretationInput(input: v.InferOutput<typeof applyInterpretationInput>) {
+export function createChatCategorizationWriteTools(input: CategorizationWriteToolScope): ToolDefinition[] {
+  const {writeExecutor = db, userId, teamId, appRunId: _appRunId, targetBankTransactionIds} = input
+
+  return [
+    defineTool({
+      name: 'applyCategorization',
+      description:
+        'Apply a categorization change after the current chat user has explicitly confirmed the latest concrete proposal. Uses trusted user/team scope and manual user-confirmed semantics; suitable for recategorizing confirmed rows.',
+      input: applyCategorizationInput,
+      async run({input}) {
+        if (input.interpretation.kind === 'split' && input.interpretation.lines.length === 0) {
+          return toJsonValue({ok: false, status: 'rejected', error: 'Split interpretations require at least one line'})
+        }
+
+        try {
+          const applied = await writeExecutor.transaction(tx => {
+            if (input.interpretation.kind === 'split') {
+              return splitBankTransaction(tx, {
+                userId,
+                teamId,
+                targetBankTransactionIds,
+                bankTransactionId: input.bankTransactionId,
+                expectedCategorizationRevision: input.expectedCategorizationRevision,
+                lines: input.interpretation.lines.map(line => ({accountId: line.categoryAccountId, amount: line.amount})),
+              })
+            }
+
+            return categorizeBankTransaction(tx, {
+              userId,
+              teamId,
+              targetBankTransactionIds,
+              bankTransactionId: input.bankTransactionId,
+              expectedCategorizationRevision: input.expectedCategorizationRevision,
+              selection: input.interpretation.kind === 'category'
+                ? {kind: 'category', accountId: input.interpretation.categoryAccountId}
+                : {kind: 'transfer', accountId: input.interpretation.transferLedgerAccountId},
+            })
+          })
+
+          return toJsonValue(applied ? {ok: true, status: 'applied'} : {ok: false, status: 'rejected', error: 'Bank transaction is not writable in this workflow scope'})
+        } catch (error) {
+          if (error instanceof CategorizationRevisionConflictError) {
+            return toJsonValue({
+              ok: false,
+              status: 'conflict',
+              bankTransactionId: error.bankTransactionId,
+              expectedCategorizationRevision: error.expectedCategorizationRevision,
+              actualCategorizationRevision: error.actualCategorizationRevision,
+              instruction: 'Re-read the transaction before deciding whether to retry; do not blindly replay the stale interpretation.',
+            })
+          }
+
+          return toJsonValue({ok: false, status: 'rejected', error: error instanceof Error ? error.message : 'Categorization was rejected'})
+        }
+      },
+    }),
+  ]
+}
+
+function validateApplyCategorizationSuggestionInput(input: v.InferOutput<typeof applyCategorizationSuggestionInput>) {
   const reasoning = input.reasoning.trim()
   if (!reasoning) return 'Reasoning is required'
   if (reasoning.length > 500) return 'Reasoning must be concise'

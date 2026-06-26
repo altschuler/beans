@@ -1,5 +1,7 @@
 # Inbox
 
+- 2026-06-25: Flue agent unit tests are easier to keep stable when the agent module exports a pure config factory (for example `createTeamDataAssistantConfig`) and the default export passes it to `defineAgent`. In this run, inspecting `defineAgent` calls through a Vitest `@flue/runtime` mock was unreliable even though the module imported successfully.
+- 2026-06-25: `pnpm check` / Playwright can fail before tests run if local Flue dev port 3101 is already occupied. In this run the webServer failed because `@penge/flue dev` hit `listen EADDRINUSE :::3101`; `lsof -iTCP:3101 -sTCP:LISTEN -n -P` identified the existing listener.
 - 2026-06-25: Local dev port defaults are scattered across package scripts, Vite config, env examples, test setup, Playwright, app URL fallbacks, and docs. `docs/TODO.md` now lists the concrete locations; future work should centralize these before the next port move.
 - 2026-06-25: `pnpm check` currently reaches Playwright then fails in `e2e/smoke.spec.ts` because `/login` never exposes `data-testid="auth-toggle"` within 10s. Lint, typecheck, and unit tests can pass before this, so verify/fix the login smoke separately before using `pnpm check` as a clean merge gate.
 - 2026-06-25: Pi subagent async `context-builder` fanout for Section 3 domain extraction failed immediately with stale-run reconciliation before writing child results. If this repeats, skip the fanout and inspect locally rather than waiting on status polling.

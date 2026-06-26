@@ -11,6 +11,10 @@ vi.mock('@/components/ui/sidebar', () => ({
     React.createElement('button', {'aria-label': props['aria-label'], 'data-slot': 'sidebar-trigger'}, 'Toggle sidebar'),
 }))
 
+vi.mock('@/components/flue/team-chat-sidebar', () => ({
+  TeamChatSidebarTrigger: () => React.createElement('button', {type: 'button', 'data-testid': 'team-chat-sidebar-trigger'}, 'Ask Penge'),
+}))
+
 import {PageLayout} from '@/components/page-layout'
 
 describe('PageLayout', () => {
@@ -37,6 +41,7 @@ describe('PageLayout', () => {
     expect(markup).toContain('data-slot="page-layout"')
     expect(markup).toContain('data-slot="page-layout-header"')
     expect(markup).toContain('data-slot="page-layout-actions"')
+    expect(markup).toContain('data-testid="team-chat-sidebar-trigger"')
     expect(markup).toContain('data-slot="page-layout-content"')
     expect(markup).toContain('aria-label="breadcrumb"')
     expect(markup).toContain('href="/app/categories"')

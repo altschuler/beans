@@ -17,6 +17,7 @@ import { Route as ProtectedAppRouteImport } from './routes/_protected/app'
 import { Route as ApiZeroQueryRouteImport } from './routes/api/zero/query'
 import { Route as ApiZeroMutateRouteImport } from './routes/api/zero/mutate'
 import { Route as ApiGocardlessCallbackRouteImport } from './routes/api/gocardless/callback'
+import { Route as ApiFlueSplatRouteImport } from './routes/api/flue/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ProtectedAppTransactionsRouteImport } from './routes/_protected/app/transactions'
 import { Route as ProtectedAppCategoriesRouteImport } from './routes/_protected/app/categories'
@@ -63,6 +64,11 @@ const ApiGocardlessCallbackRoute = ApiGocardlessCallbackRouteImport.update({
   path: '/api/gocardless/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFlueSplatRoute = ApiFlueSplatRouteImport.update({
+  id: '/api/flue/$',
+  path: '/api/flue/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -106,6 +112,7 @@ export interface FileRoutesByFullPath {
   '/app/categories': typeof ProtectedAppCategoriesRoute
   '/app/transactions': typeof ProtectedAppTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/flue/$': typeof ApiFlueSplatRoute
   '/api/gocardless/callback': typeof ApiGocardlessCallbackRoute
   '/api/zero/mutate': typeof ApiZeroMutateRoute
   '/api/zero/query': typeof ApiZeroQueryRoute
@@ -121,6 +128,7 @@ export interface FileRoutesByTo {
   '/app/categories': typeof ProtectedAppCategoriesRoute
   '/app/transactions': typeof ProtectedAppTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/flue/$': typeof ApiFlueSplatRoute
   '/api/gocardless/callback': typeof ApiGocardlessCallbackRoute
   '/api/zero/mutate': typeof ApiZeroMutateRoute
   '/api/zero/query': typeof ApiZeroQueryRoute
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/_protected/app/categories': typeof ProtectedAppCategoriesRoute
   '/_protected/app/transactions': typeof ProtectedAppTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/flue/$': typeof ApiFlueSplatRoute
   '/api/gocardless/callback': typeof ApiGocardlessCallbackRoute
   '/api/zero/mutate': typeof ApiZeroMutateRoute
   '/api/zero/query': typeof ApiZeroQueryRoute
@@ -155,6 +164,7 @@ export interface FileRouteTypes {
     | '/app/categories'
     | '/app/transactions'
     | '/api/auth/$'
+    | '/api/flue/$'
     | '/api/gocardless/callback'
     | '/api/zero/mutate'
     | '/api/zero/query'
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/app/categories'
     | '/app/transactions'
     | '/api/auth/$'
+    | '/api/flue/$'
     | '/api/gocardless/callback'
     | '/api/zero/mutate'
     | '/api/zero/query'
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '/_protected/app/categories'
     | '/_protected/app/transactions'
     | '/api/auth/$'
+    | '/api/flue/$'
     | '/api/gocardless/callback'
     | '/api/zero/mutate'
     | '/api/zero/query'
@@ -198,6 +210,7 @@ export interface RootRouteChildren {
   ProtectedRoute: typeof ProtectedRouteWithChildren
   LoginRoute: typeof LoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiFlueSplatRoute: typeof ApiFlueSplatRoute
   ApiGocardlessCallbackRoute: typeof ApiGocardlessCallbackRoute
   ApiZeroMutateRoute: typeof ApiZeroMutateRoute
   ApiZeroQueryRoute: typeof ApiZeroQueryRoute
@@ -259,6 +272,13 @@ declare module '@tanstack/react-router' {
       path: '/api/gocardless/callback'
       fullPath: '/api/gocardless/callback'
       preLoaderRoute: typeof ApiGocardlessCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/flue/$': {
+      id: '/api/flue/$'
+      path: '/api/flue/$'
+      fullPath: '/api/flue/$'
+      preLoaderRoute: typeof ApiFlueSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -346,6 +366,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProtectedRoute: ProtectedRouteWithChildren,
   LoginRoute: LoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiFlueSplatRoute: ApiFlueSplatRoute,
   ApiGocardlessCallbackRoute: ApiGocardlessCallbackRoute,
   ApiZeroMutateRoute: ApiZeroMutateRoute,
   ApiZeroQueryRoute: ApiZeroQueryRoute,

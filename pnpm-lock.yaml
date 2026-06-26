@@ -57,6 +57,12 @@ importers:
       '@better-auth/drizzle-adapter':
         specifier: 1.6.18
         version: 1.6.18(@better-auth/core@1.6.18(@better-auth/utils@0.4.1)(@better-fetch/fetch@1.3.0)(@opentelemetry/api@1.9.1)(better-call@1.3.6(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0))(@better-auth/utils@0.4.1)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.15.5)(kysely@0.29.2)(postgres@3.4.9)(sql.js@1.14.1))
+      '@flue/react':
+        specifier: 1.0.0-beta.6
+        version: 1.0.0-beta.6(@flue/sdk@1.0.0-beta.6)(react@19.2.7)
+      '@flue/sdk':
+        specifier: 1.0.0-beta.6
+        version: 1.0.0-beta.6
       '@penge/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -1300,6 +1306,12 @@ packages:
     resolution: {integrity: sha512-Pwlgbzy/O8bHfvSrA5+/bAU6w6DlB73zChfoxBsM8Lb2hvt65Q9ynl1vbgI+HE01tRSM1W7IMAQ8YZKWXpeQiQ==}
     engines: {node: '>=22.19.0'}
 
+  '@flue/react@1.0.0-beta.6':
+    resolution: {integrity: sha512-iBsV7Z6oejK0AB9QpjC8dzGs6xN0BbnVJg134qSn2cu8YJZRqI89wUaWG582Qbf+Acbph1sK/0YNbDT7PYqqnA==}
+    peerDependencies:
+      '@flue/sdk': '>=1.0.0-beta.3 <1.0.0'
+      react: '>=18'
+
   '@flue/runtime@1.0.0-beta.3':
     resolution: {integrity: sha512-VkWz6lRaS73fu6Y8Wh+CjAHjrLmICUmDwURQCA7dtXWP2O99UyvDQ/5Cbg9DYpsYZpaFuOhWzOCj+Igc4F/LbA==}
     engines: {node: '>=22.19.0'}
@@ -1310,6 +1322,9 @@ packages:
 
   '@flue/sdk@1.0.0-beta.5':
     resolution: {integrity: sha512-pMcOI+0FcqndrX8PH02e8TiBD1HwVMAh0ZF8/urBhQJ8l8nY4UM1tqKbnUGij1jrO4qcVj6ZE33YZVuVMyq7PQ==}
+
+  '@flue/sdk@1.0.0-beta.6':
+    resolution: {integrity: sha512-oNmEb/KlsT2hHMAarsAyVLKJlkQNCADsX4VYYK5fHOq+NV5LONGHR12T/f9pOB8eLV40YWM7bOFFPMUdYZ1Gfw==}
 
   '@google-cloud/precise-date@4.0.0':
     resolution: {integrity: sha512-1TUx3KdaU3cN7nfCdNf+UVqA/PSX29Cjcox3fZZBtINlRrXVTmUkQnCKv2MbBUbCopbK4olAT1IHl76uZyCiVA==}
@@ -7520,6 +7535,11 @@ snapshots:
       - zod-openapi
       - zod-to-json-schema
 
+  '@flue/react@1.0.0-beta.6(@flue/sdk@1.0.0-beta.6)(react@19.2.7)':
+    dependencies:
+      '@flue/sdk': 1.0.0-beta.6
+      react: 19.2.7
+
   '@flue/runtime@1.0.0-beta.3(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(typebox@1.1.38)(typescript@6.0.3)(ws@8.21.0)(zod-to-json-schema@3.25.2(zod@4.4.3))(zod@4.4.3)':
     dependencies:
       '@earendil-works/pi-agent-core': 0.79.10(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
@@ -7591,6 +7611,10 @@ snapshots:
       - zod-to-json-schema
 
   '@flue/sdk@1.0.0-beta.5':
+    dependencies:
+      '@durable-streams/client': 0.2.6
+
+  '@flue/sdk@1.0.0-beta.6':
     dependencies:
       '@durable-streams/client': 0.2.6
 

@@ -69,6 +69,66 @@ export function CategoryManagementPage() {
     })
   }
 
+  const categoryContent = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center border-b px-3 pt-3 pb-3 text-sm font-semibold">
+        {model.categoryCount} {model.categoryCount === 1 ? 'category' : 'categories'}
+      </div>
+      <div className="space-y-4 p-3 md:p-4">
+        {model.groups.map((group) => (
+          <section key={group.id} className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                {group.locked ? <Lock className="h-4 w-4 text-muted-foreground" aria-label="Locked group" /> : null}
+                <h2 className="truncate text-sm font-semibold text-muted-foreground">{group.name}</h2>
+                <span className="text-xs text-muted-foreground">{group.accountCount}</span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                aria-label={`Edit group ${group.name}`}
+                disabled={!group.canEdit}
+                title={group.lockReason ?? undefined}
+                onClick={() => void openEditGroup(group)}
+              >
+                Edit
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {group.accounts.map((account) => (
+                <div key={account.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2">
+                      {account.locked ? <Lock className="h-4 w-4 text-muted-foreground" aria-label="Locked account" /> : null}
+                      <span className="font-medium">{account.name}</span>
+                      <Badge variant="muted">{account.typeLabel}</Badge>
+                    </div>
+                    {account.description ? <p className="truncate text-xs text-muted-foreground">{account.description}</p> : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className="font-mono text-sm">
+                      {account.balance === 'Multiple currencies' ? account.balance : <Currency amount={account.balance} currency={account.balanceCurrency ?? DEFAULT_CURRENCY} />}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      aria-label={`Edit category ${account.name}`}
+                      disabled={!account.canEdit}
+                      title={account.lockReason ?? undefined}
+                      onClick={() => void openEditCategory(account)}
+                    >
+                      Edit
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  )
+
   const actions = (
     <>
       <Button type="button" variant="outline" onClick={() => void openCreateGroup()}>
@@ -82,63 +142,7 @@ export function CategoryManagementPage() {
 
   return (
     <PageLayout breadcrumbs={[{title: 'Categories'}]} actions={actions} contentClassName="p-0">
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="flex shrink-0 items-center border-b px-3 pt-3 pb-3 text-sm font-semibold">
-          {model.categoryCount} {model.categoryCount === 1 ? 'category' : 'categories'}
-        </div>
-        <div className="space-y-4 p-3 md:p-4">
-          {model.groups.map((group) => (
-            <section key={group.id} className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  {group.locked ? <Lock className="h-4 w-4 text-muted-foreground" aria-label="Locked group" /> : null}
-                  <h2 className="truncate text-sm font-semibold text-muted-foreground">{group.name}</h2>
-                  <span className="text-xs text-muted-foreground">{group.accountCount}</span>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  aria-label={`Edit group ${group.name}`}
-                  disabled={!group.canEdit}
-                  title={group.lockReason ?? undefined}
-                  onClick={() => void openEditGroup(group)}
-                >
-                  Edit
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {group.accounts.map((account) => (
-                  <div key={account.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-2">
-                        {account.locked ? <Lock className="h-4 w-4 text-muted-foreground" aria-label="Locked account" /> : null}
-                        <span className="font-medium">{account.name}</span>
-                        <Badge variant="muted">{account.typeLabel}</Badge>
-                      </div>
-                      {account.description ? <p className="truncate text-xs text-muted-foreground">{account.description}</p> : null}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <span className="font-mono text-sm">
-                        {account.balance === 'Multiple currencies' ? account.balance : <Currency amount={account.balance} currency={account.balanceCurrency ?? DEFAULT_CURRENCY} />}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        aria-label={`Edit category ${account.name}`}
-                        disabled={!account.canEdit}
-                        title={account.lockReason ?? undefined}
-                        onClick={() => void openEditCategory(account)}
-                      >
-                        Edit
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      </div>
+      {categoryContent}
     </PageLayout>
   )
 }

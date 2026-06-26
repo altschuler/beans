@@ -12,6 +12,7 @@ const queryStatuses = vi.hoisted(() => ({
 }))
 
 const queryRows = vi.hoisted(() => ({
+  teams: [] as Array<{id: string; name: string}>,
   groups: [] as Array<{id: string; name: string; sortOrder: number}>,
   accounts: [] as Array<{
     id: string
@@ -162,6 +163,7 @@ vi.mock('sonner', () => ({
 vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string; bankAccountId?: string; teamId?: string}) => {
     requestedQueryNames.push(query.name)
+    if (query.name === 'teams') return [queryRows.teams, {type: 'complete'}]
     if (query.name === 'ledgerAccountGroups') return [queryRows.groups, {type: queryStatuses.groups}]
     if (query.name === 'ledgerAccounts') return [queryRows.accounts, {type: queryStatuses.accounts}]
     if (query.name === 'ledgerAccountsForDashboard') return [queryRows.accounts, {type: queryStatuses.accounts}]
@@ -177,6 +179,10 @@ vi.mock('@rocicorp/zero/react', () => ({
     throw new Error(`Unexpected query: ${query.name}`)
   }),
   useZero: vi.fn(() => ({mutate: zeroMutate})),
+}))
+
+vi.mock('@/auth/client', () => ({
+  authClient: {useSession: () => ({data: {user: {id: 'user-1'}}})},
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -285,6 +291,7 @@ vi.mock('@/components/page-layout', async () => {
 vi.mock('@/zero/queries', () => ({
   queries: {
     domain: {
+      teams: () => ({name: 'teams'}),
       ledgerAccountGroups: () => ({name: 'ledgerAccountGroups'}),
       ledgerAccounts: () => ({name: 'ledgerAccounts'}),
       ledgerAccountsForDashboard: () => ({
@@ -369,6 +376,7 @@ describe('LedgerDashboard', () => {
     queryStatuses.postings = 'complete'
     queryStatuses.bankTransactions = 'complete'
     queryStatuses.bankAccounts = 'complete'
+    queryRows.teams = [{id: 'team-1', name: 'Personal'}]
     queryRows.groups = [{id: 'group-1', name: 'Everyday spending', sortOrder: 0}]
     queryRows.accounts = [
       {
@@ -493,6 +501,8 @@ describe('LedgerDashboard', () => {
     expect(markup).not.toContain('border-b px-3 pt-3 pb-3')
     expect(markup).not.toContain('px-4 pt-4 md:px-6 lg:px-8')
     expect(markup).toContain('1 needs review')
+    expect(markup).not.toContain('data-testid="team-chat-panel"')
+    expect(markup).not.toContain('hidden min-h-0 flex-1 overflow-hidden lg:flex')
     expect(markup).toContain('Auto-categorize')
     expect(markup).not.toContain('AI categorize up to 25')
     expect(markup).toContain('Sync all accounts')

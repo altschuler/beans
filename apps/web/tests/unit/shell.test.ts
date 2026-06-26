@@ -59,6 +59,12 @@ vi.mock('@/components/theme/theme', () => ({
   useTheme: () => ({theme: 'system', setTheme: vi.fn()}),
 }))
 
+vi.mock('@/components/flue/team-chat-sidebar', () => ({
+  TeamChatSidebarProvider: ({children, userId}: {children: React.ReactNode; userId?: string | null}) =>
+    React.createElement('div', {'data-testid': 'team-chat-sidebar-provider', 'data-user-id': userId ?? ''}, children),
+  TeamChatSidebarHost: ({children}: {children: React.ReactNode}) => React.createElement('div', {'data-testid': 'team-chat-sidebar-host'}, children),
+}))
+
 import {Shell} from '@/components/layout/shell'
 
 describe('Shell', () => {
@@ -81,6 +87,7 @@ describe('Shell', () => {
     expect(markup).toContain('test@example.com')
     expect(markup).toContain('Sign out')
     expect(markup).toContain('Content')
+    expect(markup).toContain('data-testid="team-chat-sidebar-host"')
     expect(markup).not.toContain('aria-label="breadcrumb"')
     expect(markup).not.toContain('Budgeting boilerplate')
   })
@@ -198,6 +205,7 @@ function renderShell() {
     React.createElement(Shell, {
       userEmail: 'test@example.com',
       userName: 'Test User',
+      userId: 'user-1',
       children: React.createElement('p', null, 'Content'),
     }),
   )

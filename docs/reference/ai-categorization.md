@@ -52,7 +52,7 @@ The model must also return concise display-safe reasoning. Reasoning is stored o
 
 ## Applying interpretations
 
-The Flue agent writes through one guarded `applyInterpretation` tool. It can record:
+The autonomous Flue categorizer writes through one guarded `applyCategorizationSuggestion` tool. It can record:
 
 - `unable` with confidence `0` and concise display-safe reasoning
 - a single category

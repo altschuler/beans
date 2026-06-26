@@ -12,8 +12,8 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 vi.mock('@/components/layout/shell', () => ({
-  Shell: ({children, userEmail, userName}: {children: React.ReactNode; userEmail: string; userName?: string | null}) =>
-    React.createElement('section', {'data-testid': 'shell', 'data-email': userEmail, 'data-name': userName ?? ''}, children),
+  Shell: ({children, userEmail, userName, userId}: {children: React.ReactNode; userEmail: string; userName?: string | null; userId?: string | null}) =>
+    React.createElement('section', {'data-testid': 'shell', 'data-email': userEmail, 'data-name': userName ?? '', 'data-user-id': userId ?? ''}, children),
 }))
 
 vi.mock('@/components/zero/app-zero-provider', () => ({
@@ -52,6 +52,7 @@ describe('Zero SPA protected auth', () => {
     expect(markup).toContain('data-user-id="user-1"')
     expect(markup).toContain('data-testid="shell"')
     expect(markup).toContain('data-email="test@example.com"')
+    expect(markup).toContain('data-user-id="user-1"')
     expect(markup).toContain('Dashboard')
   })
 

@@ -61,7 +61,7 @@ describe('Flue categorize-transactions workflow', () => {
   it('provides scoped tools and completes the app workflow run on success', async () => {
     const prompt = vi.fn(async () => ({text: 'done', usage: {}, model: {provider: 'test', id: 'model'}}))
     const harness = fakeHarness('flue-run-1', prompt)
-    const tools = [fakeTool('searchBankTransactions'), fakeTool('applyInterpretation')]
+    const tools = [fakeTool('searchBankTransactions'), fakeTool('applyCategorizationSuggestion')]
     const lifecycle = {
       attachFlueRunId: vi.fn(async () => undefined),
       markCompleted: vi.fn(async () => undefined),

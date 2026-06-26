@@ -3,7 +3,7 @@ import {eq} from 'drizzle-orm'
 import {db} from '@/db/client'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers, teams, user} from '@penge/domain/schema'
-import {createCategorizationWriteTools} from '../../../flue/src/agent-tools/write-tools'
+import {createCategorizationWriteTools, createChatCategorizationWriteTools} from '../../../flue/src/agent-tools/write-tools'
 
 const now = new Date('2026-06-25T10:00:00.000Z')
 
@@ -24,7 +24,7 @@ describe('Flue categorization write tools', () => {
   it('applies a high-confidence category through trusted scope and CAS', async () => {
     const tools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'app-run-1', writeExecutor: db})
 
-    const result = await tools.applyInterpretation.run({
+    const result = await tools.applyCategorizationSuggestion.run({
       input: {
         bankTransactionId: 'bank-transaction-1',
         expectedCategorizationRevision: 0,
@@ -60,7 +60,7 @@ describe('Flue categorization write tools', () => {
   it('keeps low-confidence categories and splits in review and stores split confidence as 1', async () => {
     const tools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'app-run-1', writeExecutor: db})
 
-    await expect(tools.applyInterpretation.run({
+    await expect(tools.applyCategorizationSuggestion.run({
       input: {
         bankTransactionId: 'bank-transaction-1',
         expectedCategorizationRevision: 0,
@@ -75,7 +75,7 @@ describe('Flue categorization write tools', () => {
     expect(interpretation?.ledgerTransaction).toMatchObject({status: 'needs_review', categorizedBy: 'ai'})
     expect(bankTransaction?.aiConfidence).toBe(1)
 
-    await expect(tools.applyInterpretation.run({
+    await expect(tools.applyCategorizationSuggestion.run({
       input: {
         bankTransactionId: 'bank-transaction-1',
         expectedCategorizationRevision: 1,
@@ -105,7 +105,7 @@ describe('Flue categorization write tools', () => {
   it('applies a transfer to an explicit same-team opposite counter transaction', async () => {
     const tools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'app-run-1', writeExecutor: db})
 
-    await expect(tools.applyInterpretation.run({
+    await expect(tools.applyCategorizationSuggestion.run({
       input: {
         bankTransactionId: 'bank-transaction-1',
         expectedCategorizationRevision: 0,
@@ -133,7 +133,7 @@ describe('Flue categorization write tools', () => {
   it('records unable without creating or replacing an interpretation', async () => {
     const tools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'app-run-1', writeExecutor: db})
 
-    await expect(tools.applyInterpretation.run({
+    await expect(tools.applyCategorizationSuggestion.run({
       input: {
         bankTransactionId: 'bank-transaction-1',
         expectedCategorizationRevision: 0,
@@ -153,7 +153,7 @@ describe('Flue categorization write tools', () => {
   it('returns a structured conflict for stale revisions without mutating', async () => {
     const tools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'app-run-1', writeExecutor: db})
 
-    const result = await tools.applyInterpretation.run({
+    const result = await tools.applyCategorizationSuggestion.run({
       input: {
         bankTransactionId: 'bank-transaction-1',
         expectedCategorizationRevision: 99,
@@ -176,12 +176,36 @@ describe('Flue categorization write tools', () => {
     expect(await currentInterpretationForBankTransaction('bank-transaction-1')).toBeNull()
   })
 
+  it('lets the chat agent recategorize a user-confirmed row after explicit user confirmation', async () => {
+    await seedConfirmedInterpretation('bank-transaction-2')
+    const before = await currentInterpretationForBankTransaction('bank-transaction-2')
+    const tools = chatToolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
+
+    await expect(tools.applyCategorization.run({
+      input: {
+        bankTransactionId: 'bank-transaction-2',
+        expectedCategorizationRevision: 0,
+        interpretation: {kind: 'category', categoryAccountId: 'groceries'},
+      },
+    })).resolves.toEqual({ok: true, status: 'applied'})
+
+    const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-2'))
+    const after = await currentInterpretationForBankTransaction('bank-transaction-2')
+    expect(after?.ledgerTransaction?.id).toBe(before?.ledgerTransaction?.id)
+    expect(after?.ledgerTransaction).toMatchObject({status: 'confirmed', categorizedBy: 'user', userConfirmedBy: 'user-1'})
+    expect(after?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId}))).toEqual([
+      {accountId: 'bank-ledger-account-1', amount: -1_000_000, bankTransactionId: 'bank-transaction-2'},
+      {accountId: 'groceries', amount: 1_000_000, bankTransactionId: null},
+    ])
+    expect(bankTransaction).toMatchObject({aiConfidence: null, aiReasoning: null, categorizationRevision: 1})
+  })
+
   it('rejects user-confirmed needs-review rows without bumping the revision', async () => {
     await seedUserConfirmedNeedsReviewInterpretation('bank-transaction-2')
     const before = await currentInterpretationForBankTransaction('bank-transaction-2')
     const tools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'app-run-1', writeExecutor: db})
 
-    await expect(tools.applyInterpretation.run({
+    await expect(tools.applyCategorizationSuggestion.run({
       input: {
         bankTransactionId: 'bank-transaction-2',
         expectedCategorizationRevision: 0,
@@ -210,11 +234,11 @@ describe('Flue categorization write tools', () => {
     })
 
     const attempts = [
-      unrestrictedTools.applyInterpretation.run({input: {bankTransactionId: 'bank-transaction-1', expectedCategorizationRevision: 0, confidence: 2, reasoning: 'Bad account.', interpretation: {kind: 'category', categoryAccountId: 'inactive-category'}}}),
-      unrestrictedTools.applyInterpretation.run({input: {bankTransactionId: 'bank-transaction-1', expectedCategorizationRevision: 0, confidence: 2, reasoning: 'Bad transfer.', interpretation: {kind: 'transfer', counterBankTransactionId: 'other-bank-transaction'}}}),
-      unrestrictedTools.applyInterpretation.run({input: {bankTransactionId: 'bank-transaction-1', expectedCategorizationRevision: 0, confidence: 2, reasoning: 'Bad split.', interpretation: {kind: 'split', lines: [{categoryAccountId: 'groceries', amount: '90.00'}]}}}),
-      targetConstrainedTools.applyInterpretation.run({input: {bankTransactionId: 'bank-transaction-1', expectedCategorizationRevision: 0, confidence: 2, reasoning: 'Outside target.', interpretation: {kind: 'category', categoryAccountId: 'groceries'}}}),
-      unrestrictedTools.applyInterpretation.run({input: {bankTransactionId: 'bank-transaction-2', expectedCategorizationRevision: 0, confidence: 2, reasoning: 'Protected row.', interpretation: {kind: 'category', categoryAccountId: 'groceries'}}}),
+      unrestrictedTools.applyCategorizationSuggestion.run({input: {bankTransactionId: 'bank-transaction-1', expectedCategorizationRevision: 0, confidence: 2, reasoning: 'Bad account.', interpretation: {kind: 'category', categoryAccountId: 'inactive-category'}}}),
+      unrestrictedTools.applyCategorizationSuggestion.run({input: {bankTransactionId: 'bank-transaction-1', expectedCategorizationRevision: 0, confidence: 2, reasoning: 'Bad transfer.', interpretation: {kind: 'transfer', counterBankTransactionId: 'other-bank-transaction'}}}),
+      unrestrictedTools.applyCategorizationSuggestion.run({input: {bankTransactionId: 'bank-transaction-1', expectedCategorizationRevision: 0, confidence: 2, reasoning: 'Bad split.', interpretation: {kind: 'split', lines: [{categoryAccountId: 'groceries', amount: '90.00'}]}}}),
+      targetConstrainedTools.applyCategorizationSuggestion.run({input: {bankTransactionId: 'bank-transaction-1', expectedCategorizationRevision: 0, confidence: 2, reasoning: 'Outside target.', interpretation: {kind: 'category', categoryAccountId: 'groceries'}}}),
+      unrestrictedTools.applyCategorizationSuggestion.run({input: {bankTransactionId: 'bank-transaction-2', expectedCategorizationRevision: 0, confidence: 2, reasoning: 'Protected row.', interpretation: {kind: 'category', categoryAccountId: 'groceries'}}}),
     ]
 
     await expect(Promise.all(attempts)).resolves.toEqual([
@@ -237,6 +261,10 @@ type WriteToolScope = Parameters<typeof createCategorizationWriteTools>[0]
 
 function toolsByName(scope: WriteToolScope) {
   return Object.fromEntries(createCategorizationWriteTools(scope).map(tool => [tool.name, tool])) as Record<string, ReturnType<typeof createCategorizationWriteTools>[number]>
+}
+
+function chatToolsByName(scope: WriteToolScope) {
+  return Object.fromEntries(createChatCategorizationWriteTools(scope).map(tool => [tool.name, tool])) as Record<string, ReturnType<typeof createChatCategorizationWriteTools>[number]>
 }
 
 async function seedWriteToolFixture() {
