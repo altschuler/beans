@@ -3,7 +3,7 @@ import {eq} from 'drizzle-orm'
 import {db} from '@/db/client'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers, teams, user} from '@penge/domain/schema'
-import {createCategorizationWriteTools, createChatCategorizationWriteTools} from '../../../flue/src/agent-tools/write-tools'
+import {createCategorizationWriteTools, createChatCategorizationWriteTools, createChatCategoryManagementWriteTools} from '../../../flue/src/agent-tools/write-tools'
 
 const now = new Date('2026-06-25T10:00:00.000Z')
 
@@ -18,6 +18,62 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await closeDatabase()
+})
+
+describe('Flue category management write tools', () => {
+  it('manages category groups and categories through trusted scope', async () => {
+    const tools = categoryManagementToolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
+
+    const createGroupResult = await tools.manageCategory.run({input: {operation: {kind: 'createGroup', name: '  Bills  '}}}) as Record<string, unknown>
+    expect(createGroupResult).toMatchObject({ok: true, status: 'applied', groupId: expect.any(String)})
+    const [group] = await db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, createGroupResult.groupId as string))
+    expect(group).toMatchObject({teamId: 'team-1', systemKey: null})
+
+    await expect(tools.manageCategory.run({input: {operation: {kind: 'updateGroup', groupId: group.id, name: 'Monthly bills'}}})).resolves.toEqual({ok: true, status: 'applied'})
+    await expect(db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, group.id))).resolves.toMatchObject([{name: 'Monthly bills'}])
+
+    const createCategoryResult = await tools.manageCategory.run({
+      input: {operation: {kind: 'createCategory', groupId: group.id, name: '  Utilities  ', description: '  Power and heat  ', type: 'expense'}},
+    }) as Record<string, unknown>
+    expect(createCategoryResult).toMatchObject({ok: true, status: 'applied', accountId: expect.any(String)})
+    const [category] = await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, createCategoryResult.accountId as string))
+    expect(category).toMatchObject({teamId: 'team-1', groupId: group.id, description: 'Power and heat', type: 'expense', systemKey: null, linkedBankAccountId: null})
+
+    await expect(tools.manageCategory.run({
+      input: {operation: {kind: 'updateCategory', accountId: category.id, groupId: 'group-1', name: 'Utilities and rent', description: '', type: 'savings'}},
+    })).resolves.toEqual({ok: true, status: 'applied'})
+    await expect(db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, category.id))).resolves.toMatchObject([
+      {groupId: 'group-1', name: 'Utilities and rent', description: '', type: 'savings'},
+    ])
+
+    await expect(tools.manageCategory.run({input: {operation: {kind: 'deleteCategory', accountId: category.id}}})).resolves.toEqual({ok: true, status: 'applied'})
+    await expect(tools.manageCategory.run({input: {operation: {kind: 'deleteGroup', groupId: group.id}}})).resolves.toEqual({ok: true, status: 'applied'})
+    await expect(db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, category.id))).resolves.toHaveLength(0)
+    await expect(db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, group.id))).resolves.toHaveLength(0)
+  })
+
+  it('rejects inaccessible groups and categories with ledger history without exposing team scope in input', async () => {
+    const tools = categoryManagementToolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
+
+    await expect(tools.manageCategory.run({
+      input: {operation: {kind: 'createCategory', groupId: 'group-2', name: 'Wrong team', description: '', type: 'expense'}},
+    })).resolves.toEqual({ok: false, status: 'rejected', error: 'Category group not found'})
+
+    await db.insert(teamMembers).values({id: 'member-cross-team', teamId: 'team-2', userId: 'user-1', role: 'member', createdAt: now, updatedAt: now})
+    await expect(tools.manageCategory.run({input: {operation: {kind: 'updateGroup', groupId: 'group-2', name: 'Wrong scope'}}})).resolves.toEqual({
+      ok: false,
+      status: 'rejected',
+      error: 'Category group not found',
+    })
+    await expect(db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, 'group-2'))).resolves.toMatchObject([{name: 'Accounts'}])
+
+    await seedPostingForCategory('groceries')
+    await expect(tools.manageCategory.run({input: {operation: {kind: 'deleteCategory', accountId: 'groceries'}}})).resolves.toEqual({
+      ok: false,
+      status: 'rejected',
+      error: 'Categories with ledger history cannot be deleted',
+    })
+  })
 })
 
 describe('Flue categorization write tools', () => {
@@ -265,6 +321,37 @@ function toolsByName(scope: WriteToolScope) {
 
 function chatToolsByName(scope: WriteToolScope) {
   return Object.fromEntries(createChatCategorizationWriteTools(scope).map(tool => [tool.name, tool])) as Record<string, ReturnType<typeof createChatCategorizationWriteTools>[number]>
+}
+
+function categoryManagementToolsByName(scope: WriteToolScope) {
+  return Object.fromEntries(createChatCategoryManagementWriteTools(scope).map(tool => [tool.name, tool])) as Record<string, ReturnType<typeof createChatCategoryManagementWriteTools>[number]>
+}
+
+async function seedPostingForCategory(accountId: string) {
+  await db.insert(ledgerTransactions).values({
+    id: `ledger-history-${accountId}`,
+    teamId: 'team-1',
+    source: 'manual',
+    status: 'confirmed',
+    categorizedBy: 'user',
+    userConfirmedAt: now,
+    userConfirmedBy: 'user-1',
+    date: '2026-06-25',
+    description: 'Existing history',
+    createdAt: now,
+    updatedAt: now,
+  })
+  await db.insert(ledgerPostings).values({
+    id: `posting-history-${accountId}`,
+    ledgerTransactionId: `ledger-history-${accountId}`,
+    accountId,
+    amount: 1_000,
+    currency: 'DKK',
+    bankTransactionId: null,
+    sortOrder: 0,
+    createdAt: now,
+    updatedAt: now,
+  })
 }
 
 async function seedWriteToolFixture() {

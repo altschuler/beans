@@ -7,22 +7,26 @@ vi.mock('@flue/runtime', () => ({
 }))
 
 describe('team data assistant Flue agent', () => {
-  it('describes natural confirmation and excludes category-management writes', async () => {
+  it('describes natural confirmation for transaction and category writes', async () => {
     const mod = await import('../../../../apps/flue/src/agents/team-data-assistant')
 
     expect(mod.description).toContain('team finance data')
     expect(mod.teamDataAssistantInstructions).toContain('concrete proposal')
     expect(mod.teamDataAssistantInstructions).toContain('natural confirmation')
-    expect(mod.teamDataAssistantInstructions).toContain('cannot create, rename, edit, or delete categories')
+    expect(mod.teamDataAssistantInstructions).toContain('category or category group')
+    expect(mod.teamDataAssistantInstructions).toContain('re-read')
+    expect(mod.teamDataAssistantInstructions).toContain('stop remaining category-management operations')
+    expect(mod.teamDataAssistantInstructions).not.toContain('cannot create, rename, edit, or delete categories')
   })
 
-  it('exposes the chat apply tool instead of the autonomous suggestion tool', async () => {
+  it('exposes confirmed chat write tools instead of the autonomous suggestion tool', async () => {
     const mod = await import('../../../../apps/flue/src/agents/team-data-assistant')
     const id = encodeTeamDataAssistantId({teamId: 'team-1', userId: 'user-1'})
 
     const agent = mod.createTeamDataAssistantConfig({id})
 
     expect(agent.tools.map(tool => tool.name)).toContain('applyCategorization')
+    expect(agent.tools.map(tool => tool.name)).toContain('manageCategory')
     expect(agent.tools.map(tool => tool.name)).not.toContain('applyCategorizationSuggestion')
   })
 

@@ -238,6 +238,9 @@ importers:
       postgres:
         specifier: 3.4.9
         version: 3.4.9
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/lodash-es':
         specifier: ^4.17.12

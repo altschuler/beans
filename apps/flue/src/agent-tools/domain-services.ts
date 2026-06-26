@@ -9,6 +9,16 @@ export {
   splitBankTransaction,
 } from '@penge/domain/categorization-service'
 export {
+  MANAGED_CATEGORY_TYPES,
+  createCategoryAccount,
+  createCategoryGroup,
+  deleteCategoryAccount,
+  deleteCategoryGroup,
+  updateCategoryAccount,
+  updateCategoryGroup,
+  type ManagedCategoryType,
+} from '@penge/domain/category-management'
+export {
   getBankTransactionDetail,
   searchBankTransactions,
   searchLedgerAccounts,

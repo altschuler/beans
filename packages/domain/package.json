@@ -6,6 +6,7 @@
     ".": "./src/index.ts",
     "./categorization": "./src/categorization.ts",
     "./categorization-service": "./src/categorization-service.ts",
+    "./category-management": "./src/category-management.ts",
     "./db": "./src/db.ts",
     "./money": "./src/money.ts",
     "./read-projections": "./src/read-projections.ts",
@@ -19,7 +20,8 @@
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "lodash-es": "^4.18.1",
-    "postgres": "3.4.9"
+    "postgres": "3.4.9",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/lodash-es": "^4.17.12",

@@ -30,8 +30,15 @@ Protected pages use `PageLayout` for their own header context.
 - fixed header
 - scrollable content region
 - page-controlled content padding
+- an icon-only Ask Penge trigger after page-owned actions when chat scope is available
 
-This keeps page behavior explicit. For example, Transactions owns its review count, Auto-categorize, Sync all accounts, and More menu in its page header. Categories owns Add group and Add category. Bank connections owns Sync all accounts.
+This keeps page behavior explicit. For example, Transactions owns its review count, Auto-categorize, Sync all accounts, and More menu in its page header. Categories owns Add group and Add category. Bank connections owns Sync all accounts. The chat trigger is shell-owned and consistent across protected app pages that use `PageLayout`.
+
+## Ask Penge chat surface
+
+The authenticated shell owns the root Ask Penge chat surface rather than individual pages. Opening chat from the `PageLayout` trigger uses the current user and team scope from the protected app shell.
+
+On desktop-sized viewports, Ask Penge appears as a right sidebar sibling beside routed content, so the workspace narrows instead of being covered by an overlay. On narrow viewports, the routed page content is hidden while chat is open and the chat header provides a close control to return to the page. The chat system is described in [Team data assistant](./team-data-assistant.md).
 
 ## Current page roles
 

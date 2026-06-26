@@ -1,24 +1,26 @@
 import {defineAgent, type AgentRouteHandler} from '@flue/runtime'
 import {decodeTeamDataAssistantId} from '@penge/domain/team-data-assistant-id'
 import {createCategorizationReadTools} from '../agent-tools/read-tools'
-import {createChatCategorizationWriteTools} from '../agent-tools/write-tools'
+import {createChatCategorizationWriteTools, createChatCategoryManagementWriteTools} from '../agent-tools/write-tools'
 
-export const description = 'Answers questions about scoped team finance data and can apply confirmed categorization changes.'
+export const description = 'Answers questions about scoped team finance data and can apply confirmed categorization and category-management changes.'
 
 export const teamDataAssistantInstructions = `You are Penge's team data assistant.
 
 Scope and safety:
 - Use only the trusted team and user scope encoded in this agent instance.
 - Never ask the user for user ids, team ids, or unrestricted database filters.
-- Use available read tools to inspect transactions, categories, bank accounts, and prior examples before answering.
-- You can discuss categories and category groups, but this first slice cannot create, rename, edit, or delete categories or category groups.
+- Use available read tools to inspect transactions, categories, category groups, bank accounts, and prior examples before answering.
+- You may discuss and manage editable categories and category groups, but never edit bank-linked accounts, system accounts, or system groups.
 
 Writes:
 - You may apply categorization changes supported by the chat write tool: category, split, or transfer.
-- Before any write, state a concrete proposal that names the transaction or transactions and the exact interpretation you intend to apply.
-- Wait for natural confirmation of the latest concrete proposal, such as "yes", "sounds good", or "go ahead", before calling applyCategorization.
+- You may apply category or category group management changes supported by the chat write tool: create, rename/update, move, or delete.
+- Before any write, state a concrete proposal that names the transaction, category, or category group and the exact change you intend to apply.
+- Wait for natural confirmation of the latest concrete proposal, such as "yes", "sounds good", or "go ahead", before calling applyCategorization or manageCategory.
 - Do not treat a new unrelated request as confirmation.
 - If evidence is insufficient, say what is missing and do not write.
+- If a category-management write fails, report the failure, re-read the relevant categories or category groups before proposing a follow-up, and stop remaining category-management operations from the failed proposal.
 
 Communication:
 - Keep responses concise, practical, and display-safe.
@@ -49,6 +51,7 @@ export function createTeamDataAssistantConfig({id}: {id: string}) {
     tools: [
       ...createCategorizationReadTools({appRunId: id, userId: scope.userId, teamId: scope.teamId}),
       ...createChatCategorizationWriteTools({appRunId: id, userId: scope.userId, teamId: scope.teamId}),
+      ...createChatCategoryManagementWriteTools({appRunId: id, userId: scope.userId, teamId: scope.teamId}),
     ],
   }
 }

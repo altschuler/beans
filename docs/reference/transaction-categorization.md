@@ -47,6 +47,12 @@ The selector labels the direction from the current bank transaction amount:
 
 The server validates the target bank account and searches for an unreconciled opposite bank transaction on that account. Current implementation requires a same-currency, opposite-amount candidate within the transfer matching date window. When found, Penge writes one ledger transaction with two reconciled bank postings.
 
+## Chat-assisted categorization
+
+Ask Penge can propose and apply confirmed transaction categorization changes for the current team. The assistant must first read relevant context, state a concrete proposal, and wait for natural explicit confirmation of that latest proposal before calling the chat write tool.
+
+Supported chat writes are category, split, and transfer interpretations. They use the same guarded categorization services as manual UI actions, require the current `categorizationRevision`, and write user-confirmed interpretations. Stale revisions, invalid categories, unsafe transfers, unbalanced splits, and out-of-scope rows are rejected without partial writes.
+
 ## Status dot and confirmation
 
 The status dot is an attention marker, not a raw AI confidence display. Active Flue categorization is shown as a team-level workflow indicator; the row dot reflects the row's latest persisted categorization state.

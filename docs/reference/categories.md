@@ -59,6 +59,8 @@ Deletion rules protect history:
 
 Archival/deactivation for categories with history is deferred and tracked as follow-up work.
 
-## Server boundary
+## Server and assistant boundaries
 
-Category and group management writes use Zero mutators with server-side authorization. The server trims names, checks team membership, validates category type, verifies group/account ownership, rejects locked rows, and enforces deletion rules from persisted ledger data.
+Category and group management writes share one domain implementation in `@penge/domain/category-management`. The web Categories page calls it through Zero mutators; Ask Penge calls it through the Flue `manageCategory` chat tool after explicit confirmation.
+
+The shared domain logic trims names, checks team membership, validates category type, verifies group/account ownership, rejects locked rows, and enforces deletion rules from persisted ledger data. The chat tool closes over trusted user/team scope, accepts exactly one operation per call, and never lets the model provide user or team ids.

@@ -1,6 +1,18 @@
 import {defineTool, type JsonValue, type ToolDefinition} from '@flue/runtime'
 import * as v from 'valibot'
-import {applyAgentBankTransactionInterpretation, categorizeBankTransaction, CategorizationRevisionConflictError, db, splitBankTransaction} from './domain-services'
+import {
+  applyAgentBankTransactionInterpretation,
+  categorizeBankTransaction,
+  CategorizationRevisionConflictError,
+  createCategoryAccount,
+  createCategoryGroup,
+  db,
+  deleteCategoryAccount,
+  deleteCategoryGroup,
+  splitBankTransaction,
+  updateCategoryAccount,
+  updateCategoryGroup,
+} from './domain-services'
 import type {Database} from '@penge/domain/db'
 import type {TrustedToolScope} from '@penge/domain/read-projections'
 
@@ -8,6 +20,9 @@ export type CategorizationWriteToolScope = TrustedToolScope & {
   appRunId: string
   writeExecutor?: Pick<Database, 'transaction'>
 }
+
+type WriteExecutor = NonNullable<CategorizationWriteToolScope['writeExecutor']>
+type WriteTransaction = Parameters<Parameters<WriteExecutor['transaction']>[0]>[0]
 
 const confidenceSchema = v.picklist([0, 1, 2])
 const nonEmptyStringSchema = v.pipe(v.string(), v.trim(), v.minLength(1))
@@ -45,8 +60,19 @@ const applyCategorizationInput = v.object({
   interpretation: userConfirmedInterpretationSchema,
 })
 
+const managedCategoryTypeSchema = v.picklist(['expense', 'income', 'savings'])
+const categoryManagementOperationSchema = v.variant('kind', [
+  v.object({kind: v.literal('createGroup'), name: nonEmptyStringSchema}),
+  v.object({kind: v.literal('updateGroup'), groupId: nonEmptyStringSchema, name: nonEmptyStringSchema}),
+  v.object({kind: v.literal('deleteGroup'), groupId: nonEmptyStringSchema}),
+  v.object({kind: v.literal('createCategory'), groupId: nonEmptyStringSchema, name: nonEmptyStringSchema, description: v.string(), type: managedCategoryTypeSchema}),
+  v.object({kind: v.literal('updateCategory'), accountId: nonEmptyStringSchema, groupId: nonEmptyStringSchema, name: nonEmptyStringSchema, description: v.string(), type: managedCategoryTypeSchema}),
+  v.object({kind: v.literal('deleteCategory'), accountId: nonEmptyStringSchema}),
+])
+const manageCategoryInput = v.object({operation: categoryManagementOperationSchema})
+
 export function createCategorizationWriteTools(input: CategorizationWriteToolScope): ToolDefinition[] {
-  const {writeExecutor = db, userId, teamId, appRunId: _appRunId, targetBankTransactionIds} = input
+  const {writeExecutor = db, userId, teamId, targetBankTransactionIds} = input
 
   return [
     defineTool({
@@ -93,7 +119,7 @@ export function createCategorizationWriteTools(input: CategorizationWriteToolSco
 }
 
 export function createChatCategorizationWriteTools(input: CategorizationWriteToolScope): ToolDefinition[] {
-  const {writeExecutor = db, userId, teamId, appRunId: _appRunId, targetBankTransactionIds} = input
+  const {writeExecutor = db, userId, teamId, targetBankTransactionIds} = input
 
   return [
     defineTool({
@@ -149,6 +175,73 @@ export function createChatCategorizationWriteTools(input: CategorizationWriteToo
       },
     }),
   ]
+}
+
+export function createChatCategoryManagementWriteTools(input: CategorizationWriteToolScope): ToolDefinition[] {
+  const {writeExecutor = db, userId, teamId} = input
+
+  return [
+    defineTool({
+      name: 'manageCategory',
+      description:
+        'Create, update, or delete exactly one category group or editable category after the current chat user has explicitly confirmed the latest concrete proposal. Uses trusted user/team scope; input must not include user or team ids.',
+      input: manageCategoryInput,
+      async run({input}) {
+        try {
+          const details = await writeExecutor.transaction(tx => applyCategoryManagementOperation(tx, {userId, teamId, operation: input.operation}))
+          return toJsonValue({ok: true, status: 'applied', ...details})
+        } catch (error) {
+          return toJsonValue({ok: false, status: 'rejected', error: error instanceof Error ? error.message : 'Category change was rejected'})
+        }
+      },
+    }),
+  ]
+}
+
+async function applyCategoryManagementOperation(
+  tx: WriteTransaction,
+  input: {userId: string; teamId: string; operation: v.InferOutput<typeof categoryManagementOperationSchema>},
+) {
+  if (input.operation.kind === 'createGroup') {
+    const groupId = crypto.randomUUID()
+    await createCategoryGroup(tx, {userId: input.userId, teamId: input.teamId, id: groupId, name: input.operation.name})
+    return {groupId}
+  }
+  if (input.operation.kind === 'updateGroup') {
+    await updateCategoryGroup(tx, {userId: input.userId, teamId: input.teamId, groupId: input.operation.groupId, name: input.operation.name})
+    return {}
+  }
+  if (input.operation.kind === 'deleteGroup') {
+    await deleteCategoryGroup(tx, {userId: input.userId, teamId: input.teamId, groupId: input.operation.groupId})
+    return {}
+  }
+  if (input.operation.kind === 'createCategory') {
+    const accountId = crypto.randomUUID()
+    await createCategoryAccount(tx, {
+      userId: input.userId,
+      teamId: input.teamId,
+      id: accountId,
+      groupId: input.operation.groupId,
+      name: input.operation.name,
+      description: input.operation.description,
+      type: input.operation.type,
+    })
+    return {accountId}
+  }
+  if (input.operation.kind === 'updateCategory') {
+    await updateCategoryAccount(tx, {
+      userId: input.userId,
+      teamId: input.teamId,
+      accountId: input.operation.accountId,
+      groupId: input.operation.groupId,
+      name: input.operation.name,
+      description: input.operation.description,
+      type: input.operation.type,
+    })
+    return {}
+  }
+  await deleteCategoryAccount(tx, {userId: input.userId, teamId: input.teamId, accountId: input.operation.accountId})
+  return {}
 }
 
 function validateApplyCategorizationSuggestionInput(input: v.InferOutput<typeof applyCategorizationSuggestionInput>) {
