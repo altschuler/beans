@@ -13,6 +13,9 @@ describe('team data assistant Flue agent', () => {
     expect(mod.description).toContain('team finance data')
     expect(mod.teamDataAssistantInstructions).toContain('concrete proposal')
     expect(mod.teamDataAssistantInstructions).toContain('natural confirmation')
+    expect(mod.teamDataAssistantInstructions).toContain('initial user request')
+    expect(mod.teamDataAssistantInstructions).toContain('ask an explicit permission question')
+    expect(mod.teamDataAssistantInstructions).toContain('separate confirming user reply')
     expect(mod.teamDataAssistantInstructions).toContain('category or category group')
     expect(mod.teamDataAssistantInstructions).toContain('re-read')
     expect(mod.teamDataAssistantInstructions).toContain('stop remaining category-management operations')
@@ -24,10 +27,13 @@ describe('team data assistant Flue agent', () => {
     const id = encodeTeamDataAssistantId({teamId: 'team-1', userId: 'user-1'})
 
     const agent = mod.createTeamDataAssistantConfig({id})
+    const toolsByName = Object.fromEntries(agent.tools.map(tool => [tool.name, tool]))
 
     expect(agent.tools.map(tool => tool.name)).toContain('applyCategorization')
     expect(agent.tools.map(tool => tool.name)).toContain('manageCategory')
     expect(agent.tools.map(tool => tool.name)).not.toContain('applyCategorizationSuggestion')
+    expect(toolsByName.applyCategorization?.description).toContain('separate confirming user reply')
+    expect(toolsByName.manageCategory?.description).toContain('separate confirming user reply')
   })
 
   it('rejects HTTP access without the internal token or matching scope headers', async () => {

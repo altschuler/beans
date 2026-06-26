@@ -78,7 +78,7 @@ export function createCategorizationWriteTools(input: CategorizationWriteToolSco
     defineTool({
       name: 'applyCategorizationSuggestion',
       description:
-        'Apply one guarded categorization interpretation for a scoped bank transaction. The runtime supplies user, team, run, and target scope; never replay a stale write blindly after a conflict.',
+        'Apply one guarded categorization interpretation for a scoped bank transaction. The runtime supplies user, team, run, and target scope; never replay a stale write blindly after a conflict. Input and output ids are internal tool identifiers only; do not show them to the user.',
       input: applyCategorizationSuggestionInput,
       async run({input}) {
         const validationError = validateApplyCategorizationSuggestionInput(input)
@@ -125,7 +125,7 @@ export function createChatCategorizationWriteTools(input: CategorizationWriteToo
     defineTool({
       name: 'applyCategorization',
       description:
-        'Apply a categorization change after the current chat user has explicitly confirmed the latest concrete proposal. Uses trusted user/team scope and manual user-confirmed semantics; suitable for recategorizing confirmed rows.',
+        'Apply a categorization change only after the assistant has stated a concrete proposal, asked for permission, and received a separate confirming user reply. Uses trusted user/team scope and manual user-confirmed semantics; suitable for recategorizing confirmed rows. Input and output ids are internal tool identifiers only; do not show them to the user.',
       input: applyCategorizationInput,
       async run({input}) {
         if (input.interpretation.kind === 'split' && input.interpretation.lines.length === 0) {
@@ -184,7 +184,7 @@ export function createChatCategoryManagementWriteTools(input: CategorizationWrit
     defineTool({
       name: 'manageCategory',
       description:
-        'Create, update, or delete exactly one category group or editable category after the current chat user has explicitly confirmed the latest concrete proposal. Uses trusted user/team scope; input must not include user or team ids.',
+        'Create, update, or delete exactly one category group or editable category only after the assistant has stated a concrete proposal, asked for permission, and received a separate confirming user reply. Uses trusted user/team scope; input must not include user or team ids. Input and output ids are internal tool identifiers only; do not show them to the user.',
       input: manageCategoryInput,
       async run({input}) {
         try {

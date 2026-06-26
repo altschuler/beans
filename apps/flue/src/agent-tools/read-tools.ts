@@ -63,7 +63,7 @@ export function createCategorizationReadTools(input: CategorizationReadToolScope
     defineTool({
       name: 'searchBankTransactions',
       description:
-        'Search scoped team bank transactions with compact categorization context. The runtime supplies user, team, run, and target scope; do not ask for or infer those values.',
+        'Search scoped team bank transactions with compact categorization context. The runtime supplies user, team, run, and target scope; do not ask for or infer those values. Returned ids are internal tool identifiers for follow-up calls only; do not show them to the user.',
       input: searchBankTransactionsInput,
       async run({input}) {
         return toJsonValue(await searchBankTransactions(readExecutor, {...scope, filters: input}))
@@ -72,7 +72,7 @@ export function createCategorizationReadTools(input: CategorizationReadToolScope
     defineTool({
       name: 'getBankTransactionDetail',
       description:
-        'Read richer allowlisted details for one scoped bank transaction, including account context, current ledger interpretation, postings, and categorization revision. Provider raw payloads are never exposed.',
+        'Read richer allowlisted details for one scoped bank transaction, including account context, current ledger interpretation, postings, and categorization revision. Provider raw payloads are never exposed. Returned ids are internal tool identifiers for follow-up calls only; do not show them to the user.',
       input: bankTransactionDetailInput,
       async run({input}) {
         return toJsonValue(await getBankTransactionDetail(readExecutor, {...scope, bankTransactionId: input.bankTransactionId}))
@@ -81,7 +81,7 @@ export function createCategorizationReadTools(input: CategorizationReadToolScope
     defineTool({
       name: 'searchLedgerTransactions',
       description:
-        'Search scoped ledger transactions for examples, confirmed splits, and transfer context. Results summarize postings and interpretation kind instead of exposing raw database rows.',
+        'Search scoped ledger transactions for examples, confirmed splits, and transfer context. Results summarize postings and interpretation kind instead of exposing raw database rows. Returned ids are internal tool identifiers for follow-up calls only; do not show them to the user.',
       input: searchLedgerTransactionsInput,
       async run({input}) {
         return toJsonValue(await searchLedgerTransactions(readExecutor, {...scope, filters: input}))
@@ -90,7 +90,7 @@ export function createCategorizationReadTools(input: CategorizationReadToolScope
     defineTool({
       name: 'searchLedgerAccounts',
       description:
-        'Search scoped ledger accounts for categories and bank-linked transfer accounts. Use eligibleCategoryOnly for valid category choices.',
+        'Search scoped ledger accounts for categories and bank-linked transfer accounts. Use eligibleCategoryOnly for valid category choices. Returned ids are internal tool identifiers for follow-up calls only; do not show them to the user.',
       input: searchLedgerAccountsInput,
       async run({input}) {
         return toJsonValue(await searchLedgerAccounts(readExecutor, {...scope, filters: input}))

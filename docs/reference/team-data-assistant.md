@@ -42,7 +42,7 @@ Read results are scoped to the trusted user/team and expose compact domain proje
 
 ## Writes and confirmation
 
-Before any write, the assistant must state a concrete proposal naming the transaction, category, or category group and the exact change. It may call a write tool only after natural explicit confirmation of the latest proposal, such as “yes”, “sounds good”, or “go ahead”. A new unrelated request is not confirmation.
+Before any write, the assistant must state a concrete proposal naming the transaction, category, or category group and the exact change, then ask for permission. An initial user request to create, update, delete, apply, categorize, or otherwise change data is a request for a proposal, not permission to write. The assistant may call a write tool only after a separate natural explicit confirmation of the latest proposal, such as “yes”, “sounds good”, or “go ahead”. A new unrelated request is not confirmation.
 
 Supported chat writes are:
 
@@ -56,3 +56,5 @@ Chat categorization writes use manual user-confirmed semantics and still require
 Category-management chat writes use the same shared domain functions as the Categories page. The shared rules trim names, authorize team membership, validate category type, reject edits to system or bank-linked accounts, reject system groups, enforce group/account ownership, and protect ledger history by refusing non-empty group deletion and category deletion when ledger postings exist.
 
 Flue tools return structured results that the assistant can explain in chat, including `{ok: true, status: "applied"}` on success and `{ok: false, status: "rejected", error: "..."}` on validation, authorization, database constraint, or delete-eligibility failures.
+
+The assistant must not surface internal ids, UUIDs, run ids, database ids, account ids, category ids, group ids, transaction ids, or other tool-only identifiers in normal chat responses. It can use ids internally for tool calls, but user-facing proposals, confirmations, and summaries should use names, dates, amounts, descriptions, and concise natural-language context instead.
