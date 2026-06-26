@@ -1,5 +1,6 @@
 import {useId, useMemo, useState, type FormEvent, type ReactNode} from 'react'
 import {MessageCircle, Send, X} from 'lucide-react'
+import ReactMarkdown, {type Components} from 'react-markdown'
 import {useFlueAgent} from '@flue/react'
 import {encodeTeamDataAssistantId} from '@penge/domain/team-data-assistant-id'
 import {Button} from '@/components/ui/button'
@@ -154,10 +155,42 @@ function ChatBubble({message}: {message: ChatMessage}) {
   if (!text) return null
 
   return (
-    <article className={cn('max-w-[85%] rounded-lg border px-3 py-2 text-sm whitespace-pre-wrap', isUser ? 'ml-auto bg-primary text-primary-foreground' : 'bg-background')}>
+    <article className={cn('max-w-[85%] rounded-lg border px-3 py-2 text-sm', isUser ? 'ml-auto bg-primary text-primary-foreground' : 'bg-background')}>
       <div className="mb-1 text-xs font-medium opacity-70">{isUser ? 'You' : 'Penge'}</div>
-      {text}
+      <ChatMarkdown>{text}</ChatMarkdown>
     </article>
+  )
+}
+
+const markdownComponents = {
+  p({node: _node, className, ...props}) {
+    return <p className={cn('whitespace-pre-wrap leading-relaxed not-first:mt-2', className)} {...props} />
+  },
+  ul({node: _node, className, ...props}) {
+    return <ul className={cn('my-2 list-disc space-y-1 pl-5', className)} {...props} />
+  },
+  ol({node: _node, className, ...props}) {
+    return <ol className={cn('my-2 list-decimal space-y-1 pl-5', className)} {...props} />
+  },
+  li({node: _node, className, ...props}) {
+    return <li className={cn('pl-1', className)} {...props} />
+  },
+  a({node: _node, className, ...props}) {
+    return <a className={cn('underline underline-offset-2 hover:text-primary', className)} {...props} />
+  },
+  code({node: _node, className, ...props}) {
+    return <code className={cn('rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]', className)} {...props} />
+  },
+  pre({node: _node, className, ...props}) {
+    return <pre className={cn('my-2 overflow-x-auto rounded-md border bg-muted p-3 text-xs [&_code]:bg-transparent [&_code]:p-0', className)} {...props} />
+  },
+} satisfies Components
+
+function ChatMarkdown({children}: {children: string}) {
+  return (
+    <ReactMarkdown allowedElements={['p', 'br', 'strong', 'em', 'code', 'pre', 'a', 'ul', 'ol', 'li']} components={markdownComponents} skipHtml>
+      {children}
+    </ReactMarkdown>
   )
 }
 

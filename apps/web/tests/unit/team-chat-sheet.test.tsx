@@ -45,6 +45,28 @@ describe('TeamChatSheet', () => {
     expect(useFlueAgent).toHaveBeenCalledWith(expect.objectContaining({name: 'team-data-assistant', live: 'sse', history: 20}))
   })
 
+  it('renders simple markdown formatting in chat messages', async () => {
+    flueAgent.messages = [
+      {
+        id: 'm1',
+        role: 'assistant',
+        parts: [{type: 'text', text: 'A **bold** answer with `code`.\n\n- First item\n- Second item\n\n[Open docs](https://example.com/docs)\n\n```ts\nconst amount = 100\n```'}],
+      },
+    ]
+    const user = userEvent.setup()
+    render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
+
+    const panel = screen.getByRole('complementary', {name: 'Ask Penge chat'})
+    expect(within(panel).getByText('bold').tagName).toBe('STRONG')
+    expect(within(panel).getByText('code').tagName).toBe('CODE')
+    expect(within(panel).getByRole('list')).toBeInTheDocument()
+    expect(within(panel).getByText('First item').tagName).toBe('LI')
+    expect(within(panel).getByRole('link', {name: 'Open docs'})).toHaveAttribute('href', 'https://example.com/docs')
+    expect(within(panel).getByText(/const amount = 100/).tagName).toBe('CODE')
+  })
+
   it('closes the inline panel from the chat header', async () => {
     const user = userEvent.setup()
     render(<TeamChatSheet teamId="team-1" userId="user-1" />)
