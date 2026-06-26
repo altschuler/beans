@@ -54,7 +54,6 @@ describe('buildCategoryManagementModel', () => {
       {id: 'spending-group', name: 'Everyday spending'},
       {id: 'empty-group', name: 'Empty group'},
     ])
-    expect(model.categoryCount).toBe(3)
   })
 
   it('uses the non-zero balance currency when another currency nets to zero', () => {

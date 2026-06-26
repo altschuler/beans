@@ -12,7 +12,7 @@ vi.mock('@/components/ui/sidebar', () => ({
 }))
 
 vi.mock('@/components/flue/team-chat-sidebar', () => ({
-  TeamChatSidebarTrigger: () => React.createElement('button', {type: 'button', 'data-testid': 'team-chat-sidebar-trigger'}, 'Ask Penge'),
+  TeamChatSidebarTrigger: () => React.createElement('button', {type: 'button', 'aria-label': 'Ask Penge', 'data-testid': 'team-chat-sidebar-trigger'}),
 }))
 
 import {PageLayout} from '@/components/page-layout'
@@ -49,6 +49,7 @@ describe('PageLayout', () => {
     expect(markup).toContain('Groceries')
     expect(markup).toContain('aria-current="page"')
     expect(markup).toContain('Save')
+    expect(markup.indexOf('Save')).toBeLessThan(markup.indexOf('data-testid="team-chat-sidebar-trigger"'))
     expect(markup).toContain('Page content')
     expect(markup).toMatch(/data-slot="page-layout-header"[\s\S]*class="[^"]*shrink-0/)
     expect(markup).toMatch(/data-slot="page-layout-content"[\s\S]*class="[^"]*min-h-0[^"]*flex-1[^"]*overflow-auto[^"]*p-0/)

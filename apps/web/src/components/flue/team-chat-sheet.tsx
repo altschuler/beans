@@ -1,4 +1,4 @@
-import {useId, useMemo, useState, type FormEvent, type ReactNode} from 'react'
+import {useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react'
 import {MessageCircle, Send, X} from 'lucide-react'
 import ReactMarkdown, {type Components} from 'react-markdown'
 import {useFlueAgent} from '@flue/react'
@@ -24,6 +24,7 @@ export type TeamChatPanelProps = {
   userId: string | null
   isOpen: boolean
   onClose: () => void
+  className?: string
 }
 
 type TextPart = {type: 'text'; text: string; state?: string}
@@ -55,9 +56,10 @@ export function TeamChatSheet({teamId, userId, children}: TeamChatSheetProps) {
   )
 }
 
-export function TeamChatPanel({teamId, userId, isOpen, onClose}: TeamChatPanelProps) {
+export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: TeamChatPanelProps) {
   const [input, setInput] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const [chatId, setChatId] = useState(createChatId)
   const titleId = useId()
   const conversationId = useMemo(() => (teamId && userId ? encodeTeamDataAssistantId({teamId, userId, chatId}) : undefined), [chatId, teamId, userId])
@@ -66,10 +68,26 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose}: TeamChatPanelPr
   const messages = agent.messages as ChatMessage[]
   const activity = getChatActivity({status: agent.status, error: agent.error, isSubmitting, messages})
 
+  useEffect(() => {
+    resizeComposer(inputRef.current)
+  }, [input])
+
   function clearChat() {
     setInput('')
     setIsSubmitting(false)
     setChatId(createChatId())
+  }
+
+  function updateInput(element: HTMLTextAreaElement) {
+    setInput(element.value)
+    resizeComposer(element)
+  }
+
+  function submitOnEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+
+    event.preventDefault()
+    event.currentTarget.form?.requestSubmit()
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -93,13 +111,12 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose}: TeamChatPanelPr
       role="complementary"
       aria-label="Ask Penge chat"
       data-slot="team-chat-panel"
-      className="flex h-full min-h-0 w-full flex-col border-t bg-background lg:w-96 lg:shrink-0 lg:border-t-0 lg:border-l"
+      className={cn('flex h-full min-h-0 w-full flex-col border-t bg-background lg:w-96 lg:shrink-0 lg:border-t-0 lg:border-l', className)}
     >
       <div className="border-b p-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1.5">
+          <div>
             <h2 id={titleId} className="font-semibold text-foreground">Ask Penge</h2>
-            <p className="text-sm text-muted-foreground">Personal chat for this team. Confirm categorization changes in chat before they are applied.</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Button type="button" variant="outline" size="sm" disabled={!conversationId} onClick={clearChat}>
@@ -123,25 +140,39 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose}: TeamChatPanelPr
       </div>
 
       <div className="border-t bg-background p-3">
-        <form className="space-y-2" onSubmit={submit}>
+        <form className="flex items-end gap-2" onSubmit={submit}>
           <label className="sr-only" htmlFor="team-chat-message">Message Ask Penge</label>
           <Textarea
+            ref={inputRef}
             id="team-chat-message"
+            rows={1}
             value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="Ask about transactions or categories…"
-            className="min-h-20 resize-none"
+            onChange={(event) => updateInput(event.currentTarget)}
+            onKeyDown={submitOnEnter}
+            placeholder="Ask..."
+            className="max-h-32 min-h-9 flex-1 resize-none overflow-y-auto py-2"
           />
-          <div className="flex justify-end">
-            <Button type="submit" size="sm" disabled={!canSend} aria-label="Send message">
-              <Send className="h-4 w-4" aria-hidden="true" />
-              Send
-            </Button>
-          </div>
+          <Button type="submit" size="sm" disabled={!canSend} aria-label="Send message" className="shrink-0">
+            <Send className="h-4 w-4" aria-hidden="true" />
+            Send
+          </Button>
         </form>
       </div>
     </aside>
   )
+}
+
+function resizeComposer(element: HTMLTextAreaElement | null) {
+  if (!element) return
+
+  element.style.height = 'auto'
+  const style = window.getComputedStyle(element)
+  const verticalBorderWidth = toPixelNumber(style.borderTopWidth) + toPixelNumber(style.borderBottomWidth)
+  element.style.height = `${element.scrollHeight + verticalBorderWidth}px`
+}
+
+function toPixelNumber(value: string) {
+  return Number.parseFloat(value) || 0
 }
 
 function createChatId() {

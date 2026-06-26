@@ -83,6 +83,7 @@ describe('CategoryManagementPage', () => {
     expect(screen.getByText('Food shops')).toBeInTheDocument()
     expect(screen.getByText('Expense')).toBeInTheDocument()
     expect(screen.getByText('100.00 DKK')).toBeInTheDocument()
+    expect(screen.queryByText('2 categories')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', {name: 'Ask Penge'})).not.toBeInTheDocument()
     expect(screen.queryByTestId('team-chat-panel')).not.toBeInTheDocument()
 

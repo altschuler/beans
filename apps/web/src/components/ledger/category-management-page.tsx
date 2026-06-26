@@ -71,9 +71,6 @@ export function CategoryManagementPage() {
 
   const categoryContent = (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center border-b px-3 pt-3 pb-3 text-sm font-semibold">
-        {model.categoryCount} {model.categoryCount === 1 ? 'category' : 'categories'}
-      </div>
       <div className="space-y-4 p-3 md:p-4">
         {model.groups.map((group) => (
           <section key={group.id} className="space-y-2">

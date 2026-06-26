@@ -1,5 +1,5 @@
 import {type ReactNode} from 'react'
-import {TeamChatSidebarHost, TeamChatSidebarProvider} from '@/components/flue/team-chat-sidebar'
+import {TeamChatDesktopSidebar, TeamChatSidebarHost, TeamChatSidebarProvider} from '@/components/flue/team-chat-sidebar'
 import {AppSidebar} from '@/components/layout/app-sidebar'
 import {SidebarInset, SidebarProvider} from '@/components/ui/sidebar'
 
@@ -18,6 +18,7 @@ export function Shell({children, userEmail, userName, userId}: ShellProps) {
         <SidebarInset className="h-svh min-h-0 overflow-hidden">
           <TeamChatSidebarHost>{children}</TeamChatSidebarHost>
         </SidebarInset>
+        <TeamChatDesktopSidebar />
       </TeamChatSidebarProvider>
     </SidebarProvider>
   )

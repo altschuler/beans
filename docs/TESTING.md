@@ -57,6 +57,7 @@ When components use shared `@/components/ui` primitives, prefer rendering the re
 - Do not fully mock `@/components/ui` by default; that can hide Radix/shadcn integration and accessibility regressions.
 - Mock only browser APIs or external boundaries that make the test impractical.
 - If a mock is unavoidable, keep it narrow and document why in the test file.
+- Components that render the real shadcn `Sidebar` must be wrapped in `SidebarProvider`, even when using `collapsible="none"`. In jsdom, provide `window.matchMedia` or narrowly mock `@/hooks/use-mobile` when the provider/mobile hook is not the behavior under test.
 
 ## Shared Test Support
 

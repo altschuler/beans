@@ -63,6 +63,7 @@ vi.mock('@/components/flue/team-chat-sidebar', () => ({
   TeamChatSidebarProvider: ({children, userId}: {children: React.ReactNode; userId?: string | null}) =>
     React.createElement('div', {'data-testid': 'team-chat-sidebar-provider', 'data-user-id': userId ?? ''}, children),
   TeamChatSidebarHost: ({children}: {children: React.ReactNode}) => React.createElement('div', {'data-testid': 'team-chat-sidebar-host'}, children),
+  TeamChatDesktopSidebar: () => React.createElement('div', {'data-testid': 'team-chat-desktop-sidebar'}),
 }))
 
 import {Shell} from '@/components/layout/shell'
@@ -102,6 +103,12 @@ describe('Shell', () => {
     expect(markup).not.toContain('class="flex-1 min-h-0 overflow-hidden p-0"')
     expect(markup).not.toContain('class="flex-1 p-0"')
     expect(markup).not.toContain('class="flex-1 p-4 md:p-6 lg:p-8"')
+  })
+
+  it('renders the desktop team chat sidebar as a sibling after the sidebar inset', () => {
+    const markup = renderShell()
+
+    expect(markup).toMatch(/<main[\s\S]*data-slot="sidebar-inset"[\s\S]*data-testid="team-chat-sidebar-host"[\s\S]*<\/main><div data-testid="team-chat-desktop-sidebar"><\/div>/)
   })
 
   it('renders a single main landmark from the sidebar inset', () => {

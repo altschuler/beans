@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react'
-import {render, screen, waitFor, within} from '@testing-library/react'
+import {fireEvent, render, screen, waitFor, within} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
@@ -40,6 +40,7 @@ describe('TeamChatSheet', () => {
     const panel = screen.getByRole('complementary', {name: 'Ask Penge chat'})
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(within(panel).getByText('Ask Penge')).toBeInTheDocument()
+    expect(within(panel).queryByText('Personal chat for this team. Confirm categorization changes in chat before they are applied.')).not.toBeInTheDocument()
     expect(within(panel).getByText('What needs review?')).toBeInTheDocument()
     expect(within(panel).getByText('Three transactions need review.')).toBeInTheDocument()
     expect(useFlueAgent).toHaveBeenCalledWith(expect.objectContaining({name: 'team-data-assistant', live: 'sse', history: 20}))
@@ -95,6 +96,57 @@ describe('TeamChatSheet', () => {
     expect(nextScope).toMatchObject({teamId: 'team-1', userId: 'user-1'})
     expect(nextScope?.chatId).toBeTruthy()
     expect(nextScope?.chatId).not.toBe(initialScope?.chatId)
+  })
+
+  it('renders the composer as a one-row autosizing input beside the send button', async () => {
+    const user = userEvent.setup()
+    render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
+
+    const input = screen.getByLabelText('Message Ask Penge') as HTMLTextAreaElement
+    const sendButton = screen.getByRole('button', {name: 'Send message'})
+    const form = input.closest('form')
+    expect(form).toHaveClass('flex')
+    expect(input.compareDocumentPosition(sendButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(input).toHaveAttribute('rows', '1')
+    expect(input).toHaveAttribute('placeholder', 'Ask...')
+    expect(input).toHaveClass('min-h-9')
+
+    Object.defineProperty(input, 'scrollHeight', {configurable: true, value: 84})
+    const getComputedStyle = vi.spyOn(window, 'getComputedStyle').mockReturnValue({borderTopWidth: '1px', borderBottomWidth: '1px'} as CSSStyleDeclaration)
+    try {
+      fireEvent.change(input, {target: {value: 'first line\nsecond line'}})
+
+      expect(input.style.height).toBe('86px')
+    } finally {
+      getComputedStyle.mockRestore()
+    }
+  })
+
+  it('submits the composer on Enter', async () => {
+    const user = userEvent.setup()
+    render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
+    await user.type(screen.getByLabelText('Message Ask Penge'), 'hello assistant')
+    fireEvent.keyDown(screen.getByLabelText('Message Ask Penge'), {key: 'Enter', code: 'Enter', charCode: 13})
+
+    await waitFor(() => expect(flueAgent.sendMessage).toHaveBeenCalledWith('hello assistant'))
+    expect(screen.getByLabelText('Message Ask Penge')).toHaveValue('')
+  })
+
+  it('keeps Shift+Enter as a composer newline', async () => {
+    const user = userEvent.setup()
+    render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
+    const input = screen.getByLabelText('Message Ask Penge')
+    await user.type(input, 'first line')
+    await user.keyboard('{Shift>}{Enter}{/Shift}second line')
+
+    expect(input).toHaveValue('first line\nsecond line')
+    expect(flueAgent.sendMessage).not.toHaveBeenCalled()
   })
 
   it('sends trimmed input and clears the composer', async () => {

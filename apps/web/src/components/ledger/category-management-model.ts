@@ -1,4 +1,4 @@
-import {groupBy, sumBy} from 'lodash-es'
+import {groupBy} from 'lodash-es'
 import {absoluteMoneyAmount} from '@penge/domain/money'
 import {deriveLedgerAccountBalances, deriveSingleBalanceCurrency} from '@penge/domain/categorization'
 
@@ -125,7 +125,6 @@ export function buildCategoryManagementModel(input: {
   return {
     groups,
     editableGroups: groups.filter(group => !group.locked).map(group => ({id: group.id, name: group.name})),
-    categoryCount: sumBy(groups, group => group.accounts.length),
   }
 }
 

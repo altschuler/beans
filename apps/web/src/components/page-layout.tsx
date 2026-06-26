@@ -38,8 +38,8 @@ export function PageLayout({breadcrumbs, actions, children, contentClassName}: P
           </Breadcrumb>
         </div>
         <div data-slot="page-layout-actions" className="flex flex-wrap items-center gap-3 md:ml-auto md:justify-end">
-          <TeamChatSidebarTrigger />
           {actions}
+          <TeamChatSidebarTrigger />
         </div>
       </header>
       <div data-slot="page-layout-content" className={cn('min-h-0 flex-1 overflow-auto', contentClassName)}>
