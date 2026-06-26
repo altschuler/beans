@@ -45,13 +45,12 @@ export type LedgerDashboardBankTransaction = {
   valueDate: string | null
   description: string
   aiConfidence?: number | null
-  aiProcessingStartedAt?: Date | string | number | null
   aiReasoning?: string | null
   posting?: LedgerDashboardPosting
 }
 export type LedgerDashboardBankAccount = {id: string; name: string}
 export type LedgerDashboardStatusIndicator = {
-  kind: 'processing' | 'uncategorized' | 'confirmed' | 'ai_confident' | 'needs_review' | 'ai_failed'
+  kind: 'uncategorized' | 'confirmed' | 'ai_confident' | 'needs_review' | 'ai_failed'
   title: string
   ariaLabel: string
   className: string
@@ -91,7 +90,6 @@ export function buildLedgerDashboardModel(input: {
     ...transaction,
     amount: transaction.amount,
     aiConfidence: transaction.aiConfidence ?? null,
-    aiProcessingStartedAt: transaction.aiProcessingStartedAt ?? null,
     aiReasoning: transaction.aiReasoning ?? null,
   }))
   const balances = deriveLedgerAccountBalances(accounts, postings)
@@ -99,7 +97,6 @@ export function buildLedgerDashboardModel(input: {
   const ledgerTransactionsById = keyBy(input.ledgerTransactions ?? [], transaction => transaction.id)
   const bankAccountNamesById = Object.fromEntries(input.bankAccounts.map(account => [account.id, account.name]))
   const postingsByTransactionId = groupBy(postings, posting => posting.ledgerTransactionId)
-  const now = new Date()
 
   const categorizationAccounts = accounts
     .filter(account => isCategorizationAccount(account))
@@ -145,7 +142,6 @@ export function buildLedgerDashboardModel(input: {
             bankAccountNamesById,
           })
         : buildUnreconciledRowInterpretation()
-      const aiProcessing = isRecentlyProcessing(bankTransaction.aiProcessingStartedAt, now)
       const statusIndicator = transaction
         ? buildStatusIndicator({
             transaction,
@@ -153,12 +149,10 @@ export function buildLedgerDashboardModel(input: {
             aiReasoning: bankTransaction.aiReasoning,
             categoryAccounts: interpretation.categoryAccounts,
             isUncategorized: interpretation.isUncategorized,
-            aiProcessing,
           })
         : buildUnreconciledStatusIndicator({
             aiConfidence: bankTransaction.aiConfidence,
             aiReasoning: bankTransaction.aiReasoning,
-            aiProcessing,
           })
 
       return [
@@ -175,7 +169,6 @@ export function buildLedgerDashboardModel(input: {
           status: transaction?.status ?? 'needs_review',
           needsReview: transaction?.status !== 'confirmed',
           aiConfidence: bankTransaction.aiConfidence,
-          aiProcessing,
           canCategorize: true,
           statusIndicator,
           aiIndicator: statusIndicator,
@@ -195,7 +188,6 @@ export function buildLedgerDashboardModel(input: {
     transferAccounts,
     transactionRows,
     reviewCount: transactionRows.filter(row => row.needsReview).length,
-    aiProcessingCount: transactionRows.filter(row => row.aiProcessing).length,
   }
 }
 
@@ -223,17 +215,7 @@ function buildUnreconciledRowInterpretation(): RowInterpretation {
   }
 }
 
-function buildUnreconciledStatusIndicator(input: {aiConfidence: number | null; aiReasoning: string | null; aiProcessing: boolean}): LedgerDashboardStatusIndicator {
-  if (input.aiProcessing) {
-    return {
-      kind: 'processing',
-      title: 'AI is currently categorizing this transaction',
-      ariaLabel: 'AI is currently categorizing this transaction',
-      className: 'bg-muted-foreground',
-      canConfirm: false,
-    }
-  }
-
+function buildUnreconciledStatusIndicator(input: {aiConfidence: number | null; aiReasoning: string | null}): LedgerDashboardStatusIndicator {
   if (input.aiConfidence === 0) {
     const title = `AI could not categorize this transaction.${input.aiReasoning ? ` Reason: ${input.aiReasoning}` : ''}`
     return {
@@ -254,29 +236,16 @@ function buildUnreconciledStatusIndicator(input: {aiConfidence: number | null; a
   }
 }
 
-const AI_PROCESSING_STALE_AFTER_MS = 30 * 60 * 1000
-
 function buildStatusIndicator(input: {
   transaction: LedgerDashboardTransaction
   aiConfidence: number | null
   aiReasoning: string | null
   categoryAccounts: NormalizedAccount[]
   isUncategorized: boolean
-  aiProcessing: boolean
 }): LedgerDashboardStatusIndicator {
-  const {transaction, aiConfidence, aiReasoning, categoryAccounts, isUncategorized, aiProcessing} = input
+  const {transaction, aiConfidence, aiReasoning, categoryAccounts, isUncategorized} = input
   const hasRealCategory = categoryAccounts.some(isRealCategorizationAccount)
   const reasoningSuffix = aiReasoning ? ` Reason: ${aiReasoning}` : ''
-
-  if (aiProcessing) {
-    return {
-      kind: 'processing',
-      title: 'AI is currently categorizing this transaction',
-      ariaLabel: 'AI is currently categorizing this transaction',
-      className: 'bg-muted-foreground',
-      canConfirm: false,
-    }
-  }
 
   if (isUncategorized) {
     return {
@@ -407,13 +376,6 @@ function isBankLinkedPosting(posting: NormalizedPosting, accountsById: Record<st
 
 function isRealCategorizationAccount(account: NormalizedAccount) {
   return isCategorizationAccount(account)
-}
-
-function isRecentlyProcessing(value: Date | string | number | null, now: Date) {
-  if (!value) return false
-  const startedAt = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(startedAt.getTime())) return false
-  return now.getTime() - startedAt.getTime() <= AI_PROCESSING_STALE_AFTER_MS
 }
 
 function uniqueAccounts(accounts: NormalizedAccount[]) {

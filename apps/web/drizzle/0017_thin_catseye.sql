@@ -1,0 +1,1 @@
+ALTER TABLE "bank_transactions" DROP COLUMN "ai_processing_started_at";

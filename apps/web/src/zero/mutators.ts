@@ -78,8 +78,6 @@ type ClientTx = Extract<Transaction<ZeroSchema>, {location: 'client'}>
 type OptimisticLine = {accountId: string; amountUnits: number}
 type ExistingInterpretation = {transaction: LedgerTransaction; postings: readonly LedgerPosting[]}
 
-const AI_PROCESSING_STALE_AFTER_MS = 30 * 60 * 1000
-
 async function optimisticallyCategorizeTransaction(input: {
   tx: ClientTx
   userId: string
@@ -133,7 +131,7 @@ async function optimisticallySplitTransaction(input: {
 
 async function loadOptimisticCategorizationBase(tx: ClientTx, bankTransactionId: string) {
   const bankTransaction = await tx.run(zql.bankTransactions.where('id', bankTransactionId).one())
-  if (!bankTransaction || isRecentlyProcessing(bankTransaction.aiProcessingStartedAt ?? null)) return null
+  if (!bankTransaction) return null
 
   const sourceLedgerAccount = await tx.run(zql.ledgerAccounts.where('linkedBankAccountId', bankTransaction.bankAccountId).one())
   if (!sourceLedgerAccount || sourceLedgerAccount.linkedBankAccountId !== bankTransaction.bankAccountId) return null
@@ -219,7 +217,7 @@ async function rewriteOptimisticInterpretation(input: {
     if (!bankTransaction) continue
     await input.tx.mutate.bankTransactions.update({
       id: bankTransaction.id,
-      ...(bankTransaction.id === input.bankTransaction.id ? {aiConfidence: null, aiReasoning: null, aiProcessingStartedAt: null} : {}),
+      ...(bankTransaction.id === input.bankTransaction.id ? {aiConfidence: null, aiReasoning: null} : {}),
       categorizationRevision: (bankTransaction.categorizationRevision ?? 0) + 1,
       updatedAt: now,
     })
@@ -228,7 +226,7 @@ async function rewriteOptimisticInterpretation(input: {
 
 async function optimisticallyConfirmTransaction(input: {tx: ClientTx; userId: string; bankTransactionId: string}) {
   const bankTransaction = await input.tx.run(zql.bankTransactions.where('id', input.bankTransactionId).one())
-  if (!bankTransaction || isRecentlyProcessing(bankTransaction.aiProcessingStartedAt ?? null)) return
+  if (!bankTransaction) return
 
   const bankPosting = await input.tx.run(zql.ledgerPostings.where('bankTransactionId', input.bankTransactionId).one())
   if (!bankPosting) return
@@ -377,13 +375,6 @@ async function nextGroupSortOrder(tx: ClientTx, teamId: string) {
 async function nextAccountSortOrder(tx: ClientTx, groupId: string) {
   const accounts = await tx.run(zql.ledgerAccounts.where('groupId', groupId))
   return Math.max(-1, ...accounts.map(account => account.sortOrder ?? 0)) + 1
-}
-
-function isRecentlyProcessing(value: Date | string | number | null) {
-  if (!value) return false
-  const startedAt = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(startedAt.getTime())) return false
-  return Date.now() - startedAt.getTime() <= AI_PROCESSING_STALE_AFTER_MS
 }
 
 function optimisticId(tx: ClientTx, suffix: string) {

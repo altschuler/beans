@@ -198,7 +198,6 @@ export const bankTransactions = pgTable(
     counterpartyName: text('counterparty_name'),
     raw: jsonb('raw').notNull(),
     aiConfidence: integer('ai_confidence'),
-    aiProcessingStartedAt: timestamp('ai_processing_started_at', {mode: 'date'}),
     aiReasoning: text('ai_reasoning'),
     categorizationRevision: integer('categorization_revision').notNull().default(0),
     createdAt: timestamp('created_at', {mode: 'date'}).notNull(),

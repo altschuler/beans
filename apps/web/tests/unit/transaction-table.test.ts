@@ -67,33 +67,6 @@ describe('TransactionTable', () => {
     expect(markup).toContain('truncate px-3 py-2 text-muted-foreground')
   })
 
-  it('renders a loading indicator instead of a status dot while AI is processing a row', () => {
-    const processingStatus = {
-      kind: 'processing' as const,
-      title: 'AI is currently categorizing this transaction',
-      ariaLabel: 'AI is currently categorizing this transaction',
-      className: 'bg-muted-foreground',
-      canConfirm: false,
-    }
-    const markup = renderToStaticMarkup(
-      React.createElement(TransactionTable, {
-        rows: [buildTransactionTableRow({aiProcessing: true, statusIndicator: processingStatus, aiIndicator: processingStatus})],
-        categorizationAccounts: testCategorizationAccounts,
-        transferAccounts: [],
-        isAiRequestPending: false,
-        onCategorizeBankTransaction: vi.fn(),
-        onConfirmTransaction: vi.fn(),
-        onAiCategorizeOne: vi.fn(),
-        onSaveSplit: vi.fn(() => true),
-      }),
-    )
-
-    expect(markup).toContain('role="status"')
-    expect(markup).toContain('aria-label="AI is currently categorizing this transaction"')
-    expect(markup).toContain('animate-spin')
-    expect(markup).not.toContain('inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground')
-  })
-
   it('renders only the virtual window for large transaction lists', () => {
     const rows = Array.from({length: 40}, (_, index) =>
       buildTransactionTableRow({

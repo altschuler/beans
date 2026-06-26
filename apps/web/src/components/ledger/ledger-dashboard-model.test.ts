@@ -111,7 +111,6 @@ const baseBankTransactions = [
     valueDate: null,
     description: 'Account A transaction',
     aiConfidence: null,
-    aiProcessingStartedAt: null,
     aiReasoning: null,
   },
   {
@@ -123,7 +122,6 @@ const baseBankTransactions = [
     valueDate: null,
     description: 'Account B transaction',
     aiConfidence: null,
-    aiProcessingStartedAt: null,
     aiReasoning: null,
   },
 ]

@@ -7,7 +7,7 @@ export type TransferAccountOption = {id: string; bankAccountId: string; name: st
 export type CategorySelection = {kind: 'category'; accountId: string} | {kind: 'transfer'; accountId: string}
 
 export type TransactionTableStatusIndicator = {
-  kind: 'processing' | 'uncategorized' | 'confirmed' | 'ai_confident' | 'needs_review' | 'ai_failed'
+  kind: 'uncategorized' | 'confirmed' | 'ai_confident' | 'needs_review' | 'ai_failed'
   title: string
   ariaLabel: string
   className: string
@@ -27,7 +27,6 @@ export type TransactionTableRow = {
   status: string
   needsReview: boolean
   aiConfidence: number | null
-  aiProcessing: boolean
   canCategorize: boolean
   statusIndicator: TransactionTableStatusIndicator
   aiIndicator: TransactionTableStatusIndicator

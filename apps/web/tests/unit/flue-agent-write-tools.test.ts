@@ -108,7 +108,6 @@ describe('Flue categorization write tools', () => {
     expect(bankTransaction).toMatchObject({
       aiConfidence: 2,
       aiReasoning: 'Matched repeated supermarket purchases.',
-      aiProcessingStartedAt: null,
       categorizationRevision: 1,
     })
   })
@@ -453,7 +452,6 @@ function bankTransaction(id: string, bankAccountId: string, amount: number, desc
     counterpartyName: null,
     raw: {},
     aiConfidence: null,
-    aiProcessingStartedAt: null,
     aiReasoning: null,
     categorizationRevision,
     createdAt: now,

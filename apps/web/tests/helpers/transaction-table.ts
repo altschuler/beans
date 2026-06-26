@@ -24,7 +24,6 @@ export function buildTransactionTableRow(overrides: Partial<TransactionTableRow>
     status: 'needs_review',
     needsReview: true,
     aiConfidence: 1,
-    aiProcessing: false,
     canCategorize: true,
     statusIndicator: {
       kind: 'needs_review',

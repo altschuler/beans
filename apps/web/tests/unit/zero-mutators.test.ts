@@ -241,9 +241,10 @@ describe('ledger Zero mutators', () => {
       {
         table: 'bankTransactions',
         kind: 'update',
-        value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, aiProcessingStartedAt: null, categorizationRevision: 1}),
+        value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, categorizationRevision: 1}),
       },
     ])
+    expect((tx.operations.find(operation => operation.table === 'bankTransactions')?.value as Record<string, unknown>)).not.toHaveProperty('aiProcessingStartedAt')
     expect(categorizeBankTransaction).not.toHaveBeenCalled()
   })
 
@@ -292,9 +293,11 @@ describe('ledger Zero mutators', () => {
       {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0})},
       {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries', amount: 700_000, bankTransactionId: null, sortOrder: 1})},
       {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'household', amount: 300_000, bankTransactionId: null, sortOrder: 2})},
-      {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, aiProcessingStartedAt: null, categorizationRevision: 1})},
+      {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, categorizationRevision: 1})},
       {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'counter-bank-transaction', categorizationRevision: 4})},
     ])
+    const bankTransactionUpdates = tx.operations.filter(operation => operation.table === 'bankTransactions').map(operation => operation.value as Record<string, unknown>)
+    expect(bankTransactionUpdates[0]).not.toHaveProperty('aiProcessingStartedAt')
     expect(splitBankTransaction).not.toHaveBeenCalled()
   })
 
@@ -535,7 +538,6 @@ function bankTransaction(overrides: Record<string, unknown> = {}) {
     valueDate: null,
     aiConfidence: 1,
     aiReasoning: 'AI suggestion',
-    aiProcessingStartedAt: null,
     categorizationRevision: 0,
     ...overrides,
   }

@@ -25,7 +25,7 @@ Only one active `categorize-transactions` workflow may exist for a team. Duplica
 - disable row and batch AI start buttons while the workflow is active
 - continue showing row updates through existing Zero transaction reads as Flue writes interpretations or unable results
 
-The first Flue version does not show per-row “agent is considering this row” state. Historical `bank_transactions.ai_processing_started_at` support may still appear in older rows or UI code, but the Flue workflow uses team-level workflow visibility rather than row-level processing claims.
+Penge does not show per-row “agent is considering this row” state. The historical `bank_transactions.ai_processing_started_at` row-level claim has been retired; Flue categorization uses team-level workflow visibility rather than row-level processing claims.
 
 ## Agent context
 

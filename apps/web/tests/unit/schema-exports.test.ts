@@ -44,7 +44,7 @@ describe('banking schema exports', () => {
     expect(ledgerTransactions).not.toHaveProperty('aiProcessingStartedAt')
     expect(ledgerTransactions).not.toHaveProperty('aiReasoning')
     expect(bankTransactions.aiConfidence).toBeDefined()
-    expect(bankTransactions.aiProcessingStartedAt).toBeDefined()
+    expect(bankTransactions).not.toHaveProperty('aiProcessingStartedAt')
     expect(bankTransactions.aiReasoning).toBeDefined()
     expect(ledgerTransactions.categorizedBy).toBeDefined()
     expect(ledgerTransactions.userConfirmedAt).toBeDefined()

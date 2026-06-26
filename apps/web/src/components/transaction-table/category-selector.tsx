@@ -24,7 +24,7 @@ export function CategorySelector({row, categorizationAccounts, transferAccounts,
   const [mode, setMode] = useState<CategorySelectorMode>('select')
   const [search, setSearch] = useState('')
   const [splitLines, setSplitLines] = useState<SplitLine[]>([])
-  const isAiDisabled = !row.canCategorize || !row.needsReview || isAiRequestPending || row.aiProcessing
+  const isAiDisabled = !row.canCategorize || !row.needsReview || isAiRequestPending
   const transferDirection = row.amount < 0 ? 'to' : 'from'
   const visibleTransferAccounts = useMemo(
     () => transferAccounts.filter(account => account.bankAccountId !== row.bankAccountId),

@@ -138,7 +138,6 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
           {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
         </div>
         {isCategorizeWorkflowActive ? <div className="text-sm font-semibold text-muted-foreground">AI categorization is running for this team</div> : null}
-        {model.aiProcessingCount > 0 ? <div className="text-sm font-semibold text-muted-foreground">AI running · {model.aiProcessingCount} processing</div> : null}
         <Button type="button" variant="outline" disabled={aiEligibleReviewCount === 0 || isAiStartDisabled} onClick={() => void aiCategorizeBatch()}>
           Auto-categorize
         </Button>

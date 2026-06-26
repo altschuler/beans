@@ -30,7 +30,6 @@ const queryRows = vi.hoisted(() => ({
     source: string
     status: string
     aiConfidence: number | null
-    aiProcessingStartedAt: Date | null
     categorizedBy: string | null
     userConfirmedAt: Date | null
     userConfirmedBy: string | null
@@ -56,7 +55,6 @@ const queryRows = vi.hoisted(() => ({
     valueDate: string | null
     description: string
     aiConfidence: number | null
-    aiProcessingStartedAt: Date | null
     aiReasoning: string | null
     posting?: {
       id: string
@@ -71,7 +69,6 @@ const queryRows = vi.hoisted(() => ({
         source: string
         status: string
         aiConfidence: number | null
-        aiProcessingStartedAt: Date | null
         categorizedBy: string | null
         userConfirmedAt: Date | null
         userConfirmedBy: string | null
@@ -419,7 +416,6 @@ describe('LedgerDashboard', () => {
         source: 'bank_import',
         status: 'needs_review',
         aiConfidence: 1,
-        aiProcessingStartedAt: null,
         categorizedBy: 'ai',
         userConfirmedAt: null,
         userConfirmedBy: null,
@@ -458,7 +454,6 @@ describe('LedgerDashboard', () => {
         valueDate: null,
         description: 'Netto',
         aiConfidence: 1,
-        aiProcessingStartedAt: null,
         aiReasoning: 'Looks like a supermarket purchase.',
         posting: {
           ...queryRows.postings[0]!,
@@ -524,7 +519,6 @@ describe('LedgerDashboard', () => {
         source: 'bank_import',
         status: 'needs_review',
         aiConfidence: null,
-        aiProcessingStartedAt: null,
         categorizedBy: null,
         userConfirmedAt: null,
         userConfirmedBy: null,
@@ -565,7 +559,6 @@ describe('LedgerDashboard', () => {
         valueDate: null,
         description: 'Other Shop',
         aiConfidence: null,
-        aiProcessingStartedAt: null,
         aiReasoning: null,
       },
     ]
@@ -678,7 +671,6 @@ describe('LedgerDashboard', () => {
       valueDate: transaction.valueDate,
       description: transaction.description,
       aiConfidence: transaction.aiConfidence,
-      aiProcessingStartedAt: transaction.aiProcessingStartedAt,
       aiReasoning: transaction.aiReasoning,
     }))
 
@@ -698,22 +690,6 @@ describe('LedgerDashboard', () => {
     await flushPromises()
 
     expect(aiCategorizeNeedsReviewBatch).toHaveBeenCalledOnce()
-  })
-
-  it('shows a global AI running indicator when any bank transaction is processing', () => {
-    queryRows.bankTransactions = [
-      {
-        ...queryRows.bankTransactions[0]!,
-        aiConfidence: null,
-        aiProcessingStartedAt: new Date(),
-      },
-    ]
-
-    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
-
-    expect(markup).toContain('AI running · 1 processing')
-    expect(markup).toContain('title="AI is currently categorizing this transaction"')
-    expect(findButtonByLabelPrefix('Confirm category for Netto.')).toBeUndefined()
   })
 
   it('starts the batch AI workflow without the old synchronous limit', async () => {
@@ -741,7 +717,6 @@ describe('LedgerDashboard', () => {
       valueDate: transaction.valueDate,
       description: transaction.description,
       aiConfidence: null,
-      aiProcessingStartedAt: null,
       aiReasoning: null,
     }))
     queryRows.activeWorkflowRuns = [{id: 'app-run-1', workflowName: 'categorize-transactions', teamId: 'team-1', status: 'active'}]

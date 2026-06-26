@@ -241,7 +241,6 @@ async function insertUnreconciledBankTransaction(input: {
     description: input.description ?? 'Imported transaction',
     counterpartyName: null,
     aiConfidence: null,
-    aiProcessingStartedAt: null,
     aiReasoning: null,
     raw: {},
     createdAt: baseNow,
@@ -687,21 +686,6 @@ describe('posting-based ledger categorization server functions', () => {
     expect(counterPosting).toHaveLength(1)
   })
 
-  it('rejects replacing a bank transaction interpretation while AI processing is fresh', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
-    await db.update(bankTransactions).set({aiProcessingStartedAt: new Date()}).where(eq(bankTransactions.id, 'bank-transaction-1'))
-
-    await expect(
-      db.transaction(tx =>
-        categorizeBankTransaction(tx, {
-          userId: 'user-1',
-          bankTransactionId: 'bank-transaction-1',
-          selection: {kind: 'category', accountId: 'groceries'},
-        }),
-      ),
-    ).rejects.toThrow('Bank transaction is already being categorized')
-  })
-
   it('recategorizing one side of a matched transfer detaches the old counter bank transaction', async () => {
     const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-recat-source', bankAccountId: 'bank-account-1', amount: -2_500_000})
@@ -978,34 +962,6 @@ describe('posting-based ledger categorization server functions', () => {
     await db.transaction(tx => confirmBankTransactionInterpretation(tx, {userId: 'user-1', bankTransactionId: 'bank-transaction-1'}))
 
     expect(await categorizationRevisionFor('bank-transaction-1')).toBe(1)
-  })
-
-  it('rejects confirmation while AI processing is fresh', async () => {
-    const {confirmBankTransactionInterpretation} = await import('@/ledger/categorization.server')
-    const processingStartedAt = new Date()
-    await db.update(bankTransactions).set({aiProcessingStartedAt: processingStartedAt}).where(eq(bankTransactions.id, 'bank-transaction-1'))
-    await db.delete(ledgerPostings).where(eq(ledgerPostings.id, 'ledger-transaction-1-uncat-posting'))
-    await db.insert(ledgerPostings).values({
-      id: 'posting-groceries-fresh-processing',
-      ledgerTransactionId: 'ledger-transaction-1',
-      accountId: 'groceries',
-      amount: 1_000_000,
-      currency: 'DKK',
-      bankTransactionId: null,
-      sortOrder: 1,
-      createdAt: baseNow,
-      updatedAt: baseNow,
-    })
-
-    await expect(
-      db.transaction(tx => confirmBankTransactionInterpretation(tx, {userId: 'user-1', bankTransactionId: 'bank-transaction-1'})),
-    ).rejects.toThrow('Transaction is currently being categorized by AI')
-
-    const [transaction] = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
-    const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
-    expect(transaction?.status).toBe('needs_review')
-    expect(bankTransaction?.aiProcessingStartedAt).toEqual(processingStartedAt)
-    expect(transaction?.userConfirmedBy).toBeNull()
   })
 
   it('preserves AI categorizer metadata when the user confirms an AI category', async () => {

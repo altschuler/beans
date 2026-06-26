@@ -91,7 +91,7 @@ type ClearLedgerCategorizationsInput = {
 type LoadedImportedLedgerTransaction = {
   ledgerTransaction: {id: string; teamId: string; source: string; status: string}
   bankPosting: {id: string; ledgerTransactionId: string; accountId: string; amount: number; currency: string; bankTransactionId: string}
-  bankTransaction: {id: string; bankAccountId: string; amount: number; currency: string; aiProcessingStartedAt: Date | null}
+  bankTransaction: {id: string; bankAccountId: string; amount: number; currency: string}
 }
 
 type LoadedBankTransactionForCategorization = {
@@ -104,7 +104,6 @@ type LoadedBankTransactionForCategorization = {
     bookingDate: string | null
     valueDate: string | null
     description: string
-    aiProcessingStartedAt: Date | null
     categorizationRevision: number
   }
   sourceLedgerAccount: {id: string; linkedBankAccountId: string | null; teamId: string}
@@ -116,7 +115,6 @@ type ReconciledPostingInvariantInput = LoadedImportedLedgerTransaction & {
   postingAccount: {teamId: string; linkedBankAccountId: string | null}
 }
 
-const AI_PROCESSING_STALE_AFTER_MS = 30 * 60 * 1000
 const MAX_AI_REASONING_LENGTH = 500
 const TRANSFER_MATCH_DATE_WINDOW_DAYS = 2
 const TRANSFER_CONFIRM_INVALID_MESSAGE = 'Transfer is not valid and cannot be confirmed'
@@ -242,10 +240,6 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
   }
 
   const normalizedAiReasoning = isAiCategorization ? requireAiReasoning(input.aiReasoning) : null
-  if (!isAiCategorization && isRecentlyProcessing(loaded.bankTransaction.aiProcessingStartedAt)) {
-    throw new Error('Bank transaction is already being categorized')
-  }
-
   const now = new Date()
   const targetRevisionClaimed = input.expectedCategorizationRevision !== undefined
   if (targetRevisionClaimed) {
@@ -425,10 +419,6 @@ export async function confirmBankTransactionInterpretation(tx: DrizzleTransactio
     throw new Error('Only bank-import ledger transactions can be confirmed')
   }
 
-  if (isRecentlyProcessing(loaded.bankTransaction.aiProcessingStartedAt)) {
-    throw new Error('Transaction is currently being categorized by AI')
-  }
-
   await validateConfirmableInterpretationPostings(tx, ledgerTransaction.teamId, ledgerTransaction.id)
   await validatePersistedTransactionBalance(tx, ledgerTransaction.id)
 
@@ -475,7 +465,6 @@ async function loadBankTransactionForCategorization(
         bookingDate: bankTransactions.bookingDate,
         valueDate: bankTransactions.valueDate,
         description: bankTransactions.description,
-        aiProcessingStartedAt: bankTransactions.aiProcessingStartedAt,
         categorizationRevision: bankTransactions.categorizationRevision,
       },
       sourceLedgerAccount: {
@@ -522,7 +511,6 @@ async function loadExistingInterpretationForBankTransaction(tx: DrizzleTransacti
         bankAccountId: bankTransactions.bankAccountId,
         amount: bankTransactions.amount,
         currency: bankTransactions.currency,
-        aiProcessingStartedAt: bankTransactions.aiProcessingStartedAt,
       },
       postingAccount: {
         teamId: ledgerAccounts.teamId,
@@ -867,7 +855,6 @@ async function loadSingleReconciledPostingForBankTransaction(
         bankAccountId: bankTransactions.bankAccountId,
         amount: bankTransactions.amount,
         currency: bankTransactions.currency,
-        aiProcessingStartedAt: bankTransactions.aiProcessingStartedAt,
       },
       postingAccount: {
         teamId: ledgerAccounts.teamId,
@@ -1100,14 +1087,14 @@ async function recordBankTransactionAiResult(
 ) {
   await tx
     .update(bankTransactions)
-    .set({aiConfidence, aiReasoning, aiProcessingStartedAt: null, updatedAt: now})
+    .set({aiConfidence, aiReasoning, updatedAt: now})
     .where(eq(bankTransactions.id, bankTransactionId))
 }
 
 async function clearBankTransactionAiState(tx: DrizzleTransaction, bankTransactionId: string, now: Date) {
   await tx
     .update(bankTransactions)
-    .set({aiConfidence: null, aiReasoning: null, aiProcessingStartedAt: null, updatedAt: now})
+    .set({aiConfidence: null, aiReasoning: null, updatedAt: now})
     .where(eq(bankTransactions.id, bankTransactionId))
 }
 
@@ -1117,15 +1104,4 @@ function requireAiReasoning(reasoning: string | null | undefined) {
     throw new Error('AI reasoning is required')
   }
   return normalizedReasoning
-}
-
-function isRecentlyProcessing(value: Date | string | number | null) {
-  if (!value) return false
-  const startedAt = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(startedAt.getTime())) return false
-  return startedAt >= aiProcessingFreshCutoff()
-}
-
-function aiProcessingFreshCutoff(now = new Date()) {
-  return new Date(now.getTime() - AI_PROCESSING_STALE_AFTER_MS)
 }

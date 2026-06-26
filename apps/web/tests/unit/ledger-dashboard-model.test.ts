@@ -59,7 +59,6 @@ function buildModelForTransaction(
         valueDate: null,
         description: 'Netto',
         aiConfidence: null,
-        aiProcessingStartedAt: null,
         aiReasoning: null,
         ...bankOverrides,
       },
@@ -70,10 +69,10 @@ function buildModelForTransaction(
 
 describe('buildLedgerDashboardModel', () => {
   it('groups balances and creates transaction rows with category state', () => {
-    const model = buildModelForTransaction({}, 'uncategorized', {aiConfidence: 1, aiProcessingStartedAt: new Date()})
+    const model = buildModelForTransaction({}, 'uncategorized', {aiConfidence: 1})
 
     expect(model.reviewCount).toBe(1)
-    expect(model.aiProcessingCount).toBe(1)
+    expect(model).not.toHaveProperty('aiProcessingCount')
     expect(model.categorizationAccounts.map(account => account.name)).toEqual(['Groceries'])
     expect(model.accountGroups[0]).toMatchObject({name: 'Everyday spending'})
     expect(model.accountGroups[0]?.accounts.find(account => account.id === 'uncategorized')?.balance).toBe(-1_000_000)
@@ -91,8 +90,7 @@ describe('buildLedgerDashboardModel', () => {
       splitLines: [],
       needsReview: true,
       aiConfidence: 1,
-      aiProcessing: true,
-      aiIndicator: {kind: 'processing', title: 'AI is currently categorizing this transaction'},
+      aiIndicator: {kind: 'uncategorized', title: 'Transaction is Uncategorized and needs a category'},
     })
   })
 
@@ -112,7 +110,6 @@ describe('buildLedgerDashboardModel', () => {
           valueDate: null,
           description: 'Netto',
           aiConfidence: 2,
-          aiProcessingStartedAt: null,
           aiReasoning: 'Matched groceries.',
           posting: {
             id: 'bank-posting-1',
@@ -230,14 +227,4 @@ describe('buildLedgerDashboardModel', () => {
     })
   })
 
-  it('shows processing rows as gray before other status states', () => {
-    const model = buildModelForTransaction({userConfirmedAt: new Date('2026-06-19T10:00:00.000Z')}, 'groceries', {aiProcessingStartedAt: new Date()})
-
-    expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
-      kind: 'processing',
-      title: 'AI is currently categorizing this transaction',
-      className: 'bg-muted-foreground',
-      canConfirm: false,
-    })
-  })
 })

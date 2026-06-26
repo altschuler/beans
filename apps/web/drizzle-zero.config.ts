@@ -78,7 +78,6 @@ export default drizzleZeroConfig(drizzleSchema, {
       counterpartyName: true,
       raw: false,
       aiConfidence: true,
-      aiProcessingStartedAt: true,
       aiReasoning: true,
       categorizationRevision: true,
       createdAt: true,

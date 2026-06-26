@@ -1,5 +1,4 @@
 import {type CSSProperties} from 'react'
-import {LoaderCircle} from 'lucide-react'
 import {Currency} from '@/components/currency'
 import {Button} from '@/components/ui/button'
 import {CategorySelector} from './category-selector'
@@ -51,17 +50,7 @@ export function TransactionRow({
         </div>
       </td>
       <td className="px-3 py-2 text-center">
-        {row.statusIndicator.kind === 'processing' ? (
-          <span
-            title={row.statusIndicator.title}
-            aria-label={row.statusIndicator.ariaLabel}
-            role="status"
-            className="inline-flex h-4 w-4 items-center justify-center text-muted-foreground"
-          >
-            <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
-            <span className="sr-only">{row.statusIndicator.ariaLabel}</span>
-          </span>
-        ) : ledgerTransactionId && row.canCategorize && row.statusIndicator.canConfirm ? (
+        {ledgerTransactionId && row.canCategorize && row.statusIndicator.canConfirm ? (
           <Button
             type="button"
             variant="ghost"
