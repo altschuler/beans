@@ -1,7 +1,7 @@
 import '@tanstack/react-start/server-only'
 
 import {defineMutator, defineMutators} from '@rocicorp/zero'
-import {categorizeBankTransaction, clearLedgerCategorizations, confirmBankTransactionInterpretation, splitBankTransaction} from '@/ledger/categorization.server'
+import {categorizeBankTransaction, clearLedgerCategorizations, confirmBankTransactionInterpretation, splitBankTransaction} from '@penge/domain/categorization-service'
 import {
   createCategoryAccount,
   createCategoryGroup,
@@ -9,7 +9,7 @@ import {
   deleteCategoryGroup,
   updateCategoryAccount,
   updateCategoryGroup,
-} from '@/ledger/category-management.server'
+} from '@penge/domain/category-management'
 import {requireUserID} from './context'
 import {
   categorizeTransactionInput,
@@ -25,11 +25,15 @@ import {
   updateCategoryGroupInput,
 } from './mutators'
 
+type CategorizationTransaction = Parameters<typeof categorizeBankTransaction>[0]
+type CategoryManagementTransaction = Parameters<typeof createCategoryAccount>[0]
+
 export const serverMutators = defineMutators(mutators, {
   ledger: {
     categorizeTransaction: defineMutator(categorizeTransactionInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await categorizeBankTransaction(tx.dbTransaction.wrappedTransaction, {
+      const transaction = tx.dbTransaction.wrappedTransaction as CategorizationTransaction
+      await categorizeBankTransaction(transaction, {
         userId: requireUserID(ctx),
         bankTransactionId: args.bankTransactionId,
         selection: args.selection,
@@ -37,7 +41,8 @@ export const serverMutators = defineMutators(mutators, {
     }),
     splitTransaction: defineMutator(splitTransactionInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await splitBankTransaction(tx.dbTransaction.wrappedTransaction, {
+      const transaction = tx.dbTransaction.wrappedTransaction as CategorizationTransaction
+      await splitBankTransaction(transaction, {
         userId: requireUserID(ctx),
         bankTransactionId: args.bankTransactionId,
         lines: args.lines,
@@ -45,38 +50,46 @@ export const serverMutators = defineMutators(mutators, {
     }),
     confirmTransaction: defineMutator(confirmTransactionInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await confirmBankTransactionInterpretation(tx.dbTransaction.wrappedTransaction, {
+      const transaction = tx.dbTransaction.wrappedTransaction as CategorizationTransaction
+      await confirmBankTransactionInterpretation(transaction, {
         userId: requireUserID(ctx),
         bankTransactionId: args.bankTransactionId,
       })
     }),
     clearCategorizations: defineMutator(clearCategorizationsInput, async ({ctx, tx}) => {
       if (tx.location !== 'server') return
-      await clearLedgerCategorizations(tx.dbTransaction.wrappedTransaction, {userId: requireUserID(ctx)})
+      const transaction = tx.dbTransaction.wrappedTransaction as CategorizationTransaction
+      await clearLedgerCategorizations(transaction, {userId: requireUserID(ctx)})
     }),
     createCategoryAccount: defineMutator(createCategoryAccountInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await createCategoryAccount(tx.dbTransaction.wrappedTransaction, {...args, userId: requireUserID(ctx)})
+      const transaction = tx.dbTransaction.wrappedTransaction as CategoryManagementTransaction
+      await createCategoryAccount(transaction, {...args, userId: requireUserID(ctx)})
     }),
     updateCategoryAccount: defineMutator(updateCategoryAccountInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await updateCategoryAccount(tx.dbTransaction.wrappedTransaction, {...args, userId: requireUserID(ctx)})
+      const transaction = tx.dbTransaction.wrappedTransaction as CategoryManagementTransaction
+      await updateCategoryAccount(transaction, {...args, userId: requireUserID(ctx)})
     }),
     deleteCategoryAccount: defineMutator(deleteCategoryAccountInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await deleteCategoryAccount(tx.dbTransaction.wrappedTransaction, {...args, userId: requireUserID(ctx)})
+      const transaction = tx.dbTransaction.wrappedTransaction as CategoryManagementTransaction
+      await deleteCategoryAccount(transaction, {...args, userId: requireUserID(ctx)})
     }),
     createCategoryGroup: defineMutator(createCategoryGroupInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await createCategoryGroup(tx.dbTransaction.wrappedTransaction, {...args, userId: requireUserID(ctx)})
+      const transaction = tx.dbTransaction.wrappedTransaction as CategoryManagementTransaction
+      await createCategoryGroup(transaction, {...args, userId: requireUserID(ctx)})
     }),
     updateCategoryGroup: defineMutator(updateCategoryGroupInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await updateCategoryGroup(tx.dbTransaction.wrappedTransaction, {...args, userId: requireUserID(ctx)})
+      const transaction = tx.dbTransaction.wrappedTransaction as CategoryManagementTransaction
+      await updateCategoryGroup(transaction, {...args, userId: requireUserID(ctx)})
     }),
     deleteCategoryGroup: defineMutator(deleteCategoryGroupInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
-      await deleteCategoryGroup(tx.dbTransaction.wrappedTransaction, {...args, userId: requireUserID(ctx)})
+      const transaction = tx.dbTransaction.wrappedTransaction as CategoryManagementTransaction
+      await deleteCategoryGroup(transaction, {...args, userId: requireUserID(ctx)})
     }),
   },
 })

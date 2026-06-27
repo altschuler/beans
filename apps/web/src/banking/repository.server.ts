@@ -4,7 +4,6 @@ import {and, desc, eq, isNotNull, ne} from 'drizzle-orm'
 import {db} from '@/db/client'
 import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, ledgerPostings, teamMembers} from '@penge/domain/schema'
 import {ensureLedgerAccountForBankAccount} from '@/ledger/repository.server'
-import {userCanAccessTeam} from '@/teams/team-access.server'
 import type {GoCardlessAccountDetails} from './gocardless/types'
 import type {BankAccountSyncRepository} from './sync'
 import type {NormalizedBankTransaction} from './transactions'
@@ -150,53 +149,6 @@ export async function claimBankAccountSync(bankAccountId: string) {
     .returning({id: bankAccounts.id})
 
   return Boolean(claimed)
-}
-
-export async function listBankAccountsForTeam(teamId: string, userId: string) {
-  if (!(await userCanAccessTeam(teamId, userId))) {
-    throw new Error('Team not found')
-  }
-
-  return db
-    .select({
-      id: bankAccounts.id,
-      name: bankAccounts.name,
-      iban: bankAccounts.iban,
-      currency: bankAccounts.currency,
-      status: bankAccounts.status,
-      syncStatus: bankAccounts.syncStatus,
-      syncError: bankAccounts.syncError,
-      syncStartedAt: bankAccounts.syncStartedAt,
-      lastSyncedAt: bankAccounts.lastSyncedAt,
-    })
-    .from(bankAccounts)
-    .where(eq(bankAccounts.teamId, teamId))
-    .orderBy(bankAccounts.name)
-}
-
-export async function listTransactionsForTeam(teamId: string, userId: string) {
-  if (!(await userCanAccessTeam(teamId, userId))) {
-    throw new Error('Team not found')
-  }
-
-  return db
-    .select({
-      id: bankTransactions.id,
-      bankAccountId: bankTransactions.bankAccountId,
-      accountName: bankAccounts.name,
-      status: bankTransactions.status,
-      bookingDate: bankTransactions.bookingDate,
-      valueDate: bankTransactions.valueDate,
-      amount: bankTransactions.amount,
-      currency: bankTransactions.currency,
-      description: bankTransactions.description,
-      counterpartyName: bankTransactions.counterpartyName,
-    })
-    .from(bankTransactions)
-    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
-    .where(eq(bankAccounts.teamId, teamId))
-    .orderBy(desc(bankTransactions.bookingDate), desc(bankTransactions.createdAt))
-    .limit(100)
 }
 
 export async function updateBankAccountDetails(bankAccountId: string, details: GoCardlessAccountDetails) {

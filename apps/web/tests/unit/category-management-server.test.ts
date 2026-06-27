@@ -123,7 +123,7 @@ describe('category management server functions', () => {
   afterAll(async () => closeDatabase())
 
   it('creates, updates, and deletes an unused category account', async () => {
-    const {createCategoryAccount, updateCategoryAccount, deleteCategoryAccount} = await import('@/ledger/category-management.server')
+    const {createCategoryAccount, updateCategoryAccount, deleteCategoryAccount} = await import('@penge/domain/category-management')
 
     await db.transaction(tx => createCategoryAccount(tx, {
       userId: 'user-1',
@@ -157,7 +157,7 @@ describe('category management server functions', () => {
   })
 
   it('creates, updates, and deletes an empty category group', async () => {
-    const {createCategoryGroup, updateCategoryGroup, deleteCategoryGroup} = await import('@/ledger/category-management.server')
+    const {createCategoryGroup, updateCategoryGroup, deleteCategoryGroup} = await import('@penge/domain/category-management')
 
     await db.transaction(tx => createCategoryGroup(tx, {userId: 'user-1', id: 'new-group', teamId: 'team-1', name: '  Pets  '}))
     await expect(db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, 'new-group'))).resolves.toMatchObject([
@@ -176,7 +176,7 @@ describe('category management server functions', () => {
     ['bank account', 'bank-account-ledger', 'Bank-linked accounts cannot be edited'],
     ['other team account', 'other-team-category', 'Category account not found'],
   ])('rejects updating %s', async (_label, accountId, message) => {
-    const {updateCategoryAccount} = await import('@/ledger/category-management.server')
+    const {updateCategoryAccount} = await import('@penge/domain/category-management')
 
     await expect(db.transaction(tx => updateCategoryAccount(tx, {
       userId: 'user-1',
@@ -189,7 +189,7 @@ describe('category management server functions', () => {
   })
 
   it('rejects trusted-scope updates that omit the trusted team id', async () => {
-    const {updateCategoryGroup} = await import('@/ledger/category-management.server')
+    const {updateCategoryGroup} = await import('@penge/domain/category-management')
 
     await expect(db.transaction(tx => updateCategoryGroup(tx, {
       userId: 'user-2',
@@ -200,20 +200,20 @@ describe('category management server functions', () => {
   })
 
   it('rejects category deletion when postings exist', async () => {
-    const {deleteCategoryAccount} = await import('@/ledger/category-management.server')
+    const {deleteCategoryAccount} = await import('@penge/domain/category-management')
 
     await expect(db.transaction(tx => deleteCategoryAccount(tx, {userId: 'user-1', accountId: 'groceries'}))).rejects.toThrow('Categories with ledger history cannot be deleted')
   })
 
   it('rejects system and non-empty group changes', async () => {
-    const {updateCategoryGroup, deleteCategoryGroup} = await import('@/ledger/category-management.server')
+    const {updateCategoryGroup, deleteCategoryGroup} = await import('@penge/domain/category-management')
 
     await expect(db.transaction(tx => updateCategoryGroup(tx, {userId: 'user-1', groupId: 'system-group', name: 'Blocked'}))).rejects.toThrow('System groups cannot be edited')
     await expect(db.transaction(tx => deleteCategoryGroup(tx, {userId: 'user-1', groupId: 'spending-group'}))).rejects.toThrow('Move or delete categories in this group first')
   })
 
   it('rejects creating categories in locked or inaccessible groups', async () => {
-    const {createCategoryAccount} = await import('@/ledger/category-management.server')
+    const {createCategoryAccount} = await import('@penge/domain/category-management')
 
     await expect(db.transaction(tx => createCategoryAccount(tx, {
       userId: 'user-1',

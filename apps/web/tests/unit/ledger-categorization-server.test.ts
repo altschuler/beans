@@ -281,7 +281,7 @@ describe('posting-based ledger categorization server functions', () => {
   // violation (and in production Zero would retry it, applying it as a last-writer-wins re-categorization).
   // The invariant that matters is that the loser corrupts nothing: exactly one balanced interpretation.
   it('keeps concurrent categorization of the same unreconciled bank transaction safe (one wins, one rolls back)', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-concurrent-category', amount: -1_000_000, description: 'Concurrent card purchase'})
 
     await sql`
@@ -345,7 +345,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('creates a ledger transaction when categorizing an unreconciled bank transaction', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transaction-lazy-1', amount: -1_000_000, description: 'Card purchase'})
 
     await expect(
@@ -377,7 +377,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('bumps the categorization revision for manual category and split writes', async () => {
-    const {categorizeBankTransaction, splitBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction, splitBankTransaction} = await import('@penge/domain/categorization-service')
     expect(await categorizationRevisionFor('bank-transaction-1')).toBe(0)
 
     await db.transaction(tx =>
@@ -405,7 +405,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects stale expected categorization revisions without changing the interpretation', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     const before = await currentInterpretationForBankTransaction('bank-transaction-1')
 
     await expect(
@@ -431,7 +431,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('returns a structured revision conflict for concurrent CAS first-time categorizations', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-concurrent-cas-category', amount: -1_000_000, description: 'Concurrent CAS purchase'})
 
     await sql`
@@ -495,7 +495,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('protects confirmed interpretations from AI overwrite even without an optional status guard', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await db.update(ledgerTransactions).set({status: 'confirmed', categorizedBy: 'ai'}).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     const before = await currentInterpretationForBankTransaction('bank-transaction-1')
 
@@ -520,7 +520,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects transfer categorization when no counter bank transaction matches', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-source', amount: -10_000_000, description: 'Transfer to savings'})
 
     await expect(
@@ -537,7 +537,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('reconciles an exact opposite counter bank transaction when creating a transfer', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-source-match', bankAccountId: 'bank-account-1', amount: -10_000_000, description: 'Transfer out', bookingDate: '2026-06-20'})
     await insertUnreconciledBankTransaction({id: 'bank-transfer-counter-match', bankAccountId: 'bank-account-2', amount: 10_000_000, description: 'Transfer in', bookingDate: '2026-06-21'})
 
@@ -559,7 +559,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('bumps both bank transaction revisions when creating a transfer interpretation', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-source-revision', bankAccountId: 'bank-account-1', amount: -10_000_000, description: 'Transfer out', bookingDate: '2026-06-20'})
     await insertUnreconciledBankTransaction({id: 'bank-transfer-counter-revision', bankAccountId: 'bank-account-2', amount: 10_000_000, description: 'Transfer in', bookingDate: '2026-06-21'})
 
@@ -576,7 +576,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects exact counter transfer candidates outside the two-day date window', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-source-window', bankAccountId: 'bank-account-1', amount: -6_000_000, bookingDate: '2026-06-20'})
     await insertUnreconciledBankTransaction({id: 'bank-transfer-counter-outside-window', bankAccountId: 'bank-account-2', amount: 6_000_000, bookingDate: '2026-06-23'})
 
@@ -595,7 +595,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('deterministically chooses one exact counter transfer match when several exist', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-source-many', bankAccountId: 'bank-account-1', amount: -5_000_000, bookingDate: '2026-06-20'})
     await insertUnreconciledBankTransaction({id: 'bank-transfer-counter-b', bankAccountId: 'bank-account-2', amount: 5_000_000, bookingDate: '2026-06-22'})
     await insertUnreconciledBankTransaction({id: 'bank-transfer-counter-a', bankAccountId: 'bank-account-2', amount: 5_000_000, bookingDate: '2026-06-21'})
@@ -615,7 +615,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('splits an unreconciled bank transaction by bank transaction id', async () => {
-    const {splitBankTransaction} = await import('@/ledger/categorization.server')
+    const {splitBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-split-lazy-1', amount: -1_000_000, description: 'Mixed shop'})
 
     await db.transaction(tx =>
@@ -639,7 +639,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('does not create a pending one-sided transfer interpretation for later attachment', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-delayed-source', bankAccountId: 'bank-account-1', amount: -1_250_000})
 
     await expect(
@@ -659,7 +659,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('requires the counter bank transaction to be unmatched before transfer categorization', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-existing-source', bankAccountId: 'bank-account-1', amount: -750_000})
     await insertUnreconciledBankTransaction({id: 'bank-transfer-existing-counter', bankAccountId: 'bank-account-2', amount: 750_000})
     await db.transaction(tx =>
@@ -687,7 +687,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('recategorizing one side of a matched transfer detaches the old counter bank transaction', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-recat-source', bankAccountId: 'bank-account-1', amount: -2_500_000})
     await insertUnreconciledBankTransaction({id: 'bank-transfer-recat-counter', bankAccountId: 'bank-account-2', amount: 2_500_000})
 
@@ -719,7 +719,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('updates an existing needs-review interpretation in place by bank transaction id and confirms', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
 
     await db.transaction(tx =>
       categorizeBankTransaction(tx, {
@@ -754,7 +754,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('keeps the ledger transaction id stable across re-categorization to a different category and a split', async () => {
-    const {categorizeBankTransaction, splitBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction, splitBankTransaction} = await import('@penge/domain/categorization-service')
 
     await db.transaction(tx =>
       categorizeBankTransaction(tx, {userId: 'user-1', bankTransactionId: 'bank-transaction-1', selection: {kind: 'category', accountId: 'groceries'}}),
@@ -792,7 +792,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('balances positive bank amounts with negative category postings by bank transaction id', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transaction-positive', amount: 2_500_000, description: 'Salary'})
 
     await db.transaction(tx =>
@@ -813,7 +813,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('persists split postings with opposite signs and rejects mismatched totals by bank transaction id', async () => {
-    const {splitBankTransaction} = await import('@/ledger/categorization.server')
+    const {splitBankTransaction} = await import('@penge/domain/categorization-service')
 
     await expect(
       db.transaction(tx =>
@@ -852,7 +852,7 @@ describe('posting-based ledger categorization server functions', () => {
   it.each(['uncategorized', 'bank-ledger-account', 'bank-ledger-account-2', 'inactive-expense', 'corrections', 'other-team-expense'])(
     'rejects %s as a categorization account',
     async accountId => {
-      const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+      const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
 
       await expect(
         db.transaction(tx =>
@@ -867,7 +867,7 @@ describe('posting-based ledger categorization server functions', () => {
   )
 
   it('does not replace an existing confirmed interpretation when AI requires needs_review', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await db.update(ledgerTransactions).set({status: 'confirmed'}).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     const interpretationBefore = await currentInterpretationForBankTransaction('bank-transaction-1')
 
@@ -894,7 +894,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('allows AI application with required needs_review when no interpretation exists', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transaction-ai-lazy', amount: -420_000, description: 'Lazy AI target'})
 
     const didCategorize = await db.transaction(tx =>
@@ -918,7 +918,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('confirms only transactions with real categories', async () => {
-    const {confirmBankTransactionInterpretation} = await import('@/ledger/categorization.server')
+    const {confirmBankTransactionInterpretation} = await import('@penge/domain/categorization-service')
 
     await expect(
       db.transaction(tx => confirmBankTransactionInterpretation(tx, {userId: 'user-1', bankTransactionId: 'bank-transaction-1'})),
@@ -945,7 +945,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('bumps the categorization revision when a user confirms an interpretation', async () => {
-    const {confirmBankTransactionInterpretation} = await import('@/ledger/categorization.server')
+    const {confirmBankTransactionInterpretation} = await import('@penge/domain/categorization-service')
     await db.delete(ledgerPostings).where(eq(ledgerPostings.id, 'ledger-transaction-1-uncat-posting'))
     await db.insert(ledgerPostings).values({
       id: 'posting-groceries-confirm-revision',
@@ -965,7 +965,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('preserves AI categorizer metadata when the user confirms an AI category', async () => {
-    const {confirmBankTransactionInterpretation} = await import('@/ledger/categorization.server')
+    const {confirmBankTransactionInterpretation} = await import('@penge/domain/categorization-service')
     await db.update(ledgerTransactions).set({categorizedBy: 'ai', status: 'confirmed'}).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     await db
       .update(bankTransactions)
@@ -998,7 +998,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('confirms a transfer interpretation by bank transaction id without requiring category postings', async () => {
-    const {categorizeBankTransaction, confirmBankTransactionInterpretation} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction, confirmBankTransactionInterpretation} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-confirm-source', bankAccountId: 'bank-account-1', amount: -10_000_000, description: 'Transfer out', bookingDate: '2026-06-20'})
     await insertUnreconciledBankTransaction({id: 'bank-transfer-confirm-counter', bankAccountId: 'bank-account-2', amount: 10_000_000, description: 'Transfer in', bookingDate: '2026-06-21'})
 
@@ -1024,7 +1024,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects confirmation for a category-less transfer when a bank posting does not match its bank transaction', async () => {
-    const {confirmBankTransactionInterpretation} = await import('@/ledger/categorization.server')
+    const {confirmBankTransactionInterpretation} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-invalid-source', bankAccountId: 'bank-account-1', amount: -10_000_000, description: 'Transfer out'})
     await insertUnreconciledBankTransaction({id: 'bank-transfer-invalid-counter', bankAccountId: 'bank-account-2', amount: 9_000_000, description: 'Transfer in'})
     await db.insert(ledgerTransactions).values({
@@ -1079,7 +1079,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects confirmation for a category-less two-bank-posting transaction on the same linked bank account', async () => {
-    const {confirmBankTransactionInterpretation} = await import('@/ledger/categorization.server')
+    const {confirmBankTransactionInterpretation} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-same-account-source', bankAccountId: 'bank-account-1', amount: -10_000_000, description: 'Transfer-like debit'})
     await insertUnreconciledBankTransaction({id: 'bank-transfer-same-account-counter', bankAccountId: 'bank-account-1', amount: 10_000_000, description: 'Transfer-like credit'})
     await db.insert(ledgerTransactions).values({
@@ -1134,7 +1134,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('clears multi-reconciled transactions by deleting their ledger interpretation and counts transactions', async () => {
-    const {clearLedgerCategorizations} = await import('@/ledger/categorization.server')
+    const {clearLedgerCategorizations} = await import('@penge/domain/categorization-service')
     await db.delete(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     await db.insert(bankTransactions).values([
       {
@@ -1198,7 +1198,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('clears categorizations by deleting ledger interpretations while preserving bank transactions', async () => {
-    const {clearLedgerCategorizations} = await import('@/ledger/categorization.server')
+    const {clearLedgerCategorizations} = await import('@penge/domain/categorization-service')
     await db.delete(ledgerPostings).where(eq(ledgerPostings.id, 'ledger-transaction-1-uncat-posting'))
     await db.insert(ledgerPostings).values([
       {id: 'posting-groceries-clear', ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries', amount: 700_000, currency: 'DKK', bankTransactionId: null, sortOrder: 1, createdAt: baseNow, updatedAt: baseNow},
@@ -1217,7 +1217,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects categorization when the reconciled posting amount differs from the bank transaction amount', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await db.update(ledgerPostings).set({amount: -900_000}).where(eq(ledgerPostings.id, 'ledger-transaction-1-bank-posting'))
 
     await expect(
@@ -1232,7 +1232,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects categorization when the reconciled posting currency differs from the bank transaction currency', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await db.update(ledgerPostings).set({currency: 'EUR'}).where(eq(ledgerPostings.id, 'ledger-transaction-1-bank-posting'))
 
     await expect(
@@ -1247,7 +1247,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects categorization when the reconciled posting account is not linked to the bank transaction account', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await db.update(ledgerPostings).set({accountId: 'bank-ledger-account-2'}).where(eq(ledgerPostings.id, 'ledger-transaction-1-bank-posting'))
 
     await expect(
@@ -1262,7 +1262,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects categorization when the reconciled posting belongs to a non-bank-import transaction', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await db.update(ledgerTransactions).set({source: 'manual'}).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
 
     await expect(
@@ -1277,7 +1277,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects users outside the bank transaction team', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
 
     await expect(
       db.transaction(tx =>
@@ -1291,7 +1291,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects categorizing a fresh bank transaction owned by another team without creating postings', async () => {
-    const {categorizeBankTransaction} = await import('@/ledger/categorization.server')
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
 
     await expect(
       db.transaction(tx =>
@@ -1307,7 +1307,7 @@ describe('posting-based ledger categorization server functions', () => {
   })
 
   it('rejects splitting a fresh bank transaction owned by another team without creating postings', async () => {
-    const {splitBankTransaction} = await import('@/ledger/categorization.server')
+    const {splitBankTransaction} = await import('@penge/domain/categorization-service')
 
     // Lines balance the team-2 bank amount, proving the denial happens on authorization rather than the
     // split-total or no-existing-interpretation checks downstream.

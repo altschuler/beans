@@ -72,8 +72,8 @@ Prefer boundary helpers that encode authorization checks near the request bounda
 - `userCanAccessTeam(teamId, userId)` checks for a matching `team_members` row.
 - `requireAccessibleTeamScope({teamId, userId})` returns a trusted scope only after membership is verified.
 - `requireCurrentPersonalTeamScope({userId})` resolves the user's current team scope from server-side membership data.
-- `listBankAccountsForTeam(teamId, userId)` and `listTransactionsForTeam(teamId, userId)` check team access before returning rows.
 - `requireAccessibleBankAccount(bankAccountId, userId)` joins through `team_members` so users can only operate on bank accounts in teams they belong to.
+- `listAccessibleBankAccountsForSync(userId)` joins through `team_members` and returns only linked bank accounts the user can sync.
 
 When adding a new team-owned table, include a clear path back to `teams` and enforce access by joining/checking `team_members` at an untrusted boundary or by requiring a trusted team scope from an upstream boundary. Prefer returning “not found” style errors for inaccessible resources so callers do not leak whether another user’s resource exists.
 

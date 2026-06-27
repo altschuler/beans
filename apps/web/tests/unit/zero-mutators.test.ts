@@ -11,8 +11,8 @@ const createCategoryGroup = vi.hoisted(() => vi.fn(async () => undefined))
 const updateCategoryGroup = vi.hoisted(() => vi.fn(async () => undefined))
 const deleteCategoryGroup = vi.hoisted(() => vi.fn(async () => undefined))
 
-vi.mock('@/ledger/categorization.server', () => ({categorizeBankTransaction, splitBankTransaction, confirmBankTransactionInterpretation, clearLedgerCategorizations}))
-vi.mock('@/ledger/category-management.server', () => ({
+vi.mock('@penge/domain/categorization-service', () => ({categorizeBankTransaction, splitBankTransaction, confirmBankTransactionInterpretation, clearLedgerCategorizations}))
+vi.mock('@penge/domain/category-management', () => ({
   createCategoryAccount,
   updateCategoryAccount,
   deleteCategoryAccount,
