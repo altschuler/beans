@@ -4,9 +4,8 @@ const FAILED_REQUISITION_STATUSES = new Set(['RJ', 'REJECTED', 'ER', 'FAILED', '
 
 export async function completeGoCardlessCallback(input: {reference: string; teamId: string; userId: string}) {
   const {createGoCardlessClient} = await import('./gocardless/client.server')
-  const {findBankConnectionByReference, markBankConnectionLinked, upsertLinkedAccounts, userCanAccessTeam} = await import(
-    './repository.server'
-  )
+  const {userCanAccessTeam} = await import('@/teams/team-access.server')
+  const {findBankConnectionByReference, markBankConnectionLinked, upsertLinkedAccounts} = await import('./repository.server')
 
   const connection = await findBankConnectionByReference(input.reference)
 

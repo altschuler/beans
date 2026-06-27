@@ -1,15 +1,14 @@
 import {and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, or, sql as drizzleSql, type AnyColumn, type SQL} from 'drizzle-orm'
 import type {Database} from './db'
-import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from './schema'
+import type {TrustedTeamScope} from './team-scope'
+import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions} from './schema'
 
 export type ReviewStatusFilter = 'uncategorized' | 'needs_review' | 'confirmed' | 'ai_unable' | 'any'
 export type MoneyDirectionFilter = 'inflow' | 'outflow'
 
 export type DomainReadExecutor = Pick<Database, 'select'>
 
-export type TrustedToolScope = {
-  userId: string
-  teamId: string
+export type TrustedToolScope = TrustedTeamScope & {
   targetBankTransactionIds?: string[]
 }
 
@@ -140,7 +139,7 @@ export async function searchBankTransactions(
   input: TrustedToolScope & {filters?: SearchBankTransactionsFilters},
 ): Promise<BankTransactionSearchResult[]> {
   const filters = input.filters ?? {}
-  const conditions: SQL[] = [eq(teamMembers.userId, input.userId), eq(bankAccounts.teamId, input.teamId)]
+  const conditions: SQL[] = [eq(bankAccounts.teamId, input.teamId)]
 
   addOptionalArrayCondition(conditions, bankTransactions.id, filters.bankTransactionIds)
   addOptionalArrayCondition(conditions, bankTransactions.bankAccountId, filters.bankAccountIds)
@@ -177,7 +176,6 @@ export async function searchBankTransactions(
     })
     .from(bankTransactions)
     .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
-    .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
     .leftJoin(ledgerPostings, eq(ledgerPostings.bankTransactionId, bankTransactions.id))
     .leftJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerPostings.ledgerTransactionId))
     .where(and(...conditions))
@@ -244,7 +242,7 @@ export async function searchLedgerTransactions(
   input: TrustedToolScope & {filters?: SearchLedgerTransactionsFilters},
 ): Promise<LedgerTransactionSearchResult[]> {
   const filters = input.filters ?? {}
-  const conditions: SQL[] = [eq(teamMembers.userId, input.userId), eq(ledgerTransactions.teamId, input.teamId)]
+  const conditions: SQL[] = [eq(ledgerTransactions.teamId, input.teamId)]
   if (filters.status) conditions.push(eq(ledgerTransactions.status, filters.status))
   if (filters.source) conditions.push(eq(ledgerTransactions.source, filters.source))
   if (filters.categorizedBy) conditions.push(eq(ledgerTransactions.categorizedBy, filters.categorizedBy))
@@ -272,7 +270,6 @@ export async function searchLedgerTransactions(
       description: ledgerTransactions.description,
     })
     .from(ledgerTransactions)
-    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
     .leftJoin(ledgerPostings, eq(ledgerPostings.ledgerTransactionId, ledgerTransactions.id))
     .leftJoin(bankTransactions, eq(bankTransactions.id, ledgerPostings.bankTransactionId))
     .where(and(...conditions))
@@ -294,7 +291,7 @@ export async function searchLedgerAccounts(
   input: TrustedToolScope & {filters?: SearchLedgerAccountsFilters},
 ): Promise<LedgerAccountSearchResult[]> {
   const filters = input.filters ?? {}
-  const conditions: SQL[] = [eq(teamMembers.userId, input.userId), eq(ledgerAccounts.teamId, input.teamId)]
+  const conditions: SQL[] = [eq(ledgerAccounts.teamId, input.teamId)]
   if (filters.type) conditions.push(eq(ledgerAccounts.type, filters.type))
   if (filters.status) conditions.push(eq(ledgerAccounts.status, filters.status))
   if (filters.textContains) conditions.push(or(ilike(ledgerAccounts.name, `%${filters.textContains}%`), ilike(ledgerAccounts.description, `%${filters.textContains}%`))!)
@@ -324,7 +321,6 @@ export async function searchLedgerAccounts(
     })
     .from(ledgerAccounts)
     .innerJoin(ledgerAccountGroups, eq(ledgerAccountGroups.id, ledgerAccounts.groupId))
-    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerAccounts.teamId))
     .where(and(...conditions))
     .orderBy(asc(ledgerAccountGroups.sortOrder), asc(ledgerAccounts.sortOrder), asc(ledgerAccounts.name))
     .limit(limit(filters.limit))
@@ -344,8 +340,7 @@ async function loadLedgerTransaction(tx: DomainReadExecutor, scope: TrustedToolS
       description: ledgerTransactions.description,
     })
     .from(ledgerTransactions)
-    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
-    .where(and(eq(teamMembers.userId, scope.userId), eq(ledgerTransactions.teamId, scope.teamId), eq(ledgerTransactions.id, ledgerTransactionId)))
+    .where(and(eq(ledgerTransactions.teamId, scope.teamId), eq(ledgerTransactions.id, ledgerTransactionId)))
     .limit(1)
   return row ?? null
 }
@@ -369,9 +364,8 @@ async function loadPostings(tx: DomainReadExecutor, scope: TrustedToolScope, led
     })
     .from(ledgerPostings)
     .innerJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerPostings.ledgerTransactionId))
-    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerTransactions.teamId))
     .innerJoin(ledgerAccounts, eq(ledgerAccounts.id, ledgerPostings.accountId))
-    .where(and(eq(teamMembers.userId, scope.userId), eq(ledgerTransactions.teamId, scope.teamId), inArray(ledgerPostings.ledgerTransactionId, ids)))
+    .where(and(eq(ledgerTransactions.teamId, scope.teamId), inArray(ledgerPostings.ledgerTransactionId, ids)))
     .orderBy(asc(ledgerPostings.sortOrder), asc(ledgerPostings.id))
 }
 

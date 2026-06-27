@@ -16,7 +16,9 @@ Run commands from the workspace root by default. Package-local source paths in d
 
 Flue runs as a separate Node-target service, not inside the TanStack Start runtime. The web app should authenticate users and call Flue over an internal service boundary for agent workflows. Flue may update Postgres through trusted domain logic; Zero observes committed domain-table changes and syncs them back to clients. Flue does not talk to Zero directly.
 
-First-slice web-to-Flue auth uses `PENGE_FLUE_INTERNAL_TOKEN` and passes trusted `userId` plus `teamId` in workflow input. This is temporary tech debt tracked in `docs/TODO.md`; the long-term goal is a least-privilege API/capability boundary where Flue cannot read or write data outside the authenticated user's authorized scope.
+First-slice web-to-Flue auth uses `PENGE_FLUE_INTERNAL_TOKEN` and passes trusted `userId` plus `teamId` in workflow input. The web boundary validates team access before constructing that scope; Flue tools ignore any model-supplied user/team fields and use the runtime scope. Domain read projections and trusted Flue write paths then filter directly by `teamId` and keep `userId` for audit/confirmation metadata.
+
+This is temporary tech debt tracked in `docs/TODO.md`; the long-term goal is a least-privilege API/capability boundary where Flue cannot read or write data outside the authenticated user's authorized scope.
 
 For local development, run the web app and Flue sidecar as separate processes. The web app needs `PENGE_FLUE_BASE_URL` pointing at the Flue server and `PENGE_FLUE_INTERNAL_TOKEN`; the Flue app needs the same token and should use a non-web port. The example env files use:
 
@@ -62,4 +64,4 @@ Server functions are reserved for special cases where Zero is not the right boun
 - tables intentionally excluded from Zero, such as Better Auth tables
 - operational endpoints that do not expose or mutate app/domain rows directly
 
-Zero mutators must still authorize server-side using the authenticated Zero context. Client-side filters and hidden UI are not authorization.
+Zero mutators must still authorize server-side using the authenticated Zero context. Client-side filters, hidden UI, and client-supplied team ids are not authorization. The trusted-scope shortcut used by Flue/domain downstream code only applies after a server boundary has validated team membership.

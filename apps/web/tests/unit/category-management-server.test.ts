@@ -188,6 +188,17 @@ describe('category management server functions', () => {
     }))).rejects.toThrow(message)
   })
 
+  it('rejects trusted-scope updates that omit the trusted team id', async () => {
+    const {updateCategoryGroup} = await import('@/ledger/category-management.server')
+
+    await expect(db.transaction(tx => updateCategoryGroup(tx, {
+      userId: 'user-2',
+      trustedScope: true,
+      groupId: 'other-group',
+      name: 'Missing team guard',
+    }))).rejects.toThrow('Trusted team scope is required')
+  })
+
   it('rejects category deletion when postings exist', async () => {
     const {deleteCategoryAccount} = await import('@/ledger/category-management.server')
 

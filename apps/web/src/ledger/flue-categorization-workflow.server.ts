@@ -1,7 +1,8 @@
 import '@tanstack/react-start/server-only'
 
-import {and, desc, eq} from 'drizzle-orm'
+import {and, eq} from 'drizzle-orm'
 import {db, sql} from '@/db/client'
+import {requireCurrentPersonalTeamScope} from '@/teams/team-access.server'
 import {bankAccounts, bankTransactions, teamMembers} from '@penge/domain/schema'
 import {
   ActiveWorkflowRunExistsError,
@@ -134,15 +135,7 @@ async function resolveAccessibleBankTransactionTeamId(input: {userId: string; ba
 }
 
 async function resolveCurrentTeamIdForUser(input: {userId: string}) {
-  const [row] = await db
-    .select({teamId: teamMembers.teamId})
-    .from(teamMembers)
-    .where(eq(teamMembers.userId, input.userId))
-    .orderBy(desc(teamMembers.createdAt))
-    .limit(1)
-
-  if (!row) throw new Error('No active team found')
-  return row.teamId
+  return (await requireCurrentPersonalTeamScope(input)).teamId
 }
 
 async function invokeFlueCategorizeTransactionsWorkflow(input: CategorizeTransactionsWorkflowInput): Promise<FlueWorkflowInvocationReceipt> {

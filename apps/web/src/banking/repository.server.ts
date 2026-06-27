@@ -4,18 +4,10 @@ import {and, desc, eq, isNotNull, ne} from 'drizzle-orm'
 import {db} from '@/db/client'
 import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, ledgerPostings, teamMembers} from '@penge/domain/schema'
 import {ensureLedgerAccountForBankAccount} from '@/ledger/repository.server'
+import {userCanAccessTeam} from '@/teams/team-access.server'
 import type {GoCardlessAccountDetails} from './gocardless/types'
 import type {BankAccountSyncRepository} from './sync'
 import type {NormalizedBankTransaction} from './transactions'
-
-export async function userCanAccessTeam(teamId: string, userId: string) {
-  const [membership] = await db
-    .select({id: teamMembers.id})
-    .from(teamMembers)
-    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
-    .limit(1)
-  return Boolean(membership)
-}
 
 export async function createBankConnection(input: {
   teamId: string

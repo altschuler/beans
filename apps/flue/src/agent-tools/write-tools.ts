@@ -89,6 +89,7 @@ export function createCategorizationWriteTools(input: CategorizationWriteToolSco
             applyAgentBankTransactionInterpretation(tx, {
               userId,
               teamId,
+              trustedScope: true,
               targetBankTransactionIds,
               bankTransactionId: input.bankTransactionId,
               expectedCategorizationRevision: input.expectedCategorizationRevision,
@@ -138,6 +139,7 @@ export function createChatCategorizationWriteTools(input: CategorizationWriteToo
               return splitBankTransaction(tx, {
                 userId,
                 teamId,
+                trustedScope: true,
                 targetBankTransactionIds,
                 bankTransactionId: input.bankTransactionId,
                 expectedCategorizationRevision: input.expectedCategorizationRevision,
@@ -148,6 +150,7 @@ export function createChatCategorizationWriteTools(input: CategorizationWriteToo
             return categorizeBankTransaction(tx, {
               userId,
               teamId,
+              trustedScope: true,
               targetBankTransactionIds,
               bankTransactionId: input.bankTransactionId,
               expectedCategorizationRevision: input.expectedCategorizationRevision,
@@ -204,15 +207,15 @@ async function applyCategoryManagementOperation(
 ) {
   if (input.operation.kind === 'createGroup') {
     const groupId = crypto.randomUUID()
-    await createCategoryGroup(tx, {userId: input.userId, teamId: input.teamId, id: groupId, name: input.operation.name})
+    await createCategoryGroup(tx, {userId: input.userId, teamId: input.teamId, trustedScope: true, id: groupId, name: input.operation.name})
     return {groupId}
   }
   if (input.operation.kind === 'updateGroup') {
-    await updateCategoryGroup(tx, {userId: input.userId, teamId: input.teamId, groupId: input.operation.groupId, name: input.operation.name})
+    await updateCategoryGroup(tx, {userId: input.userId, teamId: input.teamId, trustedScope: true, groupId: input.operation.groupId, name: input.operation.name})
     return {}
   }
   if (input.operation.kind === 'deleteGroup') {
-    await deleteCategoryGroup(tx, {userId: input.userId, teamId: input.teamId, groupId: input.operation.groupId})
+    await deleteCategoryGroup(tx, {userId: input.userId, teamId: input.teamId, trustedScope: true, groupId: input.operation.groupId})
     return {}
   }
   if (input.operation.kind === 'createCategory') {
@@ -220,6 +223,7 @@ async function applyCategoryManagementOperation(
     await createCategoryAccount(tx, {
       userId: input.userId,
       teamId: input.teamId,
+      trustedScope: true,
       id: accountId,
       groupId: input.operation.groupId,
       name: input.operation.name,
@@ -232,6 +236,7 @@ async function applyCategoryManagementOperation(
     await updateCategoryAccount(tx, {
       userId: input.userId,
       teamId: input.teamId,
+      trustedScope: true,
       accountId: input.operation.accountId,
       groupId: input.operation.groupId,
       name: input.operation.name,
@@ -240,7 +245,7 @@ async function applyCategoryManagementOperation(
     })
     return {}
   }
-  await deleteCategoryAccount(tx, {userId: input.userId, teamId: input.teamId, accountId: input.operation.accountId})
+  await deleteCategoryAccount(tx, {userId: input.userId, teamId: input.teamId, trustedScope: true, accountId: input.operation.accountId})
   return {}
 }
 

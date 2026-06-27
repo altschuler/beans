@@ -1,8 +1,8 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest'
 import {db} from '@/db/client'
-import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, teamMembers, teams, user} from '@penge/domain/schema'
+import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerTransactions, teamMembers, teams, user} from '@penge/domain/schema'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
-import {searchBankTransactions} from '@penge/domain/read-projections'
+import {searchBankTransactions, searchLedgerAccounts, searchLedgerTransactions} from '@penge/domain/read-projections'
 
 const now = new Date('2026-06-25T10:00:00.000Z')
 
@@ -55,6 +55,21 @@ describe('domain read projections', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]?.canWrite).toBe(false)
   })
+
+  it('treats user/team input as already trusted and filters directly by team', async () => {
+    const trustedScope = {userId: 'user-2', teamId: 'team-1'}
+
+    await expect(searchBankTransactions(db, {...trustedScope, filters: {reviewStatus: 'any', limit: 10}})).resolves.toMatchObject([
+      {id: 'bank-transaction-1', bankAccountId: 'bank-account-1'},
+    ])
+    await expect(searchLedgerTransactions(db, {...trustedScope, filters: {limit: 10}})).resolves.toMatchObject([
+      {id: 'ledger-transaction-1', teamId: 'team-1'},
+    ])
+    await expect(searchLedgerAccounts(db, {...trustedScope, filters: {limit: 10}})).resolves.toMatchObject([
+      {id: 'bank-ledger-account-1', teamId: 'team-1'},
+      {id: 'groceries', teamId: 'team-1'},
+    ])
+  })
 })
 
 async function seedProjectionFixture() {
@@ -86,6 +101,10 @@ async function seedProjectionFixture() {
   await db.insert(bankTransactions).values([
     bankTransaction('bank-transaction-1', 'bank-account-1', 'Supermarket purchase', 'Supermarket', 7),
     bankTransaction('bank-transaction-2', 'bank-account-2', 'Other team purchase', 'Other merchant', 3),
+  ])
+  await db.insert(ledgerTransactions).values([
+    ledgerTransaction('ledger-transaction-1', 'team-1'),
+    ledgerTransaction('ledger-transaction-2', 'team-2'),
   ])
 }
 
@@ -151,6 +170,22 @@ function bankTransaction(id: string, bankAccountId: string, description: string,
     aiConfidence: null,
     aiReasoning: null,
     categorizationRevision,
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+function ledgerTransaction(id: string, teamId: string) {
+  return {
+    id,
+    teamId,
+    source: 'bank_import',
+    status: 'confirmed',
+    categorizedBy: 'user',
+    userConfirmedAt: now,
+    userConfirmedBy: 'user-1',
+    date: '2026-06-25',
+    description: null,
     createdAt: now,
     updatedAt: now,
   }

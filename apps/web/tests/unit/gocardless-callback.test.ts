@@ -9,6 +9,9 @@ const repository = vi.hoisted(() => ({
   findBankConnectionByReference: vi.fn(),
   markBankConnectionLinked: vi.fn(async () => undefined),
   upsertLinkedAccounts: vi.fn(async () => undefined),
+}))
+
+const teamAccess = vi.hoisted(() => ({
   userCanAccessTeam: vi.fn(async () => true),
 }))
 
@@ -17,6 +20,7 @@ vi.mock('@/banking/gocardless/client.server', () => ({
 }))
 
 vi.mock('@/banking/repository.server', () => repository)
+vi.mock('@/teams/team-access.server', () => teamAccess)
 
 describe('completeGoCardlessCallback', () => {
   beforeEach(() => {
@@ -27,7 +31,7 @@ describe('completeGoCardlessCallback', () => {
       reference: 'reference-1',
       providerRequisitionId: 'requisition-1',
     })
-    repository.userCanAccessTeam.mockResolvedValue(true)
+    teamAccess.userCanAccessTeam.mockResolvedValue(true)
     gocardlessClient.getRequisition.mockResolvedValue({
       id: 'requisition-1',
       reference: 'reference-1',

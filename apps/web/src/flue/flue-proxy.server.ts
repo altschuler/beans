@@ -1,10 +1,8 @@
 import '@tanstack/react-start/server-only'
 
-import {and, eq} from 'drizzle-orm'
 import {decodeTeamDataAssistantId} from '@penge/domain/team-data-assistant-id'
-import {teamMembers} from '@penge/domain/schema'
-import {db} from '@/db/client'
 import {getSessionFromRequest} from '@/auth/session.server'
+import {userCanAccessTeam} from '@/teams/team-access.server'
 
 const flueProxyPrefix = '/api/flue'
 const teamDataAssistantPath = /^\/agents\/team-data-assistant\/([^/?#]+)$/
@@ -70,14 +68,7 @@ function stripHopByHopHeaders(input: HeadersInit) {
 
 export const handleFlueProxyRequest = createFlueProxyHandler({
   getSession: getSessionFromRequest,
-  async userCanAccessTeam(input) {
-    const [row] = await db
-      .select({id: teamMembers.id})
-      .from(teamMembers)
-      .where(and(eq(teamMembers.userId, input.userId), eq(teamMembers.teamId, input.teamId)))
-      .limit(1)
-    return Boolean(row)
-  },
+  userCanAccessTeam: input => userCanAccessTeam(input.teamId, input.userId),
   fetch,
   env: process.env,
 })

@@ -45,6 +45,7 @@ The current domain authorization model is team-based:
 - Current memberships use role `owner`; the schema has a `role` column for future role-based permissions.
 - Banking resources belong to a team through `teamId` or through a parent record that belongs to a team.
 - A user may access team-owned data only when there is a matching `team_members` row for that user and team.
+- Once a server boundary has checked membership, downstream Flue/domain read and write code may receive a trusted `{userId, teamId}` scope and filter directly by `teamId`. Do not construct that trusted scope from client/model input without a server-side membership check.
 
 ## Authorization patterns
 
@@ -65,13 +66,16 @@ Examples:
 
 ### Repository/database access
 
-Prefer repository helpers that encode authorization checks near the query:
+Prefer boundary helpers that encode authorization checks near the request boundary:
 
+- `apps/web/src/teams/team-access.server.ts` owns general team-access helpers.
 - `userCanAccessTeam(teamId, userId)` checks for a matching `team_members` row.
+- `requireAccessibleTeamScope({teamId, userId})` returns a trusted scope only after membership is verified.
+- `requireCurrentPersonalTeamScope({userId})` resolves the user's current team scope from server-side membership data.
 - `listBankAccountsForTeam(teamId, userId)` and `listTransactionsForTeam(teamId, userId)` check team access before returning rows.
 - `requireAccessibleBankAccount(bankAccountId, userId)` joins through `team_members` so users can only operate on bank accounts in teams they belong to.
 
-When adding a new team-owned table, include a clear path back to `teams` and enforce access by joining or checking `team_members`. Prefer returning “not found” style errors for inaccessible resources so callers do not leak whether another user’s resource exists.
+When adding a new team-owned table, include a clear path back to `teams` and enforce access by joining/checking `team_members` at an untrusted boundary or by requiring a trusted team scope from an upstream boundary. Prefer returning “not found” style errors for inaccessible resources so callers do not leak whether another user’s resource exists.
 
 ### Route/API handlers
 
@@ -94,9 +98,9 @@ Zero is used for app/domain data, not auth data.
 - Zero query and mutate endpoints must authenticate the request and pass the authenticated `userID` into `ZeroContext`.
 - Every Zero query must filter data by `ctx.userID`, usually through team membership.
 
-Current examples in `apps/web/src/zero/queries.ts` scope teams, team members, bank connections, bank accounts, and bank transactions to the authenticated user.
+Current examples in `apps/web/src/zero/queries.ts` scope teams, team members, bank connections, bank accounts, and bank transactions to the authenticated user. Shared helpers in `apps/web/src/zero/permissions.ts` centralize the repeated visibility predicates, but the authorization model remains filter-based per query.
 
-If Zero mutators are added, they must follow the same rule: authenticate at the endpoint, derive `userID` from the session, and authorize each write against team membership or a stricter permission check.
+Zero mutators follow the same rule: authenticate at the endpoint, derive `userID` from the session, and authorize each write against team membership or a stricter permission check. Client-supplied team ids in Zero arguments are requests, not authority.
 
 ### Flue sidecar calls
 
@@ -110,6 +114,8 @@ For current Flue workflows:
 4. `apps/web` calls Flue at `PENGE_FLUE_BASE_URL` with `Authorization: Bearer $PENGE_FLUE_INTERNAL_TOKEN`.
 5. Workflow input includes `appRunId`, `userId`, `teamId`, and optional workflow target constraints such as `targetBankTransactionIds`.
 6. Flue tools scope every domain read/write by the trusted values and never allow model-selected user/team scope.
+
+Domain read projections and trusted Flue write paths treat their runtime `{userId, teamId}` as already boundary-validated. They filter by `teamId` directly and keep `userId` for audit metadata, confirmation fields, tool instructions, and future role checks. Any new production caller of those trusted-scope APIs must validate team access before calling them.
 
 Long term, Flue should operate through a least-privilege authorization boundary, such as authenticated app/domain APIs or capability-scoped services, so broad database access is not available to the agent runtime.
 

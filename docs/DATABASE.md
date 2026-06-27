@@ -21,7 +21,7 @@ Use Zero for all app/domain tables and queries:
 - Regenerate the Zero schema with `just zero-generate` or `pnpm zero:generate` from the workspace root.
 - Do not hand-edit `apps/web/src/zero/schema.ts`; it is generated.
 - Add Zero queries in `apps/web/src/zero/queries.ts` for client-readable domain data.
-- Keep query authorization scoped by the authenticated user, usually through team membership.
+- Keep Zero query authorization scoped by the authenticated user, usually through team membership. Shared Zero permission helpers may centralize the predicates, but Zero reads remain filter-authorized per query.
 
 Current Zero-synced app/domain tables:
 
@@ -57,6 +57,8 @@ When adding a new app/domain table, it is not complete until it is represented i
 
 Writes go through Zero custom mutators: Zod input schemas and optimistic client logic in `apps/web/src/zero/mutators.ts`, server logic in `apps/web/src/zero/mutators.server.ts` (and the `*.server.ts` command files it calls). Transaction categorization, splits, confirmation, and clearing apply deterministic optimistic updates in the client replica while the server remains authoritative. Transfer categorization intentionally stays server-authoritative because it depends on server-side counter-transaction matching.
 
+Server-side Zero mutators must authorize from authenticated context and target-row/team checks. Client-supplied `teamId` fields are not authority by themselves.
+
 Always pass mutations through `runZeroMutation` (`apps/web/src/lib/run-mutation.ts`); never `await zero.mutate(...)` directly. A mutator call returns `{client, server}` promises that **resolve** with a result detail — they do not reject on failure. A server-side error resolves `.server` with `{type: 'error', ...}` and Zero only logs it to the console, so awaiting the mutation alone silently swallows the error.
 
 Prefer fire-and-forget for normal Zero-backed UI. The optimistic client write should drive the experience: close dialogs, popovers, and menus immediately after the local input is valid, and let `runZeroMutation` toast rare server failures in the background.
@@ -69,6 +71,12 @@ closePopover()
 Only await `runZeroMutation` when the next step genuinely requires server acknowledgement rather than optimistic state.
 
 When mocking a failing mutation in tests, resolve `.server` with `{type: 'error', error: {...}}` — do not reject it; rejection does not match Zero's real behavior.
+
+## Trusted server and Flue scope
+
+Some non-Zero server paths validate team access once at the web boundary and then pass a trusted `{userId, teamId}` scope to downstream domain code. Domain read projections and trusted Flue write paths filter directly by `teamId` after that boundary validation. This is different from Zero queries, which continue to encode read authorization as query filters over the authenticated `userID`.
+
+Do not call trusted-scope domain APIs from a new request path until that path has validated membership with server-side data, for example through `apps/web/src/teams/team-access.server.ts`.
 
 ## Tables not synced with Zero
 

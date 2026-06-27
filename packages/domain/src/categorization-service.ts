@@ -28,6 +28,7 @@ type BankTransactionInterpretation =
 type ApplyBankTransactionInterpretationInput = {
   userId: string
   teamId?: string
+  trustedScope?: true
   bankTransactionId: string
   targetBankTransactionIds?: string[]
   interpretation: BankTransactionInterpretation
@@ -42,6 +43,7 @@ type ApplyBankTransactionInterpretationInput = {
 type CategorizeBankTransactionInput = {
   userId: string
   teamId?: string
+  trustedScope?: true
   bankTransactionId: string
   targetBankTransactionIds?: string[]
   selection: {kind: 'category'; accountId: string} | {kind: 'transfer'; accountId: string}
@@ -56,6 +58,7 @@ type CategorizeBankTransactionInput = {
 type SplitBankTransactionInput = {
   userId: string
   teamId?: string
+  trustedScope?: true
   bankTransactionId: string
   targetBankTransactionIds?: string[]
   lines: CategorizationLineInput[]
@@ -71,6 +74,7 @@ export type AgentInterpretationInput =
 export type ApplyAgentBankTransactionInterpretationInput = {
   userId: string
   teamId: string
+  trustedScope?: true
   bankTransactionId: string
   targetBankTransactionIds?: string[]
   expectedCategorizationRevision: number
@@ -144,6 +148,7 @@ export async function categorizeBankTransaction(tx: DrizzleTransaction, input: C
   return applyBankTransactionInterpretation(tx, {
     userId: input.userId,
     teamId: input.teamId,
+    trustedScope: input.trustedScope,
     bankTransactionId: input.bankTransactionId,
     targetBankTransactionIds: input.targetBankTransactionIds,
     interpretation: input.selection,
@@ -160,6 +165,7 @@ export async function splitBankTransaction(tx: DrizzleTransaction, input: SplitB
   return applyBankTransactionInterpretation(tx, {
     userId: input.userId,
     teamId: input.teamId,
+    trustedScope: input.trustedScope,
     bankTransactionId: input.bankTransactionId,
     targetBankTransactionIds: input.targetBankTransactionIds,
     interpretation: {kind: 'split', lines: input.lines},
@@ -180,6 +186,7 @@ export async function applyAgentBankTransactionInterpretation(tx: DrizzleTransac
     return applyBankTransactionInterpretation(tx, {
       userId: input.userId,
       teamId: input.teamId,
+      trustedScope: input.trustedScope,
       bankTransactionId: input.bankTransactionId,
       targetBankTransactionIds: input.targetBankTransactionIds,
       interpretation: {kind: 'category', accountId: input.interpretation.categoryAccountId},
@@ -196,6 +203,7 @@ export async function applyAgentBankTransactionInterpretation(tx: DrizzleTransac
     return applyBankTransactionInterpretation(tx, {
       userId: input.userId,
       teamId: input.teamId,
+      trustedScope: input.trustedScope,
       bankTransactionId: input.bankTransactionId,
       targetBankTransactionIds: input.targetBankTransactionIds,
       interpretation: {kind: 'split', lines: input.interpretation.lines},
@@ -211,6 +219,7 @@ export async function applyAgentBankTransactionInterpretation(tx: DrizzleTransac
   return applyBankTransactionInterpretation(tx, {
     userId: input.userId,
     teamId: input.teamId,
+    trustedScope: input.trustedScope,
     bankTransactionId: input.bankTransactionId,
     targetBankTransactionIds: input.targetBankTransactionIds,
     interpretation: {kind: 'transfer', counterBankTransactionId: input.interpretation.counterBankTransactionId},
@@ -224,7 +233,12 @@ export async function applyAgentBankTransactionInterpretation(tx: DrizzleTransac
 }
 
 async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input: ApplyBankTransactionInterpretationInput) {
-  const loaded = await loadBankTransactionForCategorization(tx, input.userId, input.bankTransactionId)
+  const loaded = await loadBankTransactionForCategorization(tx, {
+    userId: input.userId,
+    teamId: input.teamId,
+    trustedScope: input.trustedScope,
+    bankTransactionId: input.bankTransactionId,
+  })
   if (input.teamId && loaded.teamId !== input.teamId) return false
   if (input.targetBankTransactionIds && !input.targetBankTransactionIds.includes(loaded.bankTransaction.id)) return false
 
@@ -364,7 +378,12 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
 async function recordUnableAgentInterpretation(tx: DrizzleTransaction, input: ApplyAgentBankTransactionInterpretationInput) {
   if (input.confidence !== 0) throw new Error('Unable interpretations require confidence 0')
   const normalizedAiReasoning = requireAiReasoning(input.reasoning)
-  const loaded = await loadBankTransactionForCategorization(tx, input.userId, input.bankTransactionId)
+  const loaded = await loadBankTransactionForCategorization(tx, {
+    userId: input.userId,
+    teamId: input.teamId,
+    trustedScope: input.trustedScope,
+    bankTransactionId: input.bankTransactionId,
+  })
   if (loaded.teamId !== input.teamId) return false
   if (input.targetBankTransactionIds && !input.targetBankTransactionIds.includes(loaded.bankTransaction.id)) return false
 
@@ -451,34 +470,45 @@ export async function confirmBankTransactionInterpretation(tx: DrizzleTransactio
 // serializing on a shared lock — acceptable given low write concurrency.
 async function loadBankTransactionForCategorization(
   tx: DrizzleTransaction,
-  userId: string,
-  bankTransactionId: string,
+  input: {userId: string; teamId?: string; trustedScope?: true; bankTransactionId: string},
 ): Promise<LoadedBankTransactionForCategorization> {
-  const [row] = await tx
-    .select({
-      teamId: bankAccounts.teamId,
-      bankTransaction: {
-        id: bankTransactions.id,
-        bankAccountId: bankTransactions.bankAccountId,
-        amount: bankTransactions.amount,
-        currency: bankTransactions.currency,
-        bookingDate: bankTransactions.bookingDate,
-        valueDate: bankTransactions.valueDate,
-        description: bankTransactions.description,
-        categorizationRevision: bankTransactions.categorizationRevision,
-      },
-      sourceLedgerAccount: {
-        id: ledgerAccounts.id,
-        linkedBankAccountId: ledgerAccounts.linkedBankAccountId,
-        teamId: ledgerAccounts.teamId,
-      },
-    })
-    .from(bankTransactions)
-    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
-    .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
-    .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
-    .where(and(eq(bankTransactions.id, bankTransactionId), eq(teamMembers.userId, userId)))
-    .limit(1)
+  const conditions = [eq(bankTransactions.id, input.bankTransactionId)]
+  if (input.trustedScope && input.teamId) conditions.push(eq(bankAccounts.teamId, input.teamId))
+
+  const selection = {
+    teamId: bankAccounts.teamId,
+    bankTransaction: {
+      id: bankTransactions.id,
+      bankAccountId: bankTransactions.bankAccountId,
+      amount: bankTransactions.amount,
+      currency: bankTransactions.currency,
+      bookingDate: bankTransactions.bookingDate,
+      valueDate: bankTransactions.valueDate,
+      description: bankTransactions.description,
+      categorizationRevision: bankTransactions.categorizationRevision,
+    },
+    sourceLedgerAccount: {
+      id: ledgerAccounts.id,
+      linkedBankAccountId: ledgerAccounts.linkedBankAccountId,
+      teamId: ledgerAccounts.teamId,
+    },
+  }
+  const [row] = input.trustedScope && input.teamId
+    ? await tx
+        .select(selection)
+        .from(bankTransactions)
+        .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+        .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
+        .where(and(...conditions))
+        .limit(1)
+    : await tx
+        .select(selection)
+        .from(bankTransactions)
+        .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+        .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
+        .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
+        .where(and(...conditions, eq(teamMembers.userId, input.userId)))
+        .limit(1)
 
   if (!row) throw new Error('Bank transaction not found')
   if (row.sourceLedgerAccount.teamId !== row.teamId || row.sourceLedgerAccount.linkedBankAccountId !== row.bankTransaction.bankAccountId) {

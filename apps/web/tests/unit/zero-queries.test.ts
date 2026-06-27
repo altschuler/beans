@@ -2,11 +2,26 @@ import {describe, expect, it} from 'vitest'
 import {asQueryInternals} from '@rocicorp/zero/bindings'
 import type {AST, Condition, AnyQuery} from '@rocicorp/zero'
 import {queries} from '@/zero/queries'
+import {requireZeroUserID, visibleBankTransaction} from '@/zero/permissions'
+import {zql} from '@/zero/schema'
 import {zeroContextFor} from '../helpers/zero'
 
 function astFor(query: unknown) {
   return asQueryInternals(query as AnyQuery).ast
 }
+
+describe('Zero permission helpers', () => {
+  it('scopes visible bank transactions through bank account team membership', () => {
+    const ast = astFor(visibleBankTransaction('user-1')(zql.bankTransactions))
+
+    expect(ast.table).toBe('bankTransactions')
+    expect(conditionHasExistsPath(ast.where, ['bankAccount', 'team', 'members'], {field: 'userId', value: 'user-1'})).toBe(true)
+  })
+
+  it('requires an authenticated Zero user id', () => {
+    expect(() => requireZeroUserID(undefined)).toThrow('Authentication required')
+  })
+})
 
 describe('Zero ledger query shapes', () => {
   it('lists active workflow runs for an authorized team only', () => {
@@ -17,7 +32,6 @@ describe('Zero ledger query shapes', () => {
     expect(conditionIncludesSimple(ast.where, 'status', 'active')).toBe(true)
     expect(conditionHasExistsPath(ast.where, ['team', 'members'], {field: 'userId', value: 'user-1'})).toBe(true)
   })
-
 
   it('narrows ledger account detail by account id while retaining team authorization and related data', () => {
     const ast = astFor(queries.domain.ledgerAccountDetail.fn({ctx: zeroContextFor('user-1'), args: {accountId: 'account-1'}}))

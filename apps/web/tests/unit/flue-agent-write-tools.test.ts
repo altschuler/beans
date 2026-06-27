@@ -52,6 +52,17 @@ describe('Flue category management write tools', () => {
     await expect(db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, group.id))).resolves.toHaveLength(0)
   })
 
+  it('accepts trusted runtime team scope even when the audit user is not a team member', async () => {
+    const tools = categoryManagementToolsByName({userId: 'user-2', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
+
+    const createGroupResult = await tools.manageCategory.run({input: {operation: {kind: 'createGroup', name: 'Trusted scope group'}}}) as Record<string, unknown>
+
+    expect(createGroupResult).toMatchObject({ok: true, status: 'applied', groupId: expect.any(String)})
+    await expect(db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, createGroupResult.groupId as string))).resolves.toMatchObject([
+      {teamId: 'team-1', name: 'Trusted scope group'},
+    ])
+  })
+
   it('rejects inaccessible groups and categories with ledger history without exposing team scope in input', async () => {
     const tools = categoryManagementToolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
 
@@ -110,6 +121,23 @@ describe('Flue categorization write tools', () => {
       aiReasoning: 'Matched repeated supermarket purchases.',
       categorizationRevision: 1,
     })
+  })
+
+  it('applies categorization through trusted runtime team scope even when the audit user is not a team member', async () => {
+    const tools = toolsByName({userId: 'user-2', teamId: 'team-1', appRunId: 'app-run-1', writeExecutor: db})
+
+    await expect(tools.applyCategorizationSuggestion.run({
+      input: {
+        bankTransactionId: 'bank-transaction-1',
+        expectedCategorizationRevision: 0,
+        confidence: 2,
+        reasoning: 'Trusted workflow scope was validated by the web boundary.',
+        interpretation: {kind: 'category', categoryAccountId: 'groceries'},
+      },
+    })).resolves.toEqual({ok: true, status: 'applied'})
+
+    const interpretation = await currentInterpretationForBankTransaction('bank-transaction-1')
+    expect(interpretation?.ledgerTransaction).toMatchObject({teamId: 'team-1', userConfirmedBy: null, categorizedBy: 'ai'})
   })
 
   it('keeps low-confidence categories and splits in review and stores split confidence as 1', async () => {
