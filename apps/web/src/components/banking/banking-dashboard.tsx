@@ -3,6 +3,7 @@ import {Link as LinkIcon} from 'lucide-react'
 import {toast} from 'sonner'
 import {useQuery} from '@rocicorp/zero/react'
 import {syncBankAccount} from '@/banking/banking-fns'
+import {ConnectBankDialog} from '@/components/banking/connect-bank-dialog'
 import {PageLayout} from '@/components/page-layout'
 import {Button} from '@/components/ui/button'
 import {formatRelativeTime} from '@/lib/formatting'
@@ -29,11 +30,7 @@ export function BankingDashboard() {
   return (
     <PageLayout
       breadcrumbs={[{title: 'Bank accounts'}]}
-      actions={
-        <Button asChild>
-          <Link to="/app/bank-accounts/connect">Connect bank</Link>
-        </Button>
-      }
+      actions={<ConnectBankDialog />}
       contentClassName="p-4 md:p-6 lg:p-8"
     >
       <section>

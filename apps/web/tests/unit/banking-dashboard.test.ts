@@ -176,9 +176,67 @@ describe('BankingDashboard', () => {
     const markup = renderToStaticMarkup(React.createElement(BankingDashboard))
 
     expect(markup).toContain('data-testid="page-layout-actions"')
-    expect(markup).toContain('href="/app/bank-accounts/connect"')
     expect(markup).toContain('Connect bank')
+    expect(markup).not.toContain('href="/app/bank-accounts/connect"')
     expect(markup).not.toContain('Sync all accounts')
+  })
+
+  it('opens a dialog that chooses between manual imports and automatic sync', async () => {
+    const user = userEvent.setup()
+    render(React.createElement(BankingDashboard))
+
+    await user.click(screen.getByRole('button', {name: 'Connect bank'}))
+
+    const dialog = screen.getByRole('dialog', {name: 'Connect bank'})
+    const manualChoice = within(dialog).getByRole('button', {name: /Add transactions yourself/})
+    const linkedChoice = within(dialog).getByRole('button', {name: /Connect for automatic sync/})
+    expect(manualChoice.compareDocumentPosition(linkedChoice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(dialog).toHaveTextContent('Set up accounts for manual imports and updates.')
+    expect(dialog).toHaveTextContent('Link your bank so Penge can keep transactions up to date.')
+    expect(dialog).not.toHaveTextContent('this account')
+
+    await user.click(linkedChoice)
+
+    expect(await within(dialog).findByLabelText('Find bank')).toBeInTheDocument()
+    expect(within(dialog).getByPlaceholderText('Search Danish banks')).toBeInTheDocument()
+  })
+
+  it('shows linked-bank content with a header back arrow and a self-scrolling bank list', async () => {
+    const user = userEvent.setup()
+    render(React.createElement(BankingDashboard))
+
+    await user.click(screen.getByRole('button', {name: 'Connect bank'}))
+    const dialog = screen.getByRole('dialog', {name: 'Connect bank'})
+    await user.click(within(dialog).getByRole('button', {name: /Connect for automatic sync/}))
+
+    const backArrow = within(dialog).getByRole('button', {name: 'Back to account type choices'})
+    const title = within(dialog).getByRole('heading', {name: 'Connect for automatic sync'})
+    expect(backArrow.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(dialog).queryByRole('button', {name: 'Back'})).not.toBeInTheDocument()
+    expect(dialog).not.toHaveClass('overflow-y-auto')
+    expect(await within(dialog).findByTestId('institution-list')).toHaveClass('max-h-80', 'overflow-y-auto')
+  })
+
+  it('shows UI-only manual account configuration fields from the connect dialog', async () => {
+    const user = userEvent.setup()
+    render(React.createElement(BankingDashboard))
+
+    await user.click(screen.getByRole('button', {name: 'Connect bank'}))
+    const dialog = screen.getByRole('dialog', {name: 'Connect bank'})
+    await user.click(within(dialog).getByRole('button', {name: /Add transactions yourself/}))
+
+    expect(within(dialog).getByRole('heading', {name: 'Manual account'})).toBeInTheDocument()
+    expect(dialog).toHaveTextContent('Manual account creation is not available yet.')
+    expect(within(dialog).getByLabelText('Account name')).toBeInTheDocument()
+    expect(within(dialog).getByText('Account type')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('combobox'))
+    const loanOption = screen.getByRole('option', {name: 'Loan'})
+    expect(loanOption).toBeInTheDocument()
+    await user.click(loanOption)
+    expect(within(dialog).getByLabelText('Currency')).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Opening balance')).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Notes')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', {name: 'Save manual account'})).toBeDisabled()
   })
 
   it('does not show provider connection details under the institution name', () => {
