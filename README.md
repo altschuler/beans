@@ -66,6 +66,12 @@ just test-e2e
 just check
 ```
 
+`just check` runs Knip's unused-file/dependency checker before the package lint, typecheck, and test commands. Run it directly with:
+
+```bash
+pnpm knip
+```
+
 Useful package-scoped commands:
 
 ```bash

@@ -9,16 +9,15 @@
     "run:categorize": "flue run categorize-transactions --target node --input '{\"appRunId\":\"local-app-run\",\"userId\":\"local-user\",\"teamId\":\"local-team\"}'"
   },
   "dependencies": {
-    "@penge/domain": "workspace:*",
     "@flue/postgres": "latest",
     "@flue/runtime": "latest",
-    "postgres": "3.4.9",
+    "@penge/domain": "workspace:*",
     "valibot": "latest"
   },
   "devDependencies": {
     "@flue/cli": "latest",
     "@types/node": "25.9.3",
-    "typescript": "6.0.3",
-    "dotenv-cli": "11.0.0"
+    "dotenv-cli": "11.0.0",
+    "typescript": "6.0.3"
   }
 }
