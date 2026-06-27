@@ -27,7 +27,9 @@ export type GoCardlessAccountDetails = {
     displayName?: string
     product?: string
     ownerName?: string
+    [key: string]: unknown
   }
+  [key: string]: unknown
 }
 
 export type GoCardlessTransactionAmount = {

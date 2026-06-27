@@ -14,7 +14,8 @@ export async function completeGoCardlessCallback(input: {reference: string; team
     throw new Error('Bank connection not found')
   }
 
-  const requisition = await createGoCardlessClient().getRequisition(connection.providerRequisitionId)
+  const client = createGoCardlessClient()
+  const requisition = await client.getRequisition(connection.providerRequisitionId)
 
   if (requisition.reference !== connection.reference) {
     throw new Error('Bank requisition reference mismatch')
@@ -28,12 +29,19 @@ export async function completeGoCardlessCallback(input: {reference: string; team
     throw new Error('Bank requisition has no linked accounts')
   }
 
+  const providerAccounts = await Promise.all(
+    requisition.accounts.map(async providerAccountId => ({
+      providerAccountId,
+      details: await client.getAccountDetails(providerAccountId),
+    })),
+  )
+
   await upsertLinkedAccounts({
     teamId: connection.teamId,
     bankConnectionId: connection.id,
     providerInstitutionId: requisition.institution_id,
     providerRequisitionId: requisition.id,
-    providerAccountIds: requisition.accounts,
+    providerAccounts,
   })
   await markBankConnectionLinked(connection.id)
 }

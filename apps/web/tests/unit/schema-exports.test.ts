@@ -22,6 +22,11 @@ describe('banking schema exports', () => {
     expect(bankTransactions).toBeDefined()
   })
 
+  it('exports bank connection institution metadata columns', () => {
+    expect(bankConnections.providerInstitutionName).toBeDefined()
+    expect(bankConnections.providerInstitutionLogoUrl).toBeDefined()
+  })
+
   it('exports bank account sync status columns', () => {
     expect(bankAccounts.syncStatus).toBeDefined()
     expect(bankAccounts.syncError).toBeDefined()

@@ -4,13 +4,18 @@
 
 Penge links bank accounts through GoCardless. The bank management page (`/app/banks`) lets the user:
 
-- search Danish institutions
-- start a bank link flow
 - view linked accounts
 - sync one account
-- sync all accounts
+- open the dedicated bank connection page
 
-The GoCardless callback creates or updates bank account rows and ensures each linked bank account has a corresponding bank-linked ledger account.
+The bank connection page (`/app/banks/connect`) lets the user:
+
+- search Danish institutions
+- start a bank link flow
+
+Bank connections store the provider institution id plus the display metadata returned by GoCardless during link start, including institution name and optional logo URL. The bank management UI groups linked accounts under that connection/institution name.
+
+The GoCardless callback creates or updates bank account rows, fetches provider account details for each linked account, stores the available account metadata, and ensures each linked bank account has a corresponding bank-linked ledger account.
 
 ## Imported bank accounts
 

@@ -127,6 +127,20 @@
       "when": 1782503761413,
       "tag": "0017_thin_catseye",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1782560717799,
+      "tag": "0018_salty_cable",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1782562373046,
+      "tag": "0019_omniscient_longshot",
+      "breakpoints": true
     }
   ]
 }

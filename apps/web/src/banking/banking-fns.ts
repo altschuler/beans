@@ -36,6 +36,8 @@ export const startBankLink = createServerFn({method: 'POST'})
     await createBankConnection({
       teamId,
       providerInstitutionId: data.institutionId,
+      providerInstitutionName: institution.name,
+      providerInstitutionLogoUrl: institution.logo ?? null,
       providerRequisitionId: requisition.id,
       reference,
     })

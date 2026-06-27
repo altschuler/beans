@@ -28,11 +28,14 @@ db-up:
 db-down:
   docker compose down
 
-db-reset:
-  docker compose down -v
+nuke:
+  docker compose down -v --remove-orphans
+  rm -rf apps/web/.zero-cache apps/web/zero.db apps/web/zero.db-shm apps/web/zero.db-wal apps/web/zero.db-wal2 apps/flue/.flue-vite
+
+nuke-and-reset:
+  just nuke
   just db-up
   pnpm db:migrate
-  rm -rf apps/web/.zero-cache apps/web/zero.db apps/web/zero.db-shm apps/web/zero.db-wal apps/web/zero.db-wal2
 
 wait-db:
   @docker compose up -d --wait --wait-timeout 120 || (docker compose ps -a; docker compose logs --tail=120 postgres; echo 'Postgres did not become healthy within 120 seconds' >&2; exit 1)

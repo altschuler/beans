@@ -22,6 +22,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ProtectedAppTransactionsRouteImport } from './routes/_protected/app/transactions'
 import { Route as ProtectedAppCategoriesRouteImport } from './routes/_protected/app/categories'
 import { Route as ProtectedAppBanksRouteImport } from './routes/_protected/app/banks'
+import { Route as ProtectedAppBanksConnectRouteImport } from './routes/_protected/app/banks.connect'
 import { Route as ProtectedAppBankAccountsBankAccountIdRouteImport } from './routes/_protected/app/bank-accounts/$bankAccountId'
 import { Route as ProtectedAppAccountsAccountIdRouteImport } from './routes/_protected/app/accounts/$accountId'
 
@@ -90,6 +91,12 @@ const ProtectedAppBanksRoute = ProtectedAppBanksRouteImport.update({
   path: '/banks',
   getParentRoute: () => ProtectedAppRoute,
 } as any)
+const ProtectedAppBanksConnectRoute =
+  ProtectedAppBanksConnectRouteImport.update({
+    id: '/connect',
+    path: '/connect',
+    getParentRoute: () => ProtectedAppBanksRoute,
+  } as any)
 const ProtectedAppBankAccountsBankAccountIdRoute =
   ProtectedAppBankAccountsBankAccountIdRouteImport.update({
     id: '/bank-accounts/$bankAccountId',
@@ -108,7 +115,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/app': typeof ProtectedAppRouteWithChildren
   '/ledger': typeof ProtectedLedgerRoute
-  '/app/banks': typeof ProtectedAppBanksRoute
+  '/app/banks': typeof ProtectedAppBanksRouteWithChildren
   '/app/categories': typeof ProtectedAppCategoriesRoute
   '/app/transactions': typeof ProtectedAppTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -118,13 +125,14 @@ export interface FileRoutesByFullPath {
   '/api/zero/query': typeof ApiZeroQueryRoute
   '/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
   '/app/bank-accounts/$bankAccountId': typeof ProtectedAppBankAccountsBankAccountIdRoute
+  '/app/banks/connect': typeof ProtectedAppBanksConnectRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/app': typeof ProtectedAppRouteWithChildren
   '/ledger': typeof ProtectedLedgerRoute
-  '/app/banks': typeof ProtectedAppBanksRoute
+  '/app/banks': typeof ProtectedAppBanksRouteWithChildren
   '/app/categories': typeof ProtectedAppCategoriesRoute
   '/app/transactions': typeof ProtectedAppTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -134,6 +142,7 @@ export interface FileRoutesByTo {
   '/api/zero/query': typeof ApiZeroQueryRoute
   '/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
   '/app/bank-accounts/$bankAccountId': typeof ProtectedAppBankAccountsBankAccountIdRoute
+  '/app/banks/connect': typeof ProtectedAppBanksConnectRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -142,7 +151,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_protected/app': typeof ProtectedAppRouteWithChildren
   '/_protected/ledger': typeof ProtectedLedgerRoute
-  '/_protected/app/banks': typeof ProtectedAppBanksRoute
+  '/_protected/app/banks': typeof ProtectedAppBanksRouteWithChildren
   '/_protected/app/categories': typeof ProtectedAppCategoriesRoute
   '/_protected/app/transactions': typeof ProtectedAppTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -152,6 +161,7 @@ export interface FileRoutesById {
   '/api/zero/query': typeof ApiZeroQueryRoute
   '/_protected/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
   '/_protected/app/bank-accounts/$bankAccountId': typeof ProtectedAppBankAccountsBankAccountIdRoute
+  '/_protected/app/banks/connect': typeof ProtectedAppBanksConnectRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/api/zero/query'
     | '/app/accounts/$accountId'
     | '/app/bank-accounts/$bankAccountId'
+    | '/app/banks/connect'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '/api/zero/query'
     | '/app/accounts/$accountId'
     | '/app/bank-accounts/$bankAccountId'
+    | '/app/banks/connect'
   id:
     | '__root__'
     | '/'
@@ -203,6 +215,7 @@ export interface FileRouteTypes {
     | '/api/zero/query'
     | '/_protected/app/accounts/$accountId'
     | '/_protected/app/bank-accounts/$bankAccountId'
+    | '/_protected/app/banks/connect'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -309,6 +322,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedAppBanksRouteImport
       parentRoute: typeof ProtectedAppRoute
     }
+    '/_protected/app/banks/connect': {
+      id: '/_protected/app/banks/connect'
+      path: '/connect'
+      fullPath: '/app/banks/connect'
+      preLoaderRoute: typeof ProtectedAppBanksConnectRouteImport
+      parentRoute: typeof ProtectedAppBanksRoute
+    }
     '/_protected/app/bank-accounts/$bankAccountId': {
       id: '/_protected/app/bank-accounts/$bankAccountId'
       path: '/bank-accounts/$bankAccountId'
@@ -326,8 +346,19 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ProtectedAppBanksRouteChildren {
+  ProtectedAppBanksConnectRoute: typeof ProtectedAppBanksConnectRoute
+}
+
+const ProtectedAppBanksRouteChildren: ProtectedAppBanksRouteChildren = {
+  ProtectedAppBanksConnectRoute: ProtectedAppBanksConnectRoute,
+}
+
+const ProtectedAppBanksRouteWithChildren =
+  ProtectedAppBanksRoute._addFileChildren(ProtectedAppBanksRouteChildren)
+
 interface ProtectedAppRouteChildren {
-  ProtectedAppBanksRoute: typeof ProtectedAppBanksRoute
+  ProtectedAppBanksRoute: typeof ProtectedAppBanksRouteWithChildren
   ProtectedAppCategoriesRoute: typeof ProtectedAppCategoriesRoute
   ProtectedAppTransactionsRoute: typeof ProtectedAppTransactionsRoute
   ProtectedAppAccountsAccountIdRoute: typeof ProtectedAppAccountsAccountIdRoute
@@ -335,7 +366,7 @@ interface ProtectedAppRouteChildren {
 }
 
 const ProtectedAppRouteChildren: ProtectedAppRouteChildren = {
-  ProtectedAppBanksRoute: ProtectedAppBanksRoute,
+  ProtectedAppBanksRoute: ProtectedAppBanksRouteWithChildren,
   ProtectedAppCategoriesRoute: ProtectedAppCategoriesRoute,
   ProtectedAppTransactionsRoute: ProtectedAppTransactionsRoute,
   ProtectedAppAccountsAccountIdRoute: ProtectedAppAccountsAccountIdRoute,

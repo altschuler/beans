@@ -39,6 +39,7 @@ const {
     }),
   }
   const mockDb = {
+    insert: vi.fn(() => insertChain),
     transaction: vi.fn(async callback => callback(mockTx)),
   }
 
@@ -61,6 +62,34 @@ vi.mock('@/ledger/repository.server', () => ({
   SYSTEM_LEDGER_ACCOUNT_KEYS: {uncategorized: 'uncategorized'},
 }))
 
+describe('createBankConnection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('stores provider institution display metadata with the connection', async () => {
+    const {createBankConnection} = await import('@/banking/repository.server')
+
+    await createBankConnection({
+      teamId: 'team-1',
+      providerInstitutionId: 'SANDBOXFINANCE_SFIN0000',
+      providerInstitutionName: 'Sandbox Finance',
+      providerInstitutionLogoUrl: 'https://example.com/sandbox.svg',
+      providerRequisitionId: 'requisition-1',
+      reference: 'reference-1',
+    })
+
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamId: 'team-1',
+        providerInstitutionId: 'SANDBOXFINANCE_SFIN0000',
+        providerInstitutionName: 'Sandbox Finance',
+        providerInstitutionLogoUrl: 'https://example.com/sandbox.svg',
+      }),
+    )
+  })
+})
+
 describe('upsertLinkedAccounts', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -69,25 +98,70 @@ describe('upsertLinkedAccounts', () => {
     insertChain.returning.mockResolvedValue([{id: 'bank-account-1', name: 'Linked bank account'}])
   })
 
-  it('creates the bank account and linked ledger account in one transaction', async () => {
+  it('creates the bank account with provider details and linked ledger account in one transaction', async () => {
     const {upsertLinkedAccounts} = await import('@/banking/repository.server')
+    insertChain.returning.mockResolvedValue([{id: 'bank-account-1', name: 'Everyday account'}])
 
     await upsertLinkedAccounts({
       teamId: 'team-1',
       bankConnectionId: 'connection-1',
       providerInstitutionId: 'institution-1',
       providerRequisitionId: 'requisition-1',
-      providerAccountIds: ['provider-account-1'],
+      providerAccounts: [
+        {
+          providerAccountId: 'provider-account-1',
+          details: {
+            account: {
+              displayName: 'Everyday account',
+              iban: 'DK5000400440116243',
+              currency: 'DKK',
+              product: 'Current account',
+              ownerName: 'Test User',
+            },
+          },
+        },
+      ],
     })
 
     expect(mockDb.transaction).toHaveBeenCalledOnce()
     expect(mockTx.insert).toHaveBeenCalled()
+    expect(insertChain.values).toHaveBeenCalledWith(expect.objectContaining({
+      providerAccountId: 'provider-account-1',
+      name: 'Everyday account',
+      iban: 'DK5000400440116243',
+      currency: 'DKK',
+      providerAccountRaw: {
+        account: {
+          displayName: 'Everyday account',
+          iban: 'DK5000400440116243',
+          currency: 'DKK',
+          product: 'Current account',
+          ownerName: 'Test User',
+        },
+      },
+    }))
+    expect(insertChain.onConflictDoUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      set: expect.objectContaining({
+        name: 'Everyday account',
+        iban: 'DK5000400440116243',
+        currency: 'DKK',
+        providerAccountRaw: {
+          account: {
+            displayName: 'Everyday account',
+            iban: 'DK5000400440116243',
+            currency: 'DKK',
+            product: 'Current account',
+            ownerName: 'Test User',
+          },
+        },
+      }),
+    }))
     expect(ensureLedgerAccountForBankAccount).toHaveBeenCalledWith(
       mockTx,
       expect.objectContaining({
         teamId: 'team-1',
         bankAccountId: 'bank-account-1',
-        name: 'Linked bank account',
+        name: 'Everyday account',
       }),
     )
   })

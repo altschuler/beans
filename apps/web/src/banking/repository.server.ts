@@ -20,6 +20,8 @@ export async function userCanAccessTeam(teamId: string, userId: string) {
 export async function createBankConnection(input: {
   teamId: string
   providerInstitutionId: string
+  providerInstitutionName?: string | null
+  providerInstitutionLogoUrl?: string | null
   providerRequisitionId: string
   reference: string
 }) {
@@ -29,6 +31,8 @@ export async function createBankConnection(input: {
     teamId: input.teamId,
     provider: 'gocardless',
     providerInstitutionId: input.providerInstitutionId,
+    providerInstitutionName: input.providerInstitutionName ?? null,
+    providerInstitutionLogoUrl: input.providerInstitutionLogoUrl ?? null,
     providerRequisitionId: input.providerRequisitionId,
     reference: input.reference,
     status: 'pending',
@@ -55,12 +59,13 @@ export async function upsertLinkedAccounts(input: {
   bankConnectionId: string
   providerInstitutionId: string
   providerRequisitionId: string
-  providerAccountIds: string[]
+  providerAccounts: Array<{providerAccountId: string; details?: GoCardlessAccountDetails}>
 }) {
   const now = new Date()
 
   await db.transaction(async tx => {
-    for (const providerAccountId of input.providerAccountIds) {
+    for (const providerAccount of input.providerAccounts) {
+      const details = bankAccountDetailsForStorage(providerAccount.details)
       const [account] = await tx
         .insert(bankAccounts)
         .values({
@@ -70,8 +75,11 @@ export async function upsertLinkedAccounts(input: {
           provider: 'gocardless',
           providerInstitutionId: input.providerInstitutionId,
           providerRequisitionId: input.providerRequisitionId,
-          providerAccountId,
-          name: 'Linked bank account',
+          providerAccountId: providerAccount.providerAccountId,
+          name: details.name,
+          iban: details.iban,
+          currency: details.currency,
+          providerAccountRaw: details.raw,
           status: 'linked',
           syncStatus: 'idle',
           createdAt: now,
@@ -84,6 +92,10 @@ export async function upsertLinkedAccounts(input: {
             bankConnectionId: input.bankConnectionId,
             providerInstitutionId: input.providerInstitutionId,
             providerRequisitionId: input.providerRequisitionId,
+            name: details.name,
+            iban: details.iban,
+            currency: details.currency,
+            providerAccountRaw: details.raw,
             status: 'linked',
             updatedAt: now,
           },
@@ -196,16 +208,16 @@ export async function listTransactionsForTeam(teamId: string, userId: string) {
 }
 
 export async function updateBankAccountDetails(bankAccountId: string, details: GoCardlessAccountDetails) {
-  const account = details.account
-  const name = account?.displayName ?? account?.name ?? account?.product ?? account?.iban ?? 'Linked bank account'
+  const storedDetails = bankAccountDetailsForStorage(details)
   const now = new Date()
 
   await db
     .update(bankAccounts)
     .set({
-      name,
-      iban: account?.iban ?? null,
-      currency: account?.currency ?? null,
+      name: storedDetails.name,
+      iban: storedDetails.iban,
+      currency: storedDetails.currency,
+      providerAccountRaw: storedDetails.raw,
       updatedAt: now,
     })
     .where(eq(bankAccounts.id, bankAccountId))
@@ -217,7 +229,17 @@ export async function updateBankAccountDetails(bankAccountId: string, details: G
     .limit(1)
 
   if (bankAccount) {
-    await ensureLedgerAccountForBankAccount(db, {teamId: bankAccount.teamId, bankAccountId, name, now})
+    await ensureLedgerAccountForBankAccount(db, {teamId: bankAccount.teamId, bankAccountId, name: storedDetails.name, now})
+  }
+}
+
+function bankAccountDetailsForStorage(details?: GoCardlessAccountDetails) {
+  const account = details?.account
+  return {
+    name: account?.displayName ?? account?.name ?? account?.product ?? account?.iban ?? 'Linked bank account',
+    iban: account?.iban ?? null,
+    currency: account?.currency ?? null,
+    raw: details ?? null,
   }
 }
 

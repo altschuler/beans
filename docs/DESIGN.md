@@ -85,12 +85,14 @@ Authenticated app pages use the sidebar shell and page-owned layout.
 - `Shell` owns the sidebar and route-agnostic app frame.
 - `PageLayout` owns fixed page headers, breadcrumbs, optional actions, and scrollable content.
 - Pages choose content padding through `contentClassName`.
+- Do not wrap a page's primary content in a card just to create a boxed page body. Let the page background and `PageLayout` define the page surface; reserve cards for genuinely distinct grouped panels.
 - Table-first pages should keep the page content full-height and scroll the table body/header area intentionally.
 
 ## Typography
 
 - Keep the default sans font from `--font-sans`.
 - Use concise headings; app pages should rely on `PageLayout` breadcrumbs/header context when possible.
+- Do not duplicate the current page title as a content heading immediately below the page header; breadcrumbs provide the page title. Use content headings only for sections within the page.
 - Use `text-muted-foreground` for helper copy, metadata, and secondary values.
 - Use `font-mono` for financial amounts, identifiers, and ledger-style tabular data.
 - Avoid oversized marketing-style typography inside the authenticated app.

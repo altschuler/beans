@@ -45,7 +45,8 @@ On desktop-sized viewports, Ask Penge appears as a right sidebar sibling beside 
 - `/app`: intentionally minimal Home placeholder
 - `/app/transactions`: main imported transaction review/categorization table
 - `/app/categories`: category and category-group management
-- `/app/banks`: bank linking and sync management
+- `/app/banks`: linked bank account management
+- `/app/banks/connect`: bank linking
 - `/app/bank-accounts/$bankAccountId`: transaction table filtered to one bank account
 - `/app/accounts/$accountId`: ledger account/category detail history
 - `/ledger`: lower-level ledger postings view exposed from the sidebar as Ledger

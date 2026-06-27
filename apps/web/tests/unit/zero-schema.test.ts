@@ -30,6 +30,13 @@ describe('zero schema', () => {
     expect(schema.tables.bankTransactions.columns).not.toHaveProperty('raw')
   })
 
+  it('exposes bank connection institution metadata fields with server column names', () => {
+    const columns = schema.tables.bankConnections.columns
+
+    expect(columns.providerInstitutionName).toMatchObject({type: 'string', optional: true, serverName: 'provider_institution_name'})
+    expect(columns.providerInstitutionLogoUrl).toMatchObject({type: 'string', optional: true, serverName: 'provider_institution_logo_url'})
+  })
+
   it('exposes bank account sync fields with server column names', () => {
     const columns = schema.tables.bankAccounts.columns
 
