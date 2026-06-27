@@ -49,7 +49,7 @@ export function ConnectBankPage() {
 
   return (
     <PageLayout
-      breadcrumbs={[{title: 'Bank connections', to: '/app/banks'}, {title: 'Connect bank'}]}
+      breadcrumbs={[{title: 'Bank accounts', to: '/app/bank-accounts'}, {title: 'Connect bank'}]}
       contentClassName="p-4 md:p-6 lg:p-8"
     >
       <section className="max-w-3xl space-y-4">

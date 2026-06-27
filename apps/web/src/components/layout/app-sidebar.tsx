@@ -131,10 +131,10 @@ export function AppSidebar({userEmail, userName}: AppSidebarProps) {
                 ))
               )}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={pathname === '/app/banks'} tooltip="Manage bank connections">
-                  <Link to="/app/banks" onClick={closeMobileSidebar}>
+                <SidebarMenuButton asChild isActive={pathname === '/app/bank-accounts'} tooltip="Manage bank accounts">
+                  <Link to="/app/bank-accounts" onClick={closeMobileSidebar}>
                     <Landmark />
-                    <span>Manage bank connections</span>
+                    <span>Manage bank accounts</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

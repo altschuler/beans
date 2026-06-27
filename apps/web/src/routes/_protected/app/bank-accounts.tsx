@@ -1,16 +1,16 @@
 import {createFileRoute, Outlet, useRouterState} from '@tanstack/react-router'
 import {BankingDashboard} from '@/components/banking/banking-dashboard'
 
-export const Route = createFileRoute('/_protected/app/banks')({
-  component: BanksPage,
+export const Route = createFileRoute('/_protected/app/bank-accounts')({
+  component: BankAccountsPage,
 })
 
-export function BanksPage() {
+export function BankAccountsPage() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
 
-  if (pathname === '/app/banks' || pathname === '/app/banks/') {
+  if (pathname === '/app/bank-accounts' || pathname === '/app/bank-accounts/') {
     return <BankingDashboard />
   }
 

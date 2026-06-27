@@ -1,14 +1,14 @@
-# Bank connections and sync
+# Bank accounts and sync
 
 ## Bank linking
 
-Penge links bank accounts through GoCardless. The bank management page (`/app/banks`) lets the user:
+Penge links bank accounts through GoCardless. The bank accounts page (`/app/bank-accounts`) lets the user:
 
 - view linked accounts
 - sync one account
 - open the dedicated bank connection page
 
-The bank connection page (`/app/banks/connect`) lets the user:
+The bank connection page (`/app/bank-accounts/connect`) lets the user:
 
 - search Danish institutions
 - start a bank link flow

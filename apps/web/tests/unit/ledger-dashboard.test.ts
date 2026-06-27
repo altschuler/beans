@@ -572,7 +572,7 @@ describe('LedgerDashboard', () => {
     )
 
     expect(requestedBankTransactionsForBankAccountArgs).toEqual([{bankAccountId: 'bank-account-1'}])
-    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Checking'}])
+    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Bank accounts', to: '/app/bank-accounts'}, {title: 'Checking'}])
     expect(markup).not.toContain('Review imported transactions for this bank account.')
     expect(markup).toContain('Netto')
     expect(markup).toContain('Category')
@@ -595,7 +595,7 @@ describe('LedgerDashboard', () => {
       }),
     )
 
-    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Bank account'}])
+    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Bank accounts', to: '/app/bank-accounts'}, {title: 'Bank account'}])
     expect(markup).toContain('Bank account not found.')
     expect(markup).not.toContain('No imported ledger transactions yet.')
   })

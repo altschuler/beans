@@ -63,6 +63,9 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   const transactionRowsSyncing = model.transactionRows.length === 0 && !bankTransactionsComplete
   const showGlobalTransactionActions = view === 'transactions'
   const pageTitle = view === 'bankAccountTransactions' ? (selectedBankAccount?.name ?? 'Bank account') : 'Transactions'
+  const breadcrumbs = view === 'bankAccountTransactions'
+    ? [{title: 'Bank accounts', to: '/app/bank-accounts' as const}, {title: pageTitle}]
+    : [{title: pageTitle}]
 
   function categorizeBankTransaction(bankTransactionId: string, selection: CategorySelection) {
     void runZeroMutation(zero.mutate(mutators.ledger.categorizeTransaction({bankTransactionId, selection})), 'Could not save category')
@@ -216,7 +219,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   )
 
   return (
-    <PageLayout breadcrumbs={[{title: pageTitle}]} actions={renderTransactionHeaderActions()} contentClassName="p-0">
+    <PageLayout breadcrumbs={breadcrumbs} actions={renderTransactionHeaderActions()} contentClassName="p-0">
       {dashboardContent}
     </PageLayout>
   )

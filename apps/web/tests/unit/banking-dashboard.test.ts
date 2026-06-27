@@ -3,7 +3,7 @@ import React from 'react'
 import {renderToStaticMarkup} from 'react-dom/server'
 import {render, screen, waitFor, within} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import {beforeEach, describe, expect, it, vi} from 'vitest'
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
 const queryStatuses = vi.hoisted(() => ({
   accounts: 'complete',
@@ -12,7 +12,17 @@ const queryStatuses = vi.hoisted(() => ({
 }))
 
 const queryRows = vi.hoisted(() => ({
-  accounts: [] as Array<{id: string; bankConnectionId?: string | null; providerInstitutionId?: string; name: string}>,
+  accounts: [] as Array<{
+    id: string
+    bankConnectionId?: string | null
+    providerInstitutionId?: string
+    name: string
+    currency?: string | null
+    status?: string
+    syncStatus?: string
+    syncError?: string | null
+    lastSyncedAt?: string | null
+  }>,
   connections: [] as Array<{id: string; providerInstitutionName?: string | null; providerInstitutionId: string; status: string}>,
   transactions: [] as Array<{
     id: string
@@ -38,7 +48,18 @@ const renderedPageLayouts = vi.hoisted(
 const bankingFns = vi.hoisted(() => ({
   listDanishInstitutions: vi.fn(async () => [] as Array<{id: string; name: string; logo?: string}>),
   startBankLink: vi.fn(async () => ({link: '#bank-link'})),
+  syncBankAccount: vi.fn(async () => ({fetched: 2, upserted: 1})),
 }))
+
+const toastFns = vi.hoisted(() => ({
+  loading: vi.fn(() => 'sync-toast'),
+  success: vi.fn(),
+  error: vi.fn(),
+}))
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string}) => {
@@ -52,7 +73,10 @@ vi.mock('@rocicorp/zero/react', () => ({
 vi.mock('@tanstack/react-router', async () => {
   const ReactModule = await import('react')
   return {
-    Link: ({to, children}: {to: string; children: React.ReactNode}) => ReactModule.createElement('a', {href: to}, children),
+    Link: ({to, params, children, ...props}: {to: string; params?: Record<string, string>; children: React.ReactNode}) => {
+      const href = params?.bankAccountId ? to.replace('$bankAccountId', params.bankAccountId) : to
+      return ReactModule.createElement('a', {href, ...props}, children)
+    },
   }
 })
 
@@ -69,8 +93,12 @@ vi.mock('@/zero/queries', () => ({
 vi.mock('@/banking/banking-fns', () => ({
   listDanishInstitutions: bankingFns.listDanishInstitutions,
   startBankLink: bankingFns.startBankLink,
-  syncBankAccount: vi.fn(),
+  syncBankAccount: bankingFns.syncBankAccount,
   syncAllBankAccounts: vi.fn(),
+}))
+
+vi.mock('sonner', () => ({
+  toast: toastFns,
 }))
 
 vi.mock('@/components/page-layout', async () => {
@@ -117,6 +145,7 @@ import {ConnectBankPage} from '@/components/banking/connect-bank-page'
 
 describe('BankingDashboard', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     renderedPageLayouts.length = 0
     queryStatuses.accounts = 'complete'
     queryStatuses.connections = 'complete'
@@ -124,19 +153,22 @@ describe('BankingDashboard', () => {
     queryRows.accounts = [{id: 'account-1', bankConnectionId: 'connection-1', providerInstitutionId: 'SANDBOXFINANCE_SFIN0000', name: 'Checking'}]
     queryRows.connections = [{id: 'connection-1', providerInstitutionName: 'Sandbox Finance', providerInstitutionId: 'SANDBOXFINANCE_SFIN0000', status: 'linked'}]
     queryRows.transactions = []
+    bankingFns.syncBankAccount.mockResolvedValue({fetched: 2, upserted: 1})
+    toastFns.loading.mockReturnValue('sync-toast')
   })
 
   it('keeps bank management focused on linked accounts', () => {
     const markup = renderToStaticMarkup(React.createElement(BankingDashboard))
 
-    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Bank connections'}])
+    expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Bank accounts'}])
     expect(renderedPageLayouts[0]?.contentClassName).toBe('p-4 md:p-6 lg:p-8')
-    expect(markup).toContain('Linked accounts')
     expect(markup).toContain('Sandbox Finance')
     expect(markup).toContain('Checking')
     expect(markup).not.toContain('data-testid="page-content-card"')
     expect(markup).not.toContain('Find bank')
     expect(markup).not.toContain('Transactions')
+    expect(markup).not.toContain('Linked accounts')
+    expect(markup).not.toContain('Manual sync imports stored transactions without creating duplicates.')
     expect(markup).not.toContain('<h2')
   })
 
@@ -144,9 +176,60 @@ describe('BankingDashboard', () => {
     const markup = renderToStaticMarkup(React.createElement(BankingDashboard))
 
     expect(markup).toContain('data-testid="page-layout-actions"')
-    expect(markup).toContain('href="/app/banks/connect"')
+    expect(markup).toContain('href="/app/bank-accounts/connect"')
     expect(markup).toContain('Connect bank')
     expect(markup).not.toContain('Sync all accounts')
+  })
+
+  it('does not show provider connection details under the institution name', () => {
+    const markup = renderToStaticMarkup(React.createElement(BankingDashboard))
+
+    expect(markup).toContain('Sandbox Finance')
+    expect(markup).not.toContain('linked · SANDBOXFINANCE_SFIN0000')
+  })
+
+  it('shows account rows with a link icon, relative last sync, and no status or currency text', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-27T12:00:00.000Z'))
+    queryRows.accounts = [
+      {
+        id: 'account-1',
+        bankConnectionId: 'connection-1',
+        providerInstitutionId: 'SANDBOXFINANCE_SFIN0000',
+        name: 'Checking',
+        currency: 'DKK',
+        status: 'linked',
+        lastSyncedAt: '2026-06-27T08:00:00.000Z',
+      },
+    ]
+
+    render(React.createElement(BankingDashboard))
+
+    const accountsList = screen.getByTestId('bank-accounts')
+    const accountRow = screen.getByTestId('bank-account-account-1')
+    const accountLink = within(accountRow).getByRole('link', {name: /Checking/})
+    expect(accountLink).toHaveAttribute('href', '/app/bank-accounts/account-1')
+    expect(within(accountRow).getByLabelText('Connected bank account')).toBeInTheDocument()
+    expect(within(accountRow).getByText('Last sync 4 hours ago')).toBeInTheDocument()
+    expect(accountRow.textContent).toMatch(/Checking.*Last sync 4 hours ago.*Sync/s)
+    expect(accountsList).not.toHaveTextContent('DKK')
+    expect(accountsList).not.toHaveTextContent('Currency unknown')
+    expect(accountsList).not.toHaveTextContent('linked')
+  })
+
+  it('shows toast feedback without navigating when syncing one bank account', async () => {
+    const user = userEvent.setup()
+    render(React.createElement(BankingDashboard))
+
+    await user.click(screen.getByRole('button', {name: 'Sync'}))
+
+    expect(toastFns.loading).toHaveBeenCalledWith('Syncing transactions...')
+    await waitFor(() => {
+      expect(bankingFns.syncBankAccount).toHaveBeenCalledWith({data: {bankAccountId: 'account-1'}})
+      expect(toastFns.success).toHaveBeenCalledWith('Fetched 2 transactions and upserted 1.', {id: 'sync-toast'})
+    })
+    expect(screen.queryByText('Syncing transactions...')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', {name: 'Sync'}).closest('a')).toBeNull()
   })
 
   it('groups bank accounts under their connection institution', () => {
@@ -194,7 +277,7 @@ describe('ConnectBankPage', () => {
     const markup = renderToStaticMarkup(React.createElement(ConnectBankPage))
 
     expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([
-      {title: 'Bank connections', to: '/app/banks'},
+      {title: 'Bank accounts', to: '/app/bank-accounts'},
       {title: 'Connect bank'},
     ])
     expect(renderedPageLayouts[0]?.contentClassName).toBe('p-4 md:p-6 lg:p-8')

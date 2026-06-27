@@ -8,7 +8,7 @@ import {cn} from '@/lib/utils'
 
 export type PageLayoutBreadcrumb = {
   title: string
-  to?: '/app' | '/app/transactions' | '/app/categories' | '/app/banks'
+  to?: '/app' | '/app/transactions' | '/app/categories' | '/app/bank-accounts'
 }
 
 type PageLayoutProps = {

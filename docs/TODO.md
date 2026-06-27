@@ -23,6 +23,10 @@
 - Add production zero-cache config before deploy. No production deployment/config exists beyond dev/env-example basics. Separate `ZERO_CVR_DB`/`ZERO_CHANGE_DB`, set `ZERO_ADMIN_PASSWORD`, configure a persistent `ZERO_REPLICA_FILE`, enable CVR garbage collection, and define an explicit publication.
 - Document and harden production Zero cookie deployment. If `zero-cache` runs on a subdomain, Better Auth cookies need appropriate cross-subdomain configuration, and auth cookies must not use `SameSite=None`.
 
+## Read-model cleanup
+
+- Unify transaction read-model derivations shared by Zero UI and Flue/domain read projections. Current UI and Flue paths independently derive review/status indicators, user-confirmed vs AI-confirmed semantics, interpretation kind, category/split/transfer summaries, and write eligibility. Prefer shared pure domain read-model functions with thin Zero relation adapters and Flue SQL adapters; avoid SQL views for now because current `drizzle-zero` generation is table/primary-key oriented and does not appear to support synced generated views.
+
 ## Zero review
 
 Findings from an idiomatic-usage review against the official Zero docs. The plumbing (custom synced queries + custom mutators, multi-tenant security) is correct; these items are about getting Zero's value (optimistic writes, instant reads) and fixing two data-correctness issues.

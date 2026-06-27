@@ -13,7 +13,7 @@ The sidebar shows persistent app context:
 - current team name, with `Penge` fallback while loading
 - primary navigation: Home, Transactions, Categories, Ledger
 - bank account links for the current team
-- Manage bank connections
+- Manage bank accounts
 - user menu with theme selection and sign out
 
 Bank account links route to filtered transaction pages for the selected bank account.
@@ -32,7 +32,7 @@ Protected pages use `PageLayout` for their own header context.
 - page-controlled content padding
 - an icon-only Ask Penge trigger after page-owned actions when chat scope is available
 
-This keeps page behavior explicit. For example, Transactions owns its review count, Auto-categorize, Sync all accounts, and More menu in its page header. Categories owns Add group and Add category. Bank connections owns Sync all accounts. The chat trigger is shell-owned and consistent across protected app pages that use `PageLayout`.
+This keeps page behavior explicit. For example, Transactions owns its review count, Auto-categorize, Sync all accounts, and More menu in its page header. Categories owns Add group and Add category. Bank accounts owns bank connection management. The chat trigger is shell-owned and consistent across protected app pages that use `PageLayout`.
 
 ## Ask Penge chat surface
 
@@ -45,8 +45,8 @@ On desktop-sized viewports, Ask Penge appears as a right sidebar sibling beside 
 - `/app`: intentionally minimal Home placeholder
 - `/app/transactions`: main imported transaction review/categorization table
 - `/app/categories`: category and category-group management
-- `/app/banks`: linked bank account management
-- `/app/banks/connect`: bank linking
+- `/app/bank-accounts`: linked bank account management
+- `/app/bank-accounts/connect`: bank linking
 - `/app/bank-accounts/$bankAccountId`: transaction table filtered to one bank account
 - `/app/accounts/$accountId`: ledger account/category detail history
 - `/ledger`: lower-level ledger postings view exposed from the sidebar as Ledger

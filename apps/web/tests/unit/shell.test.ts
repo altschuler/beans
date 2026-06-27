@@ -84,7 +84,7 @@ describe('Shell', () => {
     expect(markup).toContain('Transactions')
     expect(markup).toContain('Categories')
     expect(markup).toContain('Checking')
-    expect(markup).toContain('Manage bank connections')
+    expect(markup).toContain('Manage bank accounts')
     expect(markup).toContain('test@example.com')
     expect(markup).toContain('Sign out')
     expect(markup).toContain('Content')

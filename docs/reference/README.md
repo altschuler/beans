@@ -13,7 +13,7 @@ The specs are useful design history, but they are not always the best entry poin
 - [AI categorization](./ai-categorization.md) — Flue workflow orchestration, workflow visibility, confidence, agent tools, reasoning, and guarded application of AI interpretations.
 - [Team data assistant](./team-data-assistant.md) — Ask Penge chat, web-to-Flue proxying, scoped reads, confirmed chat writes, and category-management guardrails.
 - [Categories](./categories.md) — category groups, editable categories, locked system accounts, balances, and deletion rules.
-- [Bank connections and sync](./banking.md) — GoCardless linking, bank accounts, sync-all, sync state, and imported transaction facts.
+- [Bank accounts and sync](./banking.md) — GoCardless linking, bank accounts, sync-all, sync state, and imported transaction facts.
 - [App shell and navigation](./app-shell.md) — sidebar navigation, page-owned layout, breadcrumbs, page action placement, and the Ask Penge chat surface.
 
 ## Deliberately not current
