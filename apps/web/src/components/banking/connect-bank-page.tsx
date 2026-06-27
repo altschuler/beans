@@ -41,7 +41,7 @@ export function ConnectBankPage() {
       const result = await startBankLink({
         data: {institutionId},
       })
-      window.location.href = result.link
+      window.location.assign(result.link)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not start bank connection')
     }
