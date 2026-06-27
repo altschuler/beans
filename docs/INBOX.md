@@ -1,5 +1,6 @@
 # Inbox
 
+- 2026-06-27: The copied toolbox `scripts/dev.mjs` checks `git check-ignore -q .worktrees` before creating the directory. A `.gitignore` entry of only `.worktrees/` may not satisfy that check before the directory exists, so keep both `.worktrees` and `.worktrees/` ignored or adjust the toolbox check if this becomes surprising.
 - 2026-06-25: Flue agent unit tests are easier to keep stable when the agent module exports a pure config factory (for example `createTeamDataAssistantConfig`) and the default export passes it to `defineAgent`. In this run, inspecting `defineAgent` calls through a Vitest `@flue/runtime` mock was unreliable even though the module imported successfully.
 - 2026-06-25: `pnpm check` / Playwright can fail before tests run if local Flue dev port 3101 is already occupied. In this run the webServer failed because `@penge/flue dev` hit `listen EADDRINUSE :::3101`; `lsof -iTCP:3101 -sTCP:LISTEN -n -P` identified the existing listener.
 - 2026-06-25: Local dev port defaults are scattered across package scripts, Vite config, env examples, test setup, Playwright, app URL fallbacks, and docs. `docs/TODO.md` now lists the concrete locations; future work should centralize these before the next port move.

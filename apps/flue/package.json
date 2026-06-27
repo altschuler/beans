@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "flue dev --target node --port 3101",
+    "dev": "dotenv -e .env -- sh -c 'flue dev --target node --port ${FLUE_PORT:-3101}'",
     "build": "flue build --target node",
     "typecheck": "tsc --noEmit",
     "run:categorize": "flue run categorize-transactions --target node --input '{\"appRunId\":\"local-app-run\",\"userId\":\"local-user\",\"teamId\":\"local-team\"}'"
@@ -18,6 +18,7 @@
   "devDependencies": {
     "@flue/cli": "latest",
     "@types/node": "25.9.3",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "dotenv-cli": "11.0.0"
   }
 }

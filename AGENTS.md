@@ -40,6 +40,14 @@ The user might stage or unstage files while implementation is running, do not ch
 
 **IMPORTANT!** other agents and the user will be editing files frequently. Never revert unrelated changes unless you did them, multiple agents and users can be working here at the same time.
 
+### Managed local worktrees
+
+Do not run `git worktree add` directly in this repository. Use `just worktree-create <branch>` or `node scripts/dev.mjs create <branch>` only when the user explicitly asks for a worktree.
+
+Remove managed worktrees with `just worktree-remove <branch>` or `node scripts/dev.mjs remove <branch>` so Docker containers, networks, and volumes are cleaned up. Use `--force` only after the user agrees to discard uncommitted changes in the target worktree.
+
+Do not commit generated env files, `.worktrees/`, `.local/dev-seed/`, or Docker artifacts.
+
 ## INBOX
 
 Use `docs/INBOX.md` proactively during implementation — not just at the end. Write an entry whenever you encounter something that would help future agents, such as:
