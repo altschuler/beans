@@ -61,14 +61,12 @@ When components use shared `@/components/ui` primitives, prefer rendering the re
 
 ## Shared Test Support
 
-Use shared helpers instead of repeating setup noise:
+Use shared helpers instead of repeating setup noise, but keep them in use. Knip runs as part of `just check` and flags unused helper files.
 
 - `apps/web/tests/helpers/db.ts` for database reset, migration, and shutdown helpers.
-- `apps/web/tests/helpers/seed.ts` and `apps/web/tests/fixtures/users.ts` for test users.
-- `apps/web/tests/helpers/auth.ts` for creating Better Auth users in Vitest tests.
+- `apps/web/tests/fixtures/users.ts` for test users.
 - `apps/web/tests/helpers/zero.ts` for Zero context setup.
-- `apps/web/tests/helpers/assertions.ts` for shared Vitest assertions.
-- `apps/web/e2e/helpers/auth.ts` and `apps/web/e2e/helpers/assertions.ts` for Playwright flows.
+- `apps/web/e2e/helpers/auth.ts` for Playwright authentication flows.
 
 ## Builders And Scenarios
 
@@ -83,6 +81,8 @@ just test-unit
 just test-e2e
 just check
 ```
+
+`just check` includes `pnpm knip`, which currently checks unused files and dependencies before the package lint/typecheck/test commands.
 
 Focused Vitest runs from the workspace root can use `pnpm --filter @penge/web test path/to/file.test.ts`, with paths relative to `apps/web`.
 Focused Playwright runs can use `pnpm --filter @penge/web test:e2e path/to/file.spec.ts`, with paths relative to `apps/web`.
