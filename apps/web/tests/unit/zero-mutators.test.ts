@@ -10,6 +10,8 @@ const deleteCategoryAccount = vi.hoisted(() => vi.fn(async () => undefined))
 const createCategoryGroup = vi.hoisted(() => vi.fn(async () => undefined))
 const updateCategoryGroup = vi.hoisted(() => vi.fn(async () => undefined))
 const deleteCategoryGroup = vi.hoisted(() => vi.fn(async () => undefined))
+const createManualBankAccount = vi.hoisted(() => vi.fn(async () => undefined))
+const createManualTransaction = vi.hoisted(() => vi.fn(async () => undefined))
 
 vi.mock('@penge/domain/categorization-service', () => ({categorizeBankTransaction, splitBankTransaction, confirmBankTransactionInterpretation, clearLedgerCategorizations}))
 vi.mock('@penge/domain/category-management', () => ({
@@ -19,6 +21,10 @@ vi.mock('@penge/domain/category-management', () => ({
   createCategoryGroup,
   updateCategoryGroup,
   deleteCategoryGroup,
+}))
+vi.mock('@/banking/repository.server', () => ({
+  createManualBankAccount,
+  createManualTransaction,
 }))
 
 describe('ledger mutator input schemas', () => {
@@ -102,6 +108,45 @@ describe('ledger mutator input schemas', () => {
     expect(deleteCategoryGroupInput.safeParse({groupId: 'group-1'}).success).toBe(true)
     expect(createCategoryGroupInput.safeParse({id: 'group-1', teamId: 'team-1', name: '   '}).success).toBe(false)
   })
+
+  it('accepts manual banking inputs', async () => {
+    const {createManualBankAccountInput, createManualTransactionInput} = await import('@/zero/mutators')
+
+    expect(createManualBankAccountInput.safeParse({
+      id: 'manual-account-1',
+      ledgerAccountId: 'manual-ledger-1',
+      bankLedgerGroupId: 'bank-group',
+      teamId: 'team-1',
+      name: 'Cash wallet',
+      accountType: 'cash',
+      currency: 'DKK',
+      notes: '  Optional notes  ',
+    }).success).toBe(true)
+    expect(createManualBankAccountInput.safeParse({
+      id: 'manual-account-1',
+      ledgerAccountId: 'manual-ledger-1',
+      bankLedgerGroupId: 'bank-group',
+      teamId: 'team-1',
+      name: 'Cash wallet',
+      accountType: 'investment',
+      currency: 'dkk',
+      notes: '',
+    }).success).toBe(false)
+    expect(createManualTransactionInput.safeParse({
+      id: 'manual-transaction-1',
+      bankAccountId: 'manual-account-1',
+      date: '2026-06-27',
+      description: 'Coffee',
+      amount: '-42.50',
+    }).success).toBe(true)
+    expect(createManualTransactionInput.safeParse({
+      id: 'manual-transaction-1',
+      bankAccountId: 'manual-account-1',
+      date: '27-06-2026',
+      description: 'Coffee',
+      amount: '0',
+    }).success).toBe(false)
+  })
 })
 
 describe('ledger Zero mutators', () => {
@@ -182,6 +227,57 @@ describe('ledger Zero mutators', () => {
     })
 
     expect(clearLedgerCategorizations).toHaveBeenCalledWith('wrapped-tx', {userId: 'user-1'})
+  })
+
+  it('runs manual banking creation on the server transaction', async () => {
+    const {serverMutators} = await import('@/zero/mutators.server')
+    const accountRequest = serverMutators.banking.createManualBankAccount({
+      id: 'manual-account-1',
+      ledgerAccountId: 'manual-ledger-1',
+      bankLedgerGroupId: 'bank-group',
+      teamId: 'team-1',
+      name: 'Cash wallet',
+      accountType: 'cash',
+      currency: 'DKK',
+      notes: 'Pocket cash',
+    })
+    const transactionRequest = serverMutators.banking.createManualTransaction({
+      id: 'manual-transaction-1',
+      bankAccountId: 'manual-account-1',
+      date: '2026-06-27',
+      description: 'Coffee',
+      amount: '-42.50',
+    })
+
+    await accountRequest.mutator.fn({
+      args: accountRequest.args,
+      ctx: {userID: 'user-1'},
+      tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never,
+    })
+    await transactionRequest.mutator.fn({
+      args: transactionRequest.args,
+      ctx: {userID: 'user-1'},
+      tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never,
+    })
+
+    expect(createManualBankAccount).toHaveBeenCalledWith('wrapped-tx', {
+      userId: 'user-1',
+      id: 'manual-account-1',
+      ledgerAccountId: 'manual-ledger-1',
+      teamId: 'team-1',
+      name: 'Cash wallet',
+      accountType: 'cash',
+      currency: 'DKK',
+      notes: 'Pocket cash',
+    })
+    expect(createManualTransaction).toHaveBeenCalledWith('wrapped-tx', {
+      userId: 'user-1',
+      id: 'manual-transaction-1',
+      bankAccountId: 'manual-account-1',
+      date: '2026-06-27',
+      description: 'Coffee',
+      amount: '-42.50',
+    })
   })
 
   it('optimistically categorizes an unreconciled bank transaction with deterministic ledger rows', async () => {
@@ -359,6 +455,88 @@ describe('ledger Zero mutators', () => {
     expect(clearLedgerCategorizations).not.toHaveBeenCalled()
   })
 
+  it('optimistically creates manual bank accounts and manual transactions', async () => {
+    const {mutators} = await import('@/zero/mutators')
+    const tx = createClientTransaction({
+      bankAccounts: [manualBankAccount()],
+      ledgerAccountGroups: [ledgerAccountGroup({id: 'bank-group', name: 'Bank accounts'})],
+    })
+    const accountRequest = mutators.banking.createManualBankAccount({
+      id: 'manual-account-2',
+      ledgerAccountId: 'manual-ledger-2',
+      bankLedgerGroupId: 'bank-group',
+      teamId: 'team-1',
+      name: 'Cash wallet',
+      accountType: 'cash',
+      currency: 'DKK',
+      notes: '  Pocket cash  ',
+    })
+    const transactionRequest = mutators.banking.createManualTransaction({
+      id: 'manual-transaction-1',
+      bankAccountId: 'manual-account-1',
+      date: '2026-06-27',
+      description: 'Coffee',
+      amount: '-42.50',
+    })
+
+    await accountRequest.mutator.fn({args: accountRequest.args, ctx: {userID: 'user-1'}, tx: tx as never})
+    await transactionRequest.mutator.fn({args: transactionRequest.args, ctx: {userID: 'user-1'}, tx: tx as never})
+
+    expect(tx.operations).toEqual([
+      {
+        table: 'bankAccounts',
+        kind: 'insert',
+        value: expect.objectContaining({
+          id: 'manual-account-2',
+          teamId: 'team-1',
+          bankConnectionId: null,
+          provider: 'manual',
+          providerInstitutionId: 'manual',
+          providerRequisitionId: 'manual:team-1',
+          providerAccountId: 'manual:manual-account-2',
+          name: 'Cash wallet',
+          currency: 'DKK',
+          status: 'linked',
+          syncStatus: 'idle',
+        }),
+      },
+      {
+        table: 'ledgerAccounts',
+        kind: 'insert',
+        value: expect.objectContaining({
+          id: 'manual-ledger-2',
+          teamId: 'team-1',
+          groupId: 'bank-group',
+          linkedBankAccountId: 'manual-account-2',
+          type: 'bank',
+          normalBalance: 'debit',
+          name: 'Cash wallet',
+          description: 'Pocket cash',
+          status: 'active',
+        }),
+      },
+      {
+        table: 'bankTransactions',
+        kind: 'insert',
+        value: expect.objectContaining({
+          id: 'manual-transaction-1',
+          bankAccountId: 'manual-account-1',
+          providerTransactionId: 'manual:manual-transaction-1',
+          status: 'booked',
+          bookingDate: '2026-06-27',
+          valueDate: null,
+          amount: -425_000,
+          currency: 'DKK',
+          description: 'Coffee',
+          counterpartyName: null,
+          categorizationRevision: 0,
+        }),
+      },
+    ])
+    expect(createManualBankAccount).not.toHaveBeenCalled()
+    expect(createManualTransaction).not.toHaveBeenCalled()
+  })
+
   it('optimistically creates, updates, and deletes category groups when local constraints allow it', async () => {
     const {mutators} = await import('@/zero/mutators')
     const tx = createClientTransaction({
@@ -456,6 +634,7 @@ describe('ledger Zero mutators', () => {
 })
 
 type TestRows = {
+  bankAccounts?: Array<Record<string, unknown>>
   bankTransactions?: Array<Record<string, unknown>>
   ledgerAccountGroups?: Array<Record<string, unknown>>
   ledgerAccounts?: Array<Record<string, unknown>>
@@ -467,6 +646,7 @@ type TestOperation = {table: string; kind: string; value: unknown}
 
 function createClientTransaction(rows: TestRows) {
   const rowStore: Record<string, Array<Record<string, unknown>>> = {
+    bankAccounts: rows.bankAccounts ?? [],
     bankTransactions: rows.bankTransactions ?? [],
     ledgerAccountGroups: rows.ledgerAccountGroups ?? [],
     ledgerAccounts: rows.ledgerAccounts ?? [],
@@ -488,7 +668,8 @@ function createClientTransaction(rows: TestRows) {
     reason: 'optimistic',
     operations,
     mutate: {
-      bankTransactions: {update: record('bankTransactions', 'update')},
+      bankAccounts: {insert: record('bankAccounts', 'insert')},
+      bankTransactions: {insert: record('bankTransactions', 'insert'), update: record('bankTransactions', 'update')},
       ledgerAccountGroups: {
         insert: record('ledgerAccountGroups', 'insert'),
         update: record('ledgerAccountGroups', 'update'),
@@ -526,6 +707,17 @@ function matchesWhere(row: Record<string, unknown>, where: unknown): boolean {
     throw new Error(`Unsupported test query where clause: ${JSON.stringify(where)}`)
   }
   return row[condition.left.name!] === condition.right.value
+}
+
+function manualBankAccount(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'manual-account-1',
+    teamId: 'team-1',
+    provider: 'manual',
+    name: 'Cash wallet',
+    currency: 'DKK',
+    ...overrides,
+  }
 }
 
 function bankTransaction(overrides: Record<string, unknown> = {}) {

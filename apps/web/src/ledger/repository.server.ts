@@ -51,7 +51,7 @@ export async function requireSystemLedgerAccountId(tx: DrizzleExecutor, teamId: 
 
 export async function ensureLedgerAccountForBankAccount(
   tx: DrizzleExecutor,
-  input: {teamId: string; bankAccountId: string; name: string; now?: Date},
+  input: {teamId: string; bankAccountId: string; name: string; now?: Date; id?: string; description?: string},
 ) {
   const [existing] = await tx
     .select({id: ledgerAccounts.id})
@@ -69,7 +69,7 @@ export async function ensureLedgerAccountForBankAccount(
   const resolvedBankGroup = bankGroup ?? (await seedDefaultLedgerChartAndFindBankGroup(tx, input.teamId))
 
   const now = input.now ?? new Date()
-  const id = crypto.randomUUID()
+  const id = input.id ?? crypto.randomUUID()
   const name = await uniqueLedgerAccountNameForBankAccount(tx, input)
   await tx.insert(ledgerAccounts).values({
     id,
@@ -80,7 +80,7 @@ export async function ensureLedgerAccountForBankAccount(
     type: 'bank',
     normalBalance: 'debit',
     name,
-    description: 'Imported bank account. Balance is derived from opening balance and reconciled bank transactions.',
+    description: input.description ?? 'Imported bank account. Balance is derived from opening balance and reconciled bank transactions.',
     status: 'active',
     sortOrder: 0,
     createdAt: now,

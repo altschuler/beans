@@ -1,6 +1,7 @@
 import '@tanstack/react-start/server-only'
 
 import {and, desc, eq, isNotNull, ne} from 'drizzle-orm'
+import {parseDecimalMoneyToAmount} from '@penge/domain/money'
 import {db} from '@/db/client'
 import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, ledgerPostings, teamMembers} from '@penge/domain/schema'
 import {ensureLedgerAccountForBankAccount} from '@/ledger/repository.server'
@@ -43,6 +44,146 @@ export async function findBankConnectionByReference(reference: string) {
 
 export async function markBankConnectionLinked(connectionId: string) {
   await db.update(bankConnections).set({status: 'linked', updatedAt: new Date()}).where(eq(bankConnections.id, connectionId))
+}
+
+const MANUAL_ACCOUNT_TYPES = ['checking', 'savings', 'credit-card', 'loan', 'cash'] as const
+
+type ManualAccountType = typeof MANUAL_ACCOUNT_TYPES[number]
+type BankingCommandTransaction = Pick<BankingSyncTransaction, 'select' | 'insert' | 'update' | 'delete'>
+
+export async function createManualBankAccount(tx: BankingCommandTransaction, input: {
+  userId: string
+  id: string
+  ledgerAccountId: string
+  teamId: string
+  name: string
+  accountType: string
+  currency: string
+  notes: string
+}) {
+  await requireTeamAccess(tx, input.teamId, input.userId)
+  const name = requireNonEmpty(input.name, 'Account name is required')
+  const accountType = requireManualAccountType(input.accountType)
+  const currency = requireCurrency(input.currency)
+  const notes = input.notes.trim()
+  const now = new Date()
+
+  await tx.insert(bankAccounts).values({
+    id: requireNonEmpty(input.id, 'Bank account id is required'),
+    teamId: input.teamId,
+    bankConnectionId: null,
+    provider: 'manual',
+    providerInstitutionId: 'manual',
+    providerRequisitionId: `manual:${input.teamId}`,
+    providerAccountId: `manual:${input.id}`,
+    name,
+    iban: null,
+    currency,
+    providerAccountRaw: {source: 'manual', accountType, notes},
+    status: 'linked',
+    syncStatus: 'idle',
+    syncError: null,
+    syncStartedAt: null,
+    lastSyncedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  await ensureLedgerAccountForBankAccount(tx, {
+    id: requireNonEmpty(input.ledgerAccountId, 'Ledger account id is required'),
+    teamId: input.teamId,
+    bankAccountId: input.id,
+    name,
+    description: notes,
+    now,
+  })
+}
+
+export async function createManualTransaction(tx: BankingCommandTransaction, input: {
+  userId: string
+  id: string
+  bankAccountId: string
+  date: string
+  description: string
+  amount: string
+}) {
+  const account = await loadAccessibleBankAccountForManualTransaction(tx, input.bankAccountId, input.userId)
+  if (account.provider !== 'manual') throw new Error('Manual transactions can only be added to manual accounts')
+  const currency = requireCurrency(account.currency ?? '')
+  const bookingDate = requireIsoDate(input.date)
+  const description = requireNonEmpty(input.description, 'Description is required')
+  const amount = parseDecimalMoneyToAmount(input.amount)
+  if (amount === 0) throw new Error('Amount must be non-zero')
+
+  const now = new Date()
+  await tx.insert(bankTransactions).values({
+    id: requireNonEmpty(input.id, 'Transaction id is required'),
+    bankAccountId: account.id,
+    providerTransactionId: `manual:${input.id}`,
+    status: 'booked',
+    bookingDate,
+    valueDate: null,
+    amount,
+    currency,
+    description,
+    counterpartyName: null,
+    raw: {source: 'manual'},
+    aiConfidence: null,
+    aiReasoning: null,
+    categorizationRevision: 0,
+    createdAt: now,
+    updatedAt: now,
+  })
+}
+
+async function requireTeamAccess(tx: BankingCommandTransaction, teamId: string, userId: string) {
+  const [membership] = await tx
+    .select({id: teamMembers.id})
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
+    .limit(1)
+  if (!membership) throw new Error('Team not found')
+}
+
+async function loadAccessibleBankAccountForManualTransaction(tx: BankingCommandTransaction, bankAccountId: string, userId: string) {
+  const [account] = await tx
+    .select({
+      id: bankAccounts.id,
+      provider: bankAccounts.provider,
+      currency: bankAccounts.currency,
+    })
+    .from(bankAccounts)
+    .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
+    .where(and(eq(bankAccounts.id, bankAccountId), eq(teamMembers.userId, userId)))
+    .limit(1)
+
+  if (!account) throw new Error('Bank account not found')
+  return account
+}
+
+function requireNonEmpty(value: string, message: string) {
+  const trimmed = value.trim()
+  if (!trimmed) throw new Error(message)
+  return trimmed
+}
+
+function requireManualAccountType(value: string): ManualAccountType {
+  if (!(MANUAL_ACCOUNT_TYPES as readonly string[]).includes(value)) throw new Error('Invalid account type')
+  return value as ManualAccountType
+}
+
+function requireCurrency(value: string) {
+  const currency = value.trim().toUpperCase()
+  if (!/^[A-Z]{3}$/.test(currency)) throw new Error('Invalid currency')
+  return currency
+}
+
+function requireIsoDate(value: string) {
+  const date = value.trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Invalid date')
+  const parsed = new Date(`${date}T00:00:00.000Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) throw new Error('Invalid date')
+  return date
 }
 
 export async function upsertLinkedAccounts(input: {
@@ -112,7 +253,7 @@ export async function requireAccessibleBankAccount(bankAccountId: string, userId
     })
     .from(bankAccounts)
     .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
-    .where(and(eq(bankAccounts.id, bankAccountId), eq(teamMembers.userId, userId)))
+    .where(and(eq(bankAccounts.id, bankAccountId), eq(bankAccounts.provider, 'gocardless'), eq(teamMembers.userId, userId)))
     .limit(1)
 
   if (!account) {
@@ -131,7 +272,7 @@ export async function listAccessibleBankAccountsForSync(userId: string) {
     })
     .from(bankAccounts)
     .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
-    .where(and(eq(teamMembers.userId, userId), eq(bankAccounts.status, 'linked')))
+    .where(and(eq(teamMembers.userId, userId), eq(bankAccounts.status, 'linked'), eq(bankAccounts.provider, 'gocardless')))
     .orderBy(bankAccounts.name)
 }
 

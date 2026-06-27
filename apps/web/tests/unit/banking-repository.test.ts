@@ -167,6 +167,134 @@ describe('upsertLinkedAccounts', () => {
   })
 })
 
+describe('manual banking commands', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    selectResults.length = 0
+    insertChain.returning.mockResolvedValue([{id: 'manual-account-1', name: 'Cash wallet'}])
+  })
+
+  it('creates a manual bank account and linked ledger account after checking team access', async () => {
+    const {createManualBankAccount} = await import('@/banking/repository.server')
+    selectResults.push([{id: 'membership-1'}])
+
+    await createManualBankAccount(mockTx as never, {
+      userId: 'user-1',
+      id: 'manual-account-1',
+      ledgerAccountId: 'manual-ledger-1',
+      teamId: 'team-1',
+      name: '  Cash wallet  ',
+      accountType: 'cash',
+      currency: 'dkk',
+      notes: '  Pocket cash  ',
+    })
+
+    expect(insertChain.values).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'manual-account-1',
+      teamId: 'team-1',
+      bankConnectionId: null,
+      provider: 'manual',
+      providerInstitutionId: 'manual',
+      providerRequisitionId: 'manual:team-1',
+      providerAccountId: 'manual:manual-account-1',
+      name: 'Cash wallet',
+      currency: 'DKK',
+      iban: null,
+      providerAccountRaw: {source: 'manual', accountType: 'cash', notes: 'Pocket cash'},
+      status: 'linked',
+      syncStatus: 'idle',
+      syncError: null,
+      syncStartedAt: null,
+      lastSyncedAt: null,
+    }))
+    expect(ensureLedgerAccountForBankAccount).toHaveBeenCalledWith(mockTx, {
+      id: 'manual-ledger-1',
+      teamId: 'team-1',
+      bankAccountId: 'manual-account-1',
+      name: 'Cash wallet',
+      description: 'Pocket cash',
+      now: expect.any(Date),
+    })
+  })
+
+  it('rejects manual bank account creation without team access', async () => {
+    const {createManualBankAccount} = await import('@/banking/repository.server')
+    selectResults.push([])
+
+    await expect(createManualBankAccount(mockTx as never, {
+      userId: 'user-2',
+      id: 'manual-account-1',
+      ledgerAccountId: 'manual-ledger-1',
+      teamId: 'team-1',
+      name: 'Cash wallet',
+      accountType: 'cash',
+      currency: 'DKK',
+      notes: '',
+    })).rejects.toThrow('Team not found')
+
+    expect(insertChain.values).not.toHaveBeenCalled()
+  })
+
+  it('creates an unreconciled manual transaction for accessible manual accounts', async () => {
+    const {createManualTransaction} = await import('@/banking/repository.server')
+    selectResults.push([{id: 'manual-account-1', teamId: 'team-1', provider: 'manual', currency: 'DKK'}])
+
+    await createManualTransaction(mockTx as never, {
+      userId: 'user-1',
+      id: 'manual-transaction-1',
+      bankAccountId: 'manual-account-1',
+      date: '2026-06-27',
+      description: '  Coffee  ',
+      amount: '-42.50',
+    })
+
+    expect(insertChain.values).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'manual-transaction-1',
+      bankAccountId: 'manual-account-1',
+      providerTransactionId: 'manual:manual-transaction-1',
+      status: 'booked',
+      bookingDate: '2026-06-27',
+      valueDate: null,
+      amount: -425_000,
+      currency: 'DKK',
+      description: 'Coffee',
+      counterpartyName: null,
+      raw: {source: 'manual'},
+    }))
+    expect(ensureGeneratedLedgerTransactionForBankTransaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects manual transactions when the user cannot access the account team', async () => {
+    const {createManualTransaction} = await import('@/banking/repository.server')
+    selectResults.push([])
+
+    await expect(createManualTransaction(mockTx as never, {
+      userId: 'user-2',
+      id: 'manual-transaction-1',
+      bankAccountId: 'manual-account-1',
+      date: '2026-06-27',
+      description: 'Coffee',
+      amount: '-42.50',
+    })).rejects.toThrow('Bank account not found')
+
+    expect(insertChain.values).not.toHaveBeenCalled()
+  })
+
+  it('rejects manual transactions for provider-linked bank accounts', async () => {
+    const {createManualTransaction} = await import('@/banking/repository.server')
+    selectResults.push([{id: 'bank-account-1', teamId: 'team-1', provider: 'gocardless', currency: 'DKK'}])
+
+    await expect(createManualTransaction(mockTx as never, {
+      userId: 'user-1',
+      id: 'manual-transaction-1',
+      bankAccountId: 'bank-account-1',
+      date: '2026-06-27',
+      description: 'Coffee',
+      amount: '-42.50',
+    })).rejects.toThrow('Manual transactions can only be added to manual accounts')
+  })
+})
+
 describe('drizzleBankingSyncRepository.upsertTransactions', () => {
   beforeEach(() => {
     vi.clearAllMocks()

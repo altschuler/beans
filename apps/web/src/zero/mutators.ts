@@ -1,10 +1,10 @@
 import {defineMutator, defineMutators, type Transaction} from '@rocicorp/zero'
 import {groupBy, uniq} from 'lodash-es'
 import {z} from 'zod'
-import {absoluteMoneyAmount} from '@penge/domain/money'
+import {absoluteMoneyAmount, parseDecimalMoneyToAmount} from '@penge/domain/money'
 import {isCategorizationAccount, validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@penge/domain/categorization'
 import {requireUserID} from './context'
-import {zql, type BankTransaction, type LedgerAccount, type LedgerAccountGroup, type LedgerPosting, type LedgerTransaction, type Schema as ZeroSchema} from './schema'
+import {zql, type BankAccount, type BankTransaction, type LedgerAccount, type LedgerAccountGroup, type LedgerPosting, type LedgerTransaction, type Schema as ZeroSchema} from './schema'
 
 export const categorySelectionInput = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('category'), accountId: z.string().min(1)}),
@@ -35,8 +35,20 @@ export const confirmTransactionInput = z.object({
 export const clearCategorizationsInput = z.object({})
 
 export const managedCategoryTypeInput = z.enum(['expense', 'income', 'savings'])
+export const manualBankAccountTypeInput = z.enum(['checking', 'savings', 'credit-card', 'loan', 'cash'])
 
 const trimmedNonEmptyString = z.string().trim().min(1)
+const isoDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+})
+const signedDecimalAmountInput = z.string().regex(/^[+-]?\d+(\.\d+)?$/).refine((value) => {
+  try {
+    return parseDecimalMoneyToAmount(value) !== 0
+  } catch {
+    return false
+  }
+})
 
 export const createCategoryAccountInput = z.object({
   id: trimmedNonEmptyString,
@@ -72,6 +84,25 @@ export const updateCategoryGroupInput = z.object({
 
 export const deleteCategoryGroupInput = z.object({
   groupId: trimmedNonEmptyString,
+})
+
+export const createManualBankAccountInput = z.object({
+  id: trimmedNonEmptyString,
+  ledgerAccountId: trimmedNonEmptyString,
+  bankLedgerGroupId: trimmedNonEmptyString,
+  teamId: trimmedNonEmptyString,
+  name: trimmedNonEmptyString,
+  accountType: manualBankAccountTypeInput,
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  notes: z.string(),
+})
+
+export const createManualTransactionInput = z.object({
+  id: trimmedNonEmptyString,
+  bankAccountId: trimmedNonEmptyString,
+  date: isoDateInput,
+  description: trimmedNonEmptyString,
+  amount: signedDecimalAmountInput,
 })
 
 type ClientTx = Extract<Transaction<ZeroSchema>, {location: 'client'}>
@@ -281,6 +312,79 @@ async function optimisticallyClearCategorizations(tx: ClientTx) {
   }
 }
 
+async function optimisticallyCreateManualBankAccount(input: {tx: ClientTx; id: string; ledgerAccountId: string; bankLedgerGroupId: string; teamId: string; name: string; accountType: ManualBankAccountTypeInput; currency: string; notes: string}) {
+  const now = Date.now()
+  const name = input.name.trim()
+  const notes = input.notes.trim()
+  await input.tx.mutate.bankAccounts.insert({
+    id: input.id,
+    teamId: input.teamId,
+    bankConnectionId: null,
+    provider: 'manual',
+    providerInstitutionId: 'manual',
+    providerRequisitionId: `manual:${input.teamId}`,
+    providerAccountId: `manual:${input.id}`,
+    name,
+    iban: null,
+    currency: input.currency,
+    status: 'linked',
+    syncStatus: 'idle',
+    syncError: null,
+    syncStartedAt: null,
+    lastSyncedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  await input.tx.mutate.ledgerAccounts.insert({
+    id: input.ledgerAccountId,
+    teamId: input.teamId,
+    groupId: input.bankLedgerGroupId,
+    linkedBankAccountId: input.id,
+    systemKey: null,
+    type: 'bank',
+    normalBalance: 'debit',
+    name,
+    description: notes,
+    status: 'active',
+    sortOrder: 0,
+    createdAt: now,
+    updatedAt: now,
+  })
+}
+
+async function optimisticallyCreateManualTransaction(input: {tx: ClientTx; id: string; bankAccountId: string; date: string; description: string; amount: string}) {
+  const account = await input.tx.run(zql.bankAccounts.where('id', input.bankAccountId).one())
+  if (!isManualBankAccount(account)) return
+
+  let amount: number
+  try {
+    amount = parseDecimalMoneyToAmount(input.amount)
+  } catch {
+    return
+  }
+  if (amount === 0) return
+
+  const now = Date.now()
+  await input.tx.mutate.bankTransactions.insert({
+    id: input.id,
+    bankAccountId: account.id,
+    providerTransactionId: `manual:${input.id}`,
+    status: 'booked',
+    bookingDate: input.date,
+    valueDate: null,
+    amount,
+    currency: account.currency ?? '',
+    description: input.description.trim(),
+    counterpartyName: null,
+    aiConfidence: null,
+    aiReasoning: null,
+    categorizationRevision: 0,
+    createdAt: now,
+    updatedAt: now,
+  })
+}
+
 async function optimisticallyCreateCategoryGroup(input: {tx: ClientTx; id: string; teamId: string; name: string}) {
   const now = Date.now()
   await input.tx.mutate.ledgerAccountGroups.insert({
@@ -358,6 +462,11 @@ function isValidOptimisticCategoryAccount(account: LedgerAccount | undefined, te
 }
 
 type CategoryAccountTypeInput = z.infer<typeof managedCategoryTypeInput>
+type ManualBankAccountTypeInput = z.infer<typeof manualBankAccountTypeInput>
+
+function isManualBankAccount(account: BankAccount | undefined): account is BankAccount {
+  return Boolean(account && account.provider === 'manual' && account.currency)
+}
 
 function isEditableGroup(group: LedgerAccountGroup | undefined): group is LedgerAccountGroup {
   return Boolean(group && !group.systemKey)
@@ -382,6 +491,16 @@ function optimisticId(tx: ClientTx, suffix: string) {
 }
 
 export const mutators = defineMutators({
+  banking: {
+    createManualBankAccount: defineMutator(createManualBankAccountInput, async ({args, tx}) => {
+      if (tx.location !== 'client') return
+      await optimisticallyCreateManualBankAccount({tx, ...args})
+    }),
+    createManualTransaction: defineMutator(createManualTransactionInput, async ({args, tx}) => {
+      if (tx.location !== 'client') return
+      await optimisticallyCreateManualTransaction({tx, ...args})
+    }),
+  },
   ledger: {
     categorizeTransaction: defineMutator(categorizeTransactionInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'client') return

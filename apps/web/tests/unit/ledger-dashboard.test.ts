@@ -1,5 +1,8 @@
+// @vitest-environment jsdom
 import React from 'react'
 import {renderToStaticMarkup} from 'react-dom/server'
+import {render, screen, waitFor, within} from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
 const queryStatuses = vi.hoisted(() => ({
@@ -87,7 +90,7 @@ const queryRows = vi.hoisted(() => ({
       }
     }
   }>,
-  bankAccounts: [] as Array<{id: string; name: string; teamId?: string; syncStatus?: string}>,
+  bankAccounts: [] as Array<{id: string; name: string; teamId?: string; syncStatus?: string; provider?: string; currency?: string | null}>,
   activeWorkflowRuns: [] as Array<{id: string; workflowName: string; teamId: string; status: string}>,
 }))
 
@@ -326,6 +329,14 @@ vi.mock('@/ledger/ai-categorization-fns', () => ({
 }))
 
 vi.mock('@/zero/mutators', () => ({
+  createManualTransactionInput: {
+    safeParse: (input: {id?: string; bankAccountId?: string; date?: string; description?: string; amount?: string}) => {
+      const amount = input.amount ?? ''
+      const parsedAmount = Number(amount)
+      const validDate = /^\d{4}-\d{2}-\d{2}$/.test(input.date ?? '') && !Number.isNaN(new Date(`${input.date}T00:00:00.000Z`).getTime())
+      return {success: Boolean(input.id && input.bankAccountId && validDate && input.description?.trim() && /^[+-]?\d+(\.\d+)?$/.test(amount) && Number.isSafeInteger(Math.round(parsedAmount * 10_000)) && Math.round(parsedAmount * 10_000) !== 0)}
+    },
+  },
   mutators: {
     ledger: {
       categorizeTransaction: vi.fn((input) => ({
@@ -341,6 +352,9 @@ vi.mock('@/zero/mutators', () => ({
         type: 'clearCategorizations',
         input,
       })),
+    },
+    banking: {
+      createManualTransaction: vi.fn((input) => ({type: 'createManualTransaction', input})),
     },
   },
 }))
@@ -464,7 +478,7 @@ describe('LedgerDashboard', () => {
         },
       },
     ]
-    queryRows.bankAccounts = [{id: 'bank-account-1', name: 'Checking', teamId: 'team-1'}]
+    queryRows.bankAccounts = [{id: 'bank-account-1', name: 'Checking', teamId: 'team-1', provider: 'gocardless', currency: 'DKK'}]
     queryRows.activeWorkflowRuns = []
   })
 
@@ -472,6 +486,14 @@ describe('LedgerDashboard', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     expect(markup).toContain('Sync all accounts')
+  })
+
+  it('disables sync all when only manual accounts exist', () => {
+    queryRows.bankAccounts = [{id: 'manual-account-1', name: 'Cash wallet', teamId: 'team-1', provider: 'manual', currency: 'DKK'}]
+
+    renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    expect(findButton('Sync all accounts')?.disabled).toBe(true)
   })
 
   it('shows a toast when syncing all accounts from the ledger dashboard succeeds', async () => {
@@ -583,6 +605,47 @@ describe('LedgerDashboard', () => {
     expect(markup).toContain('aria-label="Category for Netto"')
     expect(markup).not.toContain('aria-label="AI categorize transaction"')
     expect(markup).not.toContain('aria-label="Split transaction"')
+  })
+
+  it('shows Add transaction only on manual bank account pages', () => {
+    queryRows.bankAccounts = [
+      {id: 'bank-account-1', name: 'Checking', teamId: 'team-1', provider: 'gocardless', currency: 'DKK'},
+      {id: 'manual-account-1', name: 'Cash wallet', teamId: 'team-1', provider: 'manual', currency: 'DKK'},
+    ]
+
+    const providerMarkup = renderToStaticMarkup(React.createElement(LedgerDashboard, {view: 'bankAccountTransactions', bankAccountId: 'bank-account-1'}))
+    expect(providerMarkup).not.toContain('Add transaction')
+
+    renderedButtons.length = 0
+    const manualMarkup = renderToStaticMarkup(React.createElement(LedgerDashboard, {view: 'bankAccountTransactions', bankAccountId: 'manual-account-1'}))
+    expect(manualMarkup).toContain('Add transaction')
+  })
+
+  it('creates a manual transaction from a manual bank account page', async () => {
+    const user = userEvent.setup()
+    queryRows.bankAccounts = [{id: 'manual-account-1', name: 'Cash wallet', teamId: 'team-1', provider: 'manual', currency: 'DKK'}]
+    queryRows.bankTransactions = []
+
+    render(React.createElement(LedgerDashboard, {view: 'bankAccountTransactions', bankAccountId: 'manual-account-1'}))
+
+    await user.click(screen.getByRole('button', {name: 'Add transaction'}))
+    const dialog = screen.getByRole('dialog', {name: 'Add transaction'})
+    await user.type(within(dialog).getByLabelText('Date'), '2026-06-27')
+    await user.type(within(dialog).getByLabelText('Description'), 'Coffee')
+    await user.type(within(dialog).getByLabelText('Signed amount'), '-42.50')
+    await user.click(within(dialog).getByRole('button', {name: 'Save transaction'}))
+
+    await waitFor(() => {
+      expect(zeroMutate).toHaveBeenCalledWith({
+        type: 'createManualTransaction',
+        input: expect.objectContaining({
+          bankAccountId: 'manual-account-1',
+          date: '2026-06-27',
+          description: 'Coffee',
+          amount: '-42.50',
+        }),
+      })
+    })
   })
 
   it('shows bank account not found when the bank account list is empty on a bank account route', () => {

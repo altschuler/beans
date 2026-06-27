@@ -6,16 +6,21 @@ import userEvent from '@testing-library/user-event'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
 const queryStatuses = vi.hoisted(() => ({
+  teams: 'complete',
   accounts: 'complete',
   connections: 'complete',
   transactions: 'complete',
+  groups: 'complete',
 }))
 
 const queryRows = vi.hoisted(() => ({
+  teams: [{id: 'team-1', name: 'Personal'}],
   accounts: [] as Array<{
     id: string
     bankConnectionId?: string | null
     providerInstitutionId?: string
+    provider?: string
+    teamId?: string
     name: string
     currency?: string | null
     status?: string
@@ -24,6 +29,7 @@ const queryRows = vi.hoisted(() => ({
     lastSyncedAt?: string | null
   }>,
   connections: [] as Array<{id: string; providerInstitutionName?: string | null; providerInstitutionId: string; status: string}>,
+  groups: [{id: 'bank-group', teamId: 'team-1', name: 'Bank accounts'}],
   transactions: [] as Array<{
     id: string
     bankAccountId: string
@@ -51,6 +57,9 @@ const bankingFns = vi.hoisted(() => ({
   syncBankAccount: vi.fn(async () => ({fetched: 2, upserted: 1})),
 }))
 
+const zeroMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({type: 'success'})))
+const routerNavigate = vi.hoisted(() => vi.fn())
+
 const toastFns = vi.hoisted(() => ({
   loading: vi.fn(() => 'sync-toast'),
   success: vi.fn(),
@@ -63,11 +72,14 @@ afterEach(() => {
 
 vi.mock('@rocicorp/zero/react', () => ({
   useQuery: vi.fn((query: {name: string}) => {
+    if (query.name === 'teams') return [queryRows.teams, {type: queryStatuses.teams}]
+    if (query.name === 'ledgerAccountGroups') return [queryRows.groups, {type: queryStatuses.groups}]
     if (query.name === 'bankAccounts') return [queryRows.accounts, {type: queryStatuses.accounts}]
     if (query.name === 'bankConnections') return [queryRows.connections, {type: queryStatuses.connections}]
     if (query.name === 'bankTransactions') return [queryRows.transactions, {type: queryStatuses.transactions}]
     throw new Error(`Unexpected query: ${query.name}`)
   }),
+  useZero: vi.fn(() => ({mutate: zeroMutate})),
 }))
 
 vi.mock('@tanstack/react-router', async () => {
@@ -77,15 +89,18 @@ vi.mock('@tanstack/react-router', async () => {
       const href = params?.bankAccountId ? to.replace('$bankAccountId', params.bankAccountId) : to
       return ReactModule.createElement('a', {href, ...props}, children)
     },
+    useRouter: () => ({navigate: routerNavigate}),
   }
 })
 
 vi.mock('@/zero/queries', () => ({
   queries: {
     domain: {
+      teams: () => ({name: 'teams'}),
       bankAccounts: () => ({name: 'bankAccounts'}),
       bankConnections: () => ({name: 'bankConnections'}),
       bankTransactions: () => ({name: 'bankTransactions'}),
+      ledgerAccountGroups: () => ({name: 'ledgerAccountGroups'}),
     },
   },
 }))
@@ -95,6 +110,14 @@ vi.mock('@/banking/banking-fns', () => ({
   startBankLink: bankingFns.startBankLink,
   syncBankAccount: bankingFns.syncBankAccount,
   syncAllBankAccounts: vi.fn(),
+}))
+
+vi.mock('@/zero/mutators', () => ({
+  mutators: {
+    banking: {
+      createManualBankAccount: vi.fn((input) => ({type: 'createManualBankAccount', input})),
+    },
+  },
 }))
 
 vi.mock('sonner', () => ({
@@ -147,14 +170,21 @@ describe('BankingDashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     renderedPageLayouts.length = 0
+    queryStatuses.teams = 'complete'
     queryStatuses.accounts = 'complete'
     queryStatuses.connections = 'complete'
     queryStatuses.transactions = 'complete'
-    queryRows.accounts = [{id: 'account-1', bankConnectionId: 'connection-1', providerInstitutionId: 'SANDBOXFINANCE_SFIN0000', name: 'Checking'}]
+    queryStatuses.groups = 'complete'
+    queryRows.teams = [{id: 'team-1', name: 'Personal'}]
+    queryRows.accounts = [{id: 'account-1', bankConnectionId: 'connection-1', providerInstitutionId: 'SANDBOXFINANCE_SFIN0000', provider: 'gocardless', teamId: 'team-1', name: 'Checking'}]
     queryRows.connections = [{id: 'connection-1', providerInstitutionName: 'Sandbox Finance', providerInstitutionId: 'SANDBOXFINANCE_SFIN0000', status: 'linked'}]
+    queryRows.groups = [{id: 'bank-group', teamId: 'team-1', name: 'Bank accounts'}]
     queryRows.transactions = []
     bankingFns.syncBankAccount.mockResolvedValue({fetched: 2, upserted: 1})
     toastFns.loading.mockReturnValue('sync-toast')
+    zeroMutate.mockClear()
+    zeroMutate.mockReturnValue(Promise.resolve({type: 'success'}))
+    routerNavigate.mockClear()
   })
 
   it('keeps bank management focused on linked accounts', () => {
@@ -217,8 +247,9 @@ describe('BankingDashboard', () => {
     expect(await within(dialog).findByTestId('institution-list')).toHaveClass('max-h-80', 'overflow-y-auto')
   })
 
-  it('shows UI-only manual account configuration fields from the connect dialog', async () => {
+  it('creates a manual account from the connect dialog without an opening balance', async () => {
     const user = userEvent.setup()
+    queryRows.accounts = [{id: 'account-1', bankConnectionId: null, providerInstitutionId: 'manual', name: 'Cash wallet', provider: 'manual', teamId: 'team-1'} as never]
     render(React.createElement(BankingDashboard))
 
     await user.click(screen.getByRole('button', {name: 'Connect bank'}))
@@ -226,17 +257,34 @@ describe('BankingDashboard', () => {
     await user.click(within(dialog).getByRole('button', {name: /Add transactions yourself/}))
 
     expect(within(dialog).getByRole('heading', {name: 'Manual account'})).toBeInTheDocument()
-    expect(dialog).toHaveTextContent('Manual account creation is not available yet.')
+    expect(dialog).toHaveTextContent('Create an account for transactions you enter yourself.')
     expect(within(dialog).getByLabelText('Account name')).toBeInTheDocument()
     expect(within(dialog).getByText('Account type')).toBeInTheDocument()
-    await user.click(within(dialog).getByRole('combobox'))
-    const loanOption = screen.getByRole('option', {name: 'Loan'})
-    expect(loanOption).toBeInTheDocument()
-    await user.click(loanOption)
     expect(within(dialog).getByLabelText('Currency')).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Opening balance')).toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Opening balance')).not.toBeInTheDocument()
     expect(within(dialog).getByLabelText('Notes')).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', {name: 'Save manual account'})).toBeDisabled()
+
+    await user.clear(within(dialog).getByLabelText('Account name'))
+    await user.type(within(dialog).getByLabelText('Account name'), 'Cash wallet')
+    await user.clear(within(dialog).getByLabelText('Currency'))
+    await user.type(within(dialog).getByLabelText('Currency'), 'DKK')
+    await user.type(within(dialog).getByLabelText('Notes'), 'Pocket cash')
+    await user.click(within(dialog).getByRole('button', {name: 'Save manual account'}))
+
+    await waitFor(() => {
+      expect(zeroMutate).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'createManualBankAccount',
+        input: expect.objectContaining({
+          teamId: 'team-1',
+          bankLedgerGroupId: 'bank-group',
+          name: 'Cash wallet',
+          accountType: 'checking',
+          currency: 'DKK',
+          notes: 'Pocket cash',
+        }),
+      }))
+    })
+    expect(routerNavigate).toHaveBeenCalledWith({to: '/app/bank-accounts/$bankAccountId', params: {bankAccountId: expect.any(String)}})
   })
 
   it('does not show provider connection details under the institution name', () => {

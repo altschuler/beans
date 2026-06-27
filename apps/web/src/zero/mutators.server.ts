@@ -2,6 +2,7 @@ import '@tanstack/react-start/server-only'
 
 import {defineMutator, defineMutators} from '@rocicorp/zero'
 import {categorizeBankTransaction, clearLedgerCategorizations, confirmBankTransactionInterpretation, splitBankTransaction} from '@penge/domain/categorization-service'
+import {createManualBankAccount, createManualTransaction} from '@/banking/repository.server'
 import {
   createCategoryAccount,
   createCategoryGroup,
@@ -17,6 +18,8 @@ import {
   confirmTransactionInput,
   createCategoryAccountInput,
   createCategoryGroupInput,
+  createManualBankAccountInput,
+  createManualTransactionInput,
   deleteCategoryAccountInput,
   deleteCategoryGroupInput,
   mutators,
@@ -27,8 +30,22 @@ import {
 
 type CategorizationTransaction = Parameters<typeof categorizeBankTransaction>[0]
 type CategoryManagementTransaction = Parameters<typeof createCategoryAccount>[0]
+type BankingTransaction = Parameters<typeof createManualBankAccount>[0]
 
 export const serverMutators = defineMutators(mutators, {
+  banking: {
+    createManualBankAccount: defineMutator(createManualBankAccountInput, async ({args, ctx, tx}) => {
+      if (tx.location !== 'server') return
+      const transaction = tx.dbTransaction.wrappedTransaction as BankingTransaction
+      const {bankLedgerGroupId: _bankLedgerGroupId, ...commandInput} = args
+      await createManualBankAccount(transaction, {...commandInput, userId: requireUserID(ctx)})
+    }),
+    createManualTransaction: defineMutator(createManualTransactionInput, async ({args, ctx, tx}) => {
+      if (tx.location !== 'server') return
+      const transaction = tx.dbTransaction.wrappedTransaction as BankingTransaction
+      await createManualTransaction(transaction, {...args, userId: requireUserID(ctx)})
+    }),
+  },
   ledger: {
     categorizeTransaction: defineMutator(categorizeTransactionInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
