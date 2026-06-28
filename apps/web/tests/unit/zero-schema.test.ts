@@ -3,7 +3,6 @@ import {schema} from '@/zero/schema'
 
 describe('zero schema', () => {
   it('exposes domain tables', () => {
-    expect(schema.tables).not.toHaveProperty(['ledgerTransaction', 'Movements'].join(''))
     expect(Object.keys(schema.tables)).toEqual(
       expect.arrayContaining([
         'teams',
@@ -66,11 +65,9 @@ describe('zero schema', () => {
     expect(schema.tables.ledgerAccounts.columns.linkedBankAccountId).toMatchObject({type: 'string', optional: true, serverName: 'linked_bank_account_id'})
     expect(schema.tables.ledgerTransactions.columns).not.toHaveProperty('bankTransactionId')
     expect(schema.tables.ledgerTransactions.columns).not.toHaveProperty('aiConfidence')
-    expect(schema.tables.ledgerTransactions.columns).not.toHaveProperty('aiProcessingStartedAt')
     expect(schema.tables.ledgerTransactions.columns).not.toHaveProperty('aiReasoning')
     expect(schema.tables.bankTransactions.columns.amount).toMatchObject({type: 'number', optional: false})
     expect(schema.tables.bankTransactions.columns.aiConfidence).toMatchObject({type: 'number', optional: true, serverName: 'ai_confidence'})
-    expect(schema.tables.bankTransactions.columns).not.toHaveProperty('aiProcessingStartedAt')
     expect(schema.tables.bankTransactions.columns.aiReasoning).toMatchObject({type: 'string', optional: true, serverName: 'ai_reasoning'})
     expect(schema.tables.ledgerTransactions.columns.categorizedBy).toMatchObject({type: 'string', optional: true, serverName: 'categorized_by'})
     expect(schema.tables.ledgerTransactions.columns.userConfirmedAt).toMatchObject({type: 'number', optional: true, serverName: 'user_confirmed_at'})

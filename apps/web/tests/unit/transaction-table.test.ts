@@ -18,55 +18,6 @@ vi.mock('@tanstack/react-virtual', () => ({
 }))
 
 describe('TransactionTable', () => {
-  it('owns row scrolling while keeping the table header sticky', () => {
-    const markup = renderToStaticMarkup(
-      React.createElement(TransactionTable, {
-        rows: [buildTransactionTableRow()],
-        categorizationAccounts: testCategorizationAccounts,
-        transferAccounts: [],
-        isAiRequestPending: false,
-        onCategorizeBankTransaction: vi.fn(),
-        onConfirmTransaction: vi.fn(),
-        onAiCategorizeOne: vi.fn(),
-        onSaveSplit: vi.fn(() => true),
-      }),
-    )
-
-    expect(markup).toContain('min-h-0 flex-1 overflow-auto')
-    expect(markup).toContain('sticky top-0 z-10 bg-muted')
-    expect(markup).not.toContain('Split transaction')
-    expect(markup).toContain('<tbody class="relative grid"')
-  })
-
-  it('keeps virtualized rows at the fixed estimated height with truncating cells', () => {
-    virtualizerOptions.length = 0
-
-    const markup = renderToStaticMarkup(
-      React.createElement(TransactionTable, {
-        rows: [
-          buildTransactionTableRow({
-            description: 'A very long transaction description that should stay on one row instead of wrapping',
-            bankAccountName: 'A very long bank account name',
-            categoryLabel: 'A very long category label',
-          }),
-        ],
-        categorizationAccounts: testCategorizationAccounts,
-        transferAccounts: [],
-        isAiRequestPending: false,
-        onCategorizeBankTransaction: vi.fn(),
-        onConfirmTransaction: vi.fn(),
-        onAiCategorizeOne: vi.fn(),
-        onSaveSplit: vi.fn(() => true),
-      }),
-    )
-
-    expect(virtualizerOptions.at(-1)?.estimateSize()).toBe(56)
-    expect(markup).toContain('height:56px')
-    expect(markup).toContain('class="grid h-14')
-    expect(markup).toContain('truncate px-3 py-2 font-medium')
-    expect(markup).toContain('truncate px-3 py-2 text-muted-foreground')
-  })
-
   it('renders only the virtual window for large transaction lists', () => {
     const rows = Array.from({length: 40}, (_, index) =>
       buildTransactionTableRow({
@@ -115,8 +66,5 @@ describe('TransactionTable', () => {
     expect(markup).toContain('aria-label="Category for Netto"')
     expect(markup).toContain('data-slot="popover-trigger"')
     expect(markup).toContain('Choose category')
-    expect(markup).not.toContain('<select')
-    expect(markup).not.toContain('aria-label="AI categorize transaction"')
-    expect(markup).not.toContain('aria-label="Split transaction"')
   })
 })

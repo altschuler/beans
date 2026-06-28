@@ -92,5 +92,6 @@ describe('completeGoCardlessCallback', () => {
       ],
     })
     expect(repository.markBankConnectionLinked).toHaveBeenCalledWith('connection-1')
+    expect(repository.upsertLinkedAccounts.mock.invocationCallOrder[0]!).toBeLessThan(repository.markBankConnectionLinked.mock.invocationCallOrder[0]!)
   })
 })

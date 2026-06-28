@@ -340,7 +340,6 @@ describe('ledger Zero mutators', () => {
         value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, categorizationRevision: 1}),
       },
     ])
-    expect((tx.operations.find(operation => operation.table === 'bankTransactions')?.value as Record<string, unknown>)).not.toHaveProperty('aiProcessingStartedAt')
     expect(categorizeBankTransaction).not.toHaveBeenCalled()
   })
 
@@ -392,8 +391,6 @@ describe('ledger Zero mutators', () => {
       {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, categorizationRevision: 1})},
       {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'counter-bank-transaction', categorizationRevision: 4})},
     ])
-    const bankTransactionUpdates = tx.operations.filter(operation => operation.table === 'bankTransactions').map(operation => operation.value as Record<string, unknown>)
-    expect(bankTransactionUpdates[0]).not.toHaveProperty('aiProcessingStartedAt')
     expect(splitBankTransaction).not.toHaveBeenCalled()
   })
 

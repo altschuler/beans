@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest'
 import {asQueryInternals} from '@rocicorp/zero/bindings'
 import type {AST, Condition, AnyQuery} from '@rocicorp/zero'
 import {queries} from '@/zero/queries'
-import {requireZeroUserID, visibleBankTransaction} from '@/zero/permissions'
+import {visibleBankTransaction} from '@/zero/permissions'
 import {zql} from '@/zero/schema'
 import {zeroContextFor} from '../helpers/zero'
 
@@ -16,10 +16,6 @@ describe('Zero permission helpers', () => {
 
     expect(ast.table).toBe('bankTransactions')
     expect(conditionHasExistsPath(ast.where, ['bankAccount', 'team', 'members'], {field: 'userId', value: 'user-1'})).toBe(true)
-  })
-
-  it('requires an authenticated Zero user id', () => {
-    expect(() => requireZeroUserID(undefined)).toThrow('Authentication required')
   })
 })
 

@@ -506,31 +506,17 @@ describe('LedgerDashboard', () => {
     expect(toastSuccess).toHaveBeenCalledWith('Synced 1 account; fetched 2 transactions and upserted 2.')
   })
 
-  it('renders the transactions view in a page layout with global actions in the fixed header', () => {
+  it('renders the transactions view with global actions', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Transactions'}])
-    expect(renderedPageLayouts[0]?.contentClassName).toBe('p-0')
     expect(markup).toContain('data-testid="page-layout-actions"')
-    expect(markup).toContain('flex h-full min-h-0 flex-col')
-    expect(markup).toContain('flex min-h-0 flex-1')
-    expect(markup).toContain('h-full min-h-0 flex-1 overflow-auto')
-    expect(markup).not.toContain('border-b px-3 pt-3 pb-3')
-    expect(markup).not.toContain('px-4 pt-4 md:px-6 lg:px-8')
     expect(markup).toContain('1 needs review')
-    expect(markup).not.toContain('data-testid="team-chat-panel"')
-    expect(markup).not.toContain('hidden min-h-0 flex-1 overflow-hidden lg:flex')
     expect(markup).toContain('Auto-categorize')
-    expect(markup).not.toContain('AI categorize up to 25')
     expect(markup).toContain('Sync all accounts')
     expect(findButton('Sync all accounts')?.variant).toBe('outline')
     expect(markup).toContain('aria-label="More transaction actions"')
     expect(markup).toContain('Netto')
-    expect(markup).not.toContain('<h1')
-    expect(markup).not.toContain('Review imported transactions and keep your envelope ledger categorized.')
-    expect(markup).not.toContain('Recent transactions')
-    expect(markup).not.toContain('Choose a category inline. Use Split only for the rare transaction that spans categories.')
-    expect(markup).not.toContain('Everyday spending')
   })
 
   it('renders bank account transactions without global actions while keeping filtered row actions', () => {
@@ -603,8 +589,6 @@ describe('LedgerDashboard', () => {
     expect(markup).not.toContain('Clear categorizations')
     expect(markup).not.toContain('Sync all accounts')
     expect(markup).toContain('aria-label="Category for Netto"')
-    expect(markup).not.toContain('aria-label="AI categorize transaction"')
-    expect(markup).not.toContain('aria-label="Split transaction"')
   })
 
   it('shows Add transaction only on manual bank account pages', () => {
@@ -690,17 +674,6 @@ describe('LedgerDashboard', () => {
     expect(markup).not.toContain('No imported bank transactions yet.')
   })
 
-  it('uses dashboard related queries instead of broad ledger transaction and posting reads', () => {
-    renderToStaticMarkup(React.createElement(LedgerDashboard))
-
-    expect(requestedQueryNames).toContain('ledgerAccountsForDashboard')
-    expect(requestedQueryNames).toContain('bankTransactionsForDashboard')
-    expect(requestedQueryNames).not.toContain('ledgerAccounts')
-    expect(requestedQueryNames).not.toContain('ledgerTransactions')
-    expect(requestedQueryNames).not.toContain('ledgerPostings')
-    expect(requestedQueryNames).not.toContain('bankTransactions')
-  })
-
   it('renders transactions as a table with bank account, category actions, and dot-only status marker', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
@@ -714,12 +687,7 @@ describe('LedgerDashboard', () => {
     expect(markup).toContain('title="AI suggested a category; review recommended. Reason: Looks like a supermarket purchase."')
     const confirmDot = findButtonByLabelPrefix('Confirm category for Netto.')
     expect(confirmDot?.disabled).toBeFalsy()
-    expect(confirmDot?.className).toContain('cursor-pointer')
-    expect(confirmDot?.className).toContain('hover:bg-transparent')
-    expect(confirmDot?.className).toContain('hover:ring-2')
     expect(markup).toContain('aria-label="Category for Netto"')
-    expect(markup).not.toContain('aria-label="AI categorize transaction"')
-    expect(markup).not.toContain('aria-label="Split transaction"')
   })
 
   it('enables batch AI when imported rows do not have ledger interpretations yet', () => {

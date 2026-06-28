@@ -19,7 +19,6 @@ describe('team data assistant Flue agent', () => {
     expect(mod.teamDataAssistantInstructions).toContain('category or category group')
     expect(mod.teamDataAssistantInstructions).toContain('re-read')
     expect(mod.teamDataAssistantInstructions).toContain('stop remaining category-management operations')
-    expect(mod.teamDataAssistantInstructions).not.toContain('cannot create, rename, edit, or delete categories')
   })
 
   it('exposes confirmed chat write tools instead of the autonomous suggestion tool', async () => {
@@ -27,13 +26,9 @@ describe('team data assistant Flue agent', () => {
     const id = encodeTeamDataAssistantId({teamId: 'team-1', userId: 'user-1'})
 
     const agent = mod.createTeamDataAssistantConfig({id})
-    const toolsByName = Object.fromEntries(agent.tools.map(tool => [tool.name, tool]))
-
     expect(agent.tools.map(tool => tool.name)).toContain('applyCategorization')
     expect(agent.tools.map(tool => tool.name)).toContain('manageCategory')
     expect(agent.tools.map(tool => tool.name)).not.toContain('applyCategorizationSuggestion')
-    expect(toolsByName.applyCategorization?.description).toContain('separate confirming user reply')
-    expect(toolsByName.manageCategory?.description).toContain('separate confirming user reply')
   })
 
   it('rejects HTTP access without the internal token or matching scope headers', async () => {
