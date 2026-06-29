@@ -40,6 +40,14 @@ The assistant uses scoped Flue read tools to inspect current data before answeri
 
 Read results are scoped to the trusted user/team and expose compact domain projections rather than arbitrary raw database rows or provider payloads.
 
+## Live turn progress
+
+During long turns, the chat transcript shows a small Penge activity bubble instead of only a generic working state. The bubble is derived from `useFlueAgent()` status and streamed message parts in the browser; it is not a separate trace panel.
+
+Progress text is app-authored and allowlisted. Known tool activity maps to labels such as “Searching transactions…”, “Reading transaction details…”, “Checking categories…”, and “Reviewing prior categorizations…”. Streaming assistant text shows “Writing answer…”, submitted turns show “Starting…”, and unknown or unclassified activity falls back to “Thinking through the request…”. Raw tool names, tool arguments, tool outputs, internal ids, model reasoning, and provider details must not be shown in the progress bubble.
+
+Progress labels remain visible for at least one second to avoid flicker. Errors bypass that delay and appear immediately, while final assistant text and idle states clear the activity bubble immediately.
+
 ## Interactive bulk categorization
 
 Ask Penge can handle initial or backlog categorization through an interactive bulk mode. The mode starts when the user explicitly asks for bulk, backlog, or initial categorization, and the assistant may also choose it after finding roughly 50 or more eligible uncategorized or needs-review transactions.

@@ -23,9 +23,12 @@ Only one active `categorize-transactions` workflow may exist for a team. Duplica
 
 - show that AI categorization is running for the team
 - disable row and batch AI start buttons while the workflow is active
+- show a compact active workflow trace once Flue attaches the runtime `flueRunId`
 - continue showing row updates through existing Zero transaction reads as Flue writes interpretations or unable results
 
-Penge does not show per-row “agent is considering this row” state. The historical `bank_transactions.ai_processing_started_at` row-level claim has been retired; Flue categorization uses team-level workflow visibility rather than row-level processing claims.
+The trace is active-run visibility only. Until `flueRunId` is attached, the page shows a pending trace message. Once it exists, the browser observes Flue through `useFlueWorkflow({runId})` via the authenticated `/api/flue/runs/:runId` proxy path. The proxy authorizes the request by looking up the app workflow run by `flue_run_id` and checking the signed-in user's team membership; unauthenticated requests return `401`, and unknown or inaccessible runs return `404`.
+
+Penge does not show per-row “agent is considering this row” state or completed-run trace history. The historical `bank_transactions.ai_processing_started_at` row-level claim has been retired; Flue categorization uses team-level workflow visibility rather than row-level processing claims.
 
 ## Agent context
 
