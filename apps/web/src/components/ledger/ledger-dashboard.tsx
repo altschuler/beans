@@ -18,6 +18,7 @@ import {runZeroMutation} from '@/lib/run-mutation'
 import {aiCategorizeNeedsReviewBatch, aiCategorizeTransaction} from '@/ledger/ai-categorization-fns'
 import {createManualTransactionInput, mutators} from '@/zero/mutators'
 import {queries} from '@/zero/queries'
+import {CategorizationWorkflowTrace} from './categorization-workflow-trace'
 import {buildLedgerDashboardModel} from './ledger-dashboard-model'
 import {saveDashboardSplitTransaction} from './save-dashboard-split-transaction'
 
@@ -58,7 +59,10 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     bankAccountIdFilter: view === 'bankAccountTransactions' ? bankAccountId : null,
   })
 
-  const isCategorizeWorkflowActive = Boolean(activeTeamId && activeWorkflowRuns.some((run) => run.workflowName === CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME))
+  const activeCategorizationWorkflowRun = activeTeamId
+    ? activeWorkflowRuns.find((run) => run.workflowName === CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME)
+    : undefined
+  const isCategorizeWorkflowActive = Boolean(activeCategorizationWorkflowRun)
   const isAiStartDisabled = isAiRequestPending || isCategorizeWorkflowActive
   const bankAccountsComplete = bankAccountsStatus.type === 'complete'
   const bankTransactionsComplete = bankTransactionsStatus.type === 'complete'
@@ -179,6 +183,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
 
   const dashboardContent = (
     <div className={dashboardClassName}>
+      <CategorizationWorkflowTrace flueRunId={activeCategorizationWorkflowRun?.flueRunId} />
       <div className={view === 'transactions' ? 'flex min-h-0 flex-1' : 'grid gap-4'}>
         {view === 'transactions' ? (
           transactionRowsSyncing ? (

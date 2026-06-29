@@ -7,6 +7,7 @@ describe('Flue proxy', () => {
     const handler = createFlueProxyHandler({
       getSession: vi.fn(async () => null),
       userCanAccessTeam: vi.fn(),
+      resolveWorkflowRunTeamIdForFlueRunId: vi.fn(async () => null),
       fetch: vi.fn(),
       env: {PENGE_FLUE_BASE_URL: 'http://flue.test', PENGE_FLUE_INTERNAL_TOKEN: 'secret'},
     })
@@ -30,6 +31,7 @@ describe('Flue proxy', () => {
     const handler = createFlueProxyHandler({
       getSession: vi.fn(async () => ({user: {id: 'user-1'}})),
       userCanAccessTeam: vi.fn(async () => true),
+      resolveWorkflowRunTeamIdForFlueRunId: vi.fn(async () => null),
       fetch: upstreamFetch,
       env: {PENGE_FLUE_BASE_URL: 'http://flue.test/', PENGE_FLUE_INTERNAL_TOKEN: 'secret'},
     })
@@ -50,6 +52,7 @@ describe('Flue proxy', () => {
     const handler = createFlueProxyHandler({
       getSession: vi.fn(async () => ({user: {id: 'user-1'}})),
       userCanAccessTeam: vi.fn(async () => true),
+      resolveWorkflowRunTeamIdForFlueRunId: vi.fn(async () => null),
       fetch: vi.fn(async () => new Response('{"ok":true}', {
         headers: {
           connection: 'keep-alive',
@@ -69,11 +72,59 @@ describe('Flue proxy', () => {
     expect(response.headers.has('transfer-encoding')).toBe(false)
   })
 
+  it('forwards authorized workflow run stream reads', async () => {
+    const upstreamFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe('http://flue.test/runs/flue-run-1?offset=-1&live=long-poll')
+      expect(init?.method).toBe('GET')
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer secret')
+      expect(new Headers(init?.headers).has('cookie')).toBe(false)
+      return new Response('[{"type":"run_start"}]', {status: 200, headers: {'content-type': 'application/json'}})
+    })
+    const handler = createFlueProxyHandler({
+      getSession: vi.fn(async () => ({user: {id: 'user-1'}})),
+      userCanAccessTeam: vi.fn(async () => true),
+      resolveWorkflowRunTeamIdForFlueRunId: vi.fn(async () => 'team-1'),
+      fetch: upstreamFetch,
+      env: {PENGE_FLUE_BASE_URL: 'http://flue.test/', PENGE_FLUE_INTERNAL_TOKEN: 'secret'},
+    })
+
+    const response = await handler(new Request('https://app.test/api/flue/runs/flue-run-1?offset=-1&live=long-poll', {
+      headers: {cookie: 'session=private'},
+    }))
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe('[{"type":"run_start"}]')
+    expect(upstreamFetch).toHaveBeenCalledOnce()
+  })
+
+  it('hides unknown and inaccessible workflow run streams', async () => {
+    const handler = createFlueProxyHandler({
+      getSession: vi.fn(async () => ({user: {id: 'user-1'}})),
+      userCanAccessTeam: vi.fn(async () => false),
+      resolveWorkflowRunTeamIdForFlueRunId: vi.fn(async () => 'team-1'),
+      fetch: vi.fn(),
+      env: {PENGE_FLUE_BASE_URL: 'http://flue.test', PENGE_FLUE_INTERNAL_TOKEN: 'secret'},
+    })
+
+    expect((await handler(new Request('https://app.test/api/flue/runs/flue-run-1'))).status).toBe(404)
+
+    const unknownRunHandler = createFlueProxyHandler({
+      getSession: vi.fn(async () => ({user: {id: 'user-1'}})),
+      userCanAccessTeam: vi.fn(async () => true),
+      resolveWorkflowRunTeamIdForFlueRunId: vi.fn(async () => null),
+      fetch: vi.fn(),
+      env: {PENGE_FLUE_BASE_URL: 'http://flue.test', PENGE_FLUE_INTERNAL_TOKEN: 'secret'},
+    })
+
+    expect((await unknownRunHandler(new Request('https://app.test/api/flue/runs/missing-run'))).status).toBe(404)
+  })
+
   it('hides mismatched users, inaccessible teams, and unsupported Flue paths', async () => {
     const id = encodeTeamDataAssistantId({teamId: 'team-1', userId: 'other-user'})
     const baseDeps = {
       getSession: vi.fn(async () => ({user: {id: 'user-1'}})),
       userCanAccessTeam: vi.fn(async () => false),
+      resolveWorkflowRunTeamIdForFlueRunId: vi.fn(async () => null),
       fetch: vi.fn(),
       env: {PENGE_FLUE_BASE_URL: 'http://flue.test', PENGE_FLUE_INTERNAL_TOKEN: 'secret'},
     }

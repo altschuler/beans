@@ -91,7 +91,7 @@ const queryRows = vi.hoisted(() => ({
     }
   }>,
   bankAccounts: [] as Array<{id: string; name: string; teamId?: string; syncStatus?: string; provider?: string; currency?: string | null}>,
-  activeWorkflowRuns: [] as Array<{id: string; workflowName: string; teamId: string; status: string}>,
+  activeWorkflowRuns: [] as Array<{id: string; workflowName: string; teamId: string; status: string; flueRunId: string | null}>,
 }))
 
 const zeroMutate = vi.hoisted(() => vi.fn(async () => undefined))
@@ -152,6 +152,7 @@ const renderedPageLayouts = vi.hoisted(
 const requestedBankTransactionsForBankAccountArgs = vi.hoisted(() => [] as Array<{bankAccountId: string}>)
 const requestedActiveWorkflowRunsByTeamArgs = vi.hoisted(() => [] as Array<{teamId: string}>)
 const requestedQueryNames = vi.hoisted(() => [] as string[])
+const renderedWorkflowTraces = vi.hoisted(() => [] as Array<{flueRunId?: string | null}>)
 
 vi.mock('sonner', () => ({
   toast: {
@@ -328,6 +329,16 @@ vi.mock('@/ledger/ai-categorization-fns', () => ({
   aiCategorizeNeedsReviewBatch,
 }))
 
+vi.mock('@/components/ledger/categorization-workflow-trace', async () => {
+  const ReactModule = await import('react')
+  return {
+    CategorizationWorkflowTrace: (props: {flueRunId?: string | null}) => {
+      renderedWorkflowTraces.push(props)
+      return props.flueRunId === undefined ? null : ReactModule.createElement('div', {'data-testid': 'categorization-workflow-trace'}, props.flueRunId ?? 'pending')
+    },
+  }
+})
+
 vi.mock('@/zero/mutators', () => ({
   createManualTransactionInput: {
     safeParse: (input: {id?: string; bankAccountId?: string; date?: string; description?: string; amount?: string}) => {
@@ -381,6 +392,7 @@ describe('LedgerDashboard', () => {
     requestedBankTransactionsForBankAccountArgs.length = 0
     requestedActiveWorkflowRunsByTeamArgs.length = 0
     requestedQueryNames.length = 0
+    renderedWorkflowTraces.length = 0
     queryStatuses.groups = 'complete'
     queryStatuses.accounts = 'complete'
     queryStatuses.ledgerTransactions = 'complete'
@@ -750,12 +762,14 @@ describe('LedgerDashboard', () => {
       aiConfidence: null,
       aiReasoning: null,
     }))
-    queryRows.activeWorkflowRuns = [{id: 'app-run-1', workflowName: 'categorize-transactions', teamId: 'team-1', status: 'active'}]
+    queryRows.activeWorkflowRuns = [{id: 'app-run-1', workflowName: 'categorize-transactions', teamId: 'team-1', status: 'active', flueRunId: 'flue-run-1'}]
 
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     expect(requestedActiveWorkflowRunsByTeamArgs).toContainEqual({teamId: 'team-1'})
     expect(markup).toContain('AI categorization is running for this team')
+    expect(markup).toContain('flue-run-1')
+    expect(renderedWorkflowTraces).toContainEqual({flueRunId: 'flue-run-1'})
     expect(findButton('Auto-categorize')?.disabled).toBe(true)
   })
 
