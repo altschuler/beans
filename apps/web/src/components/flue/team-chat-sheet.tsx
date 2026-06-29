@@ -28,11 +28,12 @@ export type TeamChatPanelProps = {
 }
 
 type TextPart = {type: 'text'; text: string; state?: string}
+type ChatMessagePart = TextPart | {type: string; state?: string; toolName?: string; tool?: string; name?: string; [key: string]: unknown}
 
 type ChatMessage = {
   id: string
   role: string
-  parts?: Array<TextPart | {type: string; [key: string]: unknown}>
+  parts?: ChatMessagePart[]
 }
 
 export function TeamChatSheet({teamId, userId, children}: TeamChatSheetProps) {
@@ -66,7 +67,7 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: Team
   const agent = useFlueAgent({name: 'team-data-assistant', id: conversationId, history: 20, live: 'sse'})
   const canSend = Boolean(conversationId && input.trim() && !isSubmitting)
   const messages = agent.messages as ChatMessage[]
-  const activity = getChatActivity({status: agent.status, error: agent.error, isSubmitting, messages})
+  const activity = useStableChatActivity(getChatActivity({status: agent.status, error: agent.error, isSubmitting, messages}))
 
   useEffect(() => {
     resizeComposer(inputRef.current)
@@ -225,6 +226,19 @@ function ChatMarkdown({children}: {children: string}) {
   )
 }
 
+const progressMinimumMs = 1000
+
+const toolProgressLabels: Record<string, string> = {
+  searchBankTransactions: 'Searching transactions…',
+  getBankTransactionDetail: 'Reading transaction details…',
+  searchLedgerAccounts: 'Checking categories…',
+  manageCategory: 'Checking categories…',
+  applyCategorizations: 'Checking categories…',
+  applyCategorization: 'Applying categorizations…',
+  applyCategorizationSuggestion: 'Applying categorizations…',
+  searchLedgerTransactions: 'Reviewing prior categorizations…',
+}
+
 type ChatActivity = {
   text: string
   tone: 'muted' | 'error'
@@ -239,16 +253,112 @@ function ChatActivityBubble({activity}: {activity: ChatActivity}) {
   )
 }
 
+function useStableChatActivity(activity: ChatActivity | null) {
+  const [displayedActivity, setDisplayedActivity] = useState(activity)
+  const shownAtRef = useRef(Date.now())
+  const pendingActivityRef = useRef<ChatActivity | null>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const activityText = activity?.text
+  const activityTone = activity?.tone
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+
+    if (!activityText || activityTone === 'error') {
+      pendingActivityRef.current = null
+      const nextActivity = activityText ? {text: activityText, tone: activityTone ?? 'muted'} : null
+      if (displayedActivity?.text !== nextActivity?.text || displayedActivity?.tone !== nextActivity?.tone) {
+        shownAtRef.current = Date.now()
+        setDisplayedActivity(nextActivity)
+      }
+      return
+    }
+
+    const nextActivity = {text: activityText, tone: activityTone ?? 'muted'}
+    if (!displayedActivity || displayedActivity.tone === 'error' || displayedActivity.text === nextActivity.text) {
+      pendingActivityRef.current = null
+      if (displayedActivity?.text !== nextActivity.text || displayedActivity?.tone !== nextActivity.tone) {
+        shownAtRef.current = Date.now()
+        setDisplayedActivity(nextActivity)
+      }
+      return
+    }
+
+    const elapsed = Date.now() - shownAtRef.current
+    if (elapsed >= progressMinimumMs) {
+      pendingActivityRef.current = null
+      shownAtRef.current = Date.now()
+      setDisplayedActivity(nextActivity)
+      return
+    }
+
+    pendingActivityRef.current = nextActivity
+    timeoutRef.current = setTimeout(() => {
+      const pendingActivity = pendingActivityRef.current
+      if (!pendingActivity) return
+
+      pendingActivityRef.current = null
+      timeoutRef.current = null
+      shownAtRef.current = Date.now()
+      setDisplayedActivity(pendingActivity)
+    }, progressMinimumMs - elapsed)
+  }, [activityText, activityTone, displayedActivity])
+
+  return displayedActivity
+}
+
 function getChatActivity({status, error, isSubmitting, messages}: {status?: string; error?: unknown; isSubmitting: boolean; messages: ChatMessage[]}): ChatActivity | null {
   if (error instanceof Error) return {text: error.message, tone: 'error'}
   if (isSubmitting) return {text: 'Sending…', tone: 'muted'}
   if (status === 'connecting') return {text: 'Connecting to Penge…', tone: 'muted'}
-  if (status === 'submitted') return {text: 'Penge is thinking…', tone: 'muted'}
-  if (status === 'streaming') return {text: hasStreamingText(messages) ? 'Penge is responding…' : 'Penge is working…', tone: 'muted'}
-  if (status && status !== 'idle') return {text: status, tone: 'muted'}
+  if (status === 'submitted') return {text: 'Starting…', tone: 'muted'}
+  if (status === 'streaming') return {text: getStreamingActivityText(messages), tone: 'muted'}
+  if (status && status !== 'idle') return {text: 'Thinking through the request…', tone: 'muted'}
   return null
 }
 
-function hasStreamingText(messages: ChatMessage[]) {
-  return messages.some((message) => message.role === 'assistant' && (message.parts ?? []).some((part) => part.type === 'text' && part.state === 'streaming'))
+function getStreamingActivityText(messages: ChatMessage[]) {
+  const latestAssistantMessage = getLatestAssistantMessage(messages)
+  if (!latestAssistantMessage) return 'Thinking through the request…'
+  if (hasStreamingText(latestAssistantMessage)) return 'Writing answer…'
+
+  const toolName = getLatestStreamingToolName(latestAssistantMessage)
+  return (toolName && toolProgressLabels[toolName]) || 'Thinking through the request…'
+}
+
+function getLatestAssistantMessage(messages: ChatMessage[]) {
+  return messages.filter((message) => message.role === 'assistant').at(-1)
+}
+
+function hasStreamingText(message: ChatMessage) {
+  return (message.parts ?? []).some((part) => part.type === 'text' && part.state === 'streaming')
+}
+
+function getLatestStreamingToolName(message: ChatMessage) {
+  return (message.parts ?? [])
+    .filter(isActiveToolPart)
+    .map(getToolName)
+    .filter((toolName): toolName is string => Boolean(toolName))
+    .at(-1)
+}
+
+function isActiveToolPart(part: ChatMessagePart) {
+  return Boolean(getToolName(part)) && part.state !== 'output-available' && part.state !== 'output-error'
+}
+
+function getToolName(part: ChatMessagePart) {
+  if ('toolName' in part && typeof part.toolName === 'string') return part.toolName
+  if ('tool' in part && typeof part.tool === 'string') return part.tool
+  if ('name' in part && typeof part.name === 'string') return part.name
+  if (part.type.startsWith('tool-')) return part.type.slice('tool-'.length)
+  return null
 }

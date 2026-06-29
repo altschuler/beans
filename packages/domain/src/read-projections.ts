@@ -132,7 +132,7 @@ type InterpretationSummary = {
 }
 
 const DEFAULT_LIMIT = 25
-const MAX_LIMIT = 100
+const MAX_LIMIT = 500
 
 export async function searchBankTransactions(
   tx: DomainReadExecutor,

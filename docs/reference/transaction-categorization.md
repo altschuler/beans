@@ -51,6 +51,8 @@ The server validates the target bank account and searches for an unreconciled op
 
 Ask Penge can propose and apply confirmed transaction categorization changes for the current team. The assistant must first read relevant context, state a concrete proposal, and wait for natural explicit confirmation of that latest proposal before calling the chat write tool.
 
+For initial imports or large backlogs, Ask Penge can enter interactive bulk categorization mode. In that mode it uses a virtual workspace to track eligible transactions, category choices, grouped proposals, decisions, and progress. The assistant should reduce many uncategorized rows into concise group-level questions such as merchant or recurring-payment groups, then apply only the groups the user confirms through the multi-row `applyCategorizations` chat tool. It should verify remaining eligible transactions before saying a group or run is done.
+
 Supported chat writes are category, split, and transfer interpretations. They use the same guarded categorization services as manual UI actions, require the current `categorizationRevision`, and write user-confirmed interpretations. Stale revisions, invalid categories, unsafe transfers, unbalanced splits, and out-of-scope rows are rejected without partial writes.
 
 ## Status dot and confirmation

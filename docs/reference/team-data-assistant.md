@@ -40,13 +40,25 @@ The assistant uses scoped Flue read tools to inspect current data before answeri
 
 Read results are scoped to the trusted user/team and expose compact domain projections rather than arbitrary raw database rows or provider payloads.
 
+## Interactive bulk categorization
+
+Ask Penge can handle initial or backlog categorization through an interactive bulk mode. The mode starts when the user explicitly asks for bulk, backlog, or initial categorization, and the assistant may also choose it after finding roughly 50 or more eligible uncategorized or needs-review transactions.
+
+Bulk mode uses the default Flue virtual sandbox with a predictable workspace cwd. The assistant should work under `/work/bulk-categorization` and maintain working files such as `categories.json`, `eligible-transactions.jsonl`, `merchant-groups.jsonl`, `recurring-groups.jsonl`, `transfer-candidates.jsonl`, `category-decisions.jsonl`, and `progress.json`.
+
+The workspace files are working memory, not authority. The assistant should ingest scoped data into files near the start of the run and avoid repeated broad exploratory database reads over the same set. Targeted database reads remain appropriate for missing details, stale or conflicted rows, user questions outside the workspace, refreshes, and final guarded writes that need current `categorizationRevision` values.
+
+The assistant should group transactions by merchant, counterparty, recurrence, amount pattern, transfer candidates, and description similarity. It asks concise group-level confirmation questions that name the user-facing pattern, category, count, and representative examples. The initial bulk request is not permission to write. Confirmed groups are applied through the `applyCategorizations` tool with every transaction in the confirmed group, and progress is reported in chat. The assistant should verify remaining eligible transactions before saying a group or run is done.
+
+Confirmed group decisions are current-backlog/session decisions only. Ask Penge does not create durable merchant/category rules in the first implementation.
+
 ## Writes and confirmation
 
 Before any write, the assistant must state a concrete proposal naming the transaction, category, or category group and the exact change, then ask for permission. An initial user request to create, update, delete, apply, categorize, or otherwise change data is a request for a proposal, not permission to write. The assistant may call a write tool only after a separate natural explicit confirmation of the latest proposal, such as “yes”, “sounds good”, or “go ahead”. A new unrelated request is not confirmation.
 
 Supported chat writes are:
 
-- transaction categorization changes through `applyCategorization`: category, split, or transfer
+- transaction categorization changes through `applyCategorizations`: category, split, or transfer
 - category/group management through `manageCategory`: create group, update group, delete empty editable group, create category, update category, or delete unused editable category
 
 Chat categorization writes use manual user-confirmed semantics and still require the current `categorizationRevision`. Category-management writes run one operation per tool call. If a category-management operation fails, the assistant should report the failure, re-read relevant categories or groups before proposing a follow-up, and stop remaining operations from that failed proposal.

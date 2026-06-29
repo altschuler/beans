@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import React from 'react'
-import {fireEvent, render, screen, waitFor, within} from '@testing-library/react'
+import {act, fireEvent, render, screen, waitFor, within} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 
 const flueAgent = vi.hoisted(() => ({
-  messages: [] as Array<{id: string; role: string; parts: Array<{type: string; text?: string; state?: string}>}>,
+  messages: [] as Array<{id: string; role: string; parts: Array<{type: string; text?: string; state?: string; toolName?: string}>}>,
   status: 'idle',
   error: null as Error | null,
   sendMessage: vi.fn(async () => undefined),
@@ -161,7 +161,7 @@ describe('TeamChatSheet', () => {
     expect(screen.getByLabelText('Message Ask Penge')).toHaveValue('')
   })
 
-  it('shows friendly agent activity status inline in the chat transcript', async () => {
+  it('shows starting status when a chat turn is submitted', async () => {
     flueAgent.status = 'submitted'
     const user = userEvent.setup()
     render(<TeamChatSheet teamId="team-1" userId="user-1" />)
@@ -169,23 +169,78 @@ describe('TeamChatSheet', () => {
     await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
 
     const transcript = screen.getByRole('log', {name: 'Ask Penge chat transcript'})
-    expect(within(transcript).getByText('Penge is thinking…')).toBeInTheDocument()
+    expect(within(transcript).getByText('Starting…')).toBeInTheDocument()
   })
 
-  it('shows working status for non-text streaming activity', async () => {
+  it('maps known streaming tool activity to safe progress labels', async () => {
     flueAgent.status = 'streaming'
-    flueAgent.messages = [{id: 'm1', role: 'assistant', parts: [{type: 'dynamic-tool', state: 'input-available'}]}]
+    flueAgent.messages = [{id: 'm1', role: 'assistant', parts: [{type: 'dynamic-tool', state: 'input-available', toolName: 'searchBankTransactions'}]}]
     const user = userEvent.setup()
     render(<TeamChatSheet teamId="team-1" userId="user-1" />)
 
     await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
 
     const transcript = screen.getByRole('log', {name: 'Ask Penge chat transcript'})
-    expect(within(transcript).getByText('Penge is working…')).toBeInTheDocument()
-    expect(within(transcript).queryByText('Penge is responding…')).not.toBeInTheDocument()
+    expect(within(transcript).getByText('Searching transactions…')).toBeInTheDocument()
+    expect(within(transcript).queryByText('searchBankTransactions')).not.toBeInTheDocument()
   })
 
-  it('shows responding status when assistant text is streaming', async () => {
+  it('falls back to a generic safe progress label for unknown tools', async () => {
+    flueAgent.status = 'streaming'
+    flueAgent.messages = [{id: 'm1', role: 'assistant', parts: [{type: 'dynamic-tool', state: 'input-available', toolName: 'internalExperimentalTool'}]}]
+    const user = userEvent.setup()
+    render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
+
+    const transcript = screen.getByRole('log', {name: 'Ask Penge chat transcript'})
+    expect(within(transcript).getByText('Thinking through the request…')).toBeInTheDocument()
+    expect(within(transcript).queryByText('internalExperimentalTool')).not.toBeInTheDocument()
+  })
+
+  it('shows a category-checking label for confirmed categorization writes', async () => {
+    flueAgent.status = 'streaming'
+    flueAgent.messages = [{id: 'm1', role: 'assistant', parts: [{type: 'dynamic-tool', state: 'input-available', toolName: 'applyCategorizations'}]}]
+    const user = userEvent.setup()
+    render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
+
+    const transcript = screen.getByRole('log', {name: 'Ask Penge chat transcript'})
+    expect(within(transcript).getByText('Checking categories…')).toBeInTheDocument()
+    expect(within(transcript).queryByText('applyCategorizations')).not.toBeInTheDocument()
+  })
+
+  it.each(['applyCategorization', 'applyCategorizationSuggestion'])('shows an applying label for %s tool activity', async (toolName) => {
+    flueAgent.status = 'streaming'
+    flueAgent.messages = [{id: 'm1', role: 'assistant', parts: [{type: 'dynamic-tool', state: 'input-available', toolName}]}]
+    const user = userEvent.setup()
+    render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
+
+    const transcript = screen.getByRole('log', {name: 'Ask Penge chat transcript'})
+    expect(within(transcript).getByText('Applying categorizations…')).toBeInTheDocument()
+    expect(within(transcript).queryByText(toolName)).not.toBeInTheDocument()
+  })
+
+  it('ignores completed tool activity from prior assistant messages', async () => {
+    flueAgent.status = 'streaming'
+    flueAgent.messages = [
+      {id: 'm1', role: 'assistant', parts: [{type: 'dynamic-tool', state: 'output-available', toolName: 'searchBankTransactions'}]},
+      {id: 'm2', role: 'assistant', parts: [{type: 'reasoning', state: 'streaming'}]},
+    ]
+    const user = userEvent.setup()
+    render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
+
+    const transcript = screen.getByRole('log', {name: 'Ask Penge chat transcript'})
+    expect(within(transcript).getByText('Thinking through the request…')).toBeInTheDocument()
+    expect(within(transcript).queryByText('Searching transactions…')).not.toBeInTheDocument()
+  })
+
+  it('shows writing status when assistant text is streaming', async () => {
     flueAgent.status = 'streaming'
     flueAgent.messages = [{id: 'm1', role: 'assistant', parts: [{type: 'text', text: 'Looking', state: 'streaming'}]}]
     const user = userEvent.setup()
@@ -194,7 +249,67 @@ describe('TeamChatSheet', () => {
     await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
 
     const transcript = screen.getByRole('log', {name: 'Ask Penge chat transcript'})
-    expect(within(transcript).getByText('Penge is responding…')).toBeInTheDocument()
+    expect(within(transcript).getByText('Writing answer…')).toBeInTheDocument()
+  })
+
+  it('keeps progress labels visible for at least 1000 ms before showing the next progress label', async () => {
+    vi.useFakeTimers()
+    try {
+      flueAgent.status = 'streaming'
+      flueAgent.messages = [{id: 'm1', role: 'assistant', parts: [{type: 'dynamic-tool', state: 'input-available', toolName: 'searchBankTransactions'}]}]
+      const {rerender} = render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+      fireEvent.click(screen.getByRole('button', {name: 'Ask Penge'}))
+      const transcript = screen.getByRole('log', {name: 'Ask Penge chat transcript'})
+      expect(within(transcript).getByText('Searching transactions…')).toBeInTheDocument()
+
+      flueAgent.messages = [{id: 'm1', role: 'assistant', parts: [{type: 'dynamic-tool', state: 'input-available', toolName: 'getBankTransactionDetail'}]}]
+      rerender(<TeamChatSheet teamId="team-1" userId="user-1" />)
+      expect(within(transcript).getByText('Searching transactions…')).toBeInTheDocument()
+      expect(within(transcript).queryByText('Reading transaction details…')).not.toBeInTheDocument()
+
+      await act(async () => vi.advanceTimersByTime(999))
+      expect(within(transcript).getByText('Searching transactions…')).toBeInTheDocument()
+
+      await act(async () => vi.advanceTimersByTime(1))
+      expect(within(transcript).getByText('Reading transaction details…')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows errors immediately without waiting for the progress delay', async () => {
+    flueAgent.status = 'streaming'
+    flueAgent.messages = [{id: 'm1', role: 'assistant', parts: [{type: 'dynamic-tool', state: 'input-available', toolName: 'searchBankTransactions'}]}]
+    const {rerender} = render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Ask Penge'}))
+    const transcript = screen.getByRole('log', {name: 'Ask Penge chat transcript'})
+    expect(within(transcript).getByText('Searching transactions…')).toBeInTheDocument()
+
+    flueAgent.status = 'error'
+    flueAgent.error = new Error('stream failed')
+    rerender(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    expect(within(transcript).getByText('stream failed')).toBeInTheDocument()
+    expect(within(transcript).queryByText('Searching transactions…')).not.toBeInTheDocument()
+  })
+
+  it('clears progress immediately when the final answer is idle', async () => {
+    flueAgent.status = 'streaming'
+    flueAgent.messages = [{id: 'm1', role: 'assistant', parts: [{type: 'dynamic-tool', state: 'input-available', toolName: 'searchBankTransactions'}]}]
+    const {rerender} = render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    fireEvent.click(screen.getByRole('button', {name: 'Ask Penge'}))
+    const transcript = screen.getByRole('log', {name: 'Ask Penge chat transcript'})
+    expect(within(transcript).getByText('Searching transactions…')).toBeInTheDocument()
+
+    flueAgent.status = 'idle'
+    flueAgent.messages = [{id: 'm1', role: 'assistant', parts: [{type: 'text', text: 'Done.'}]}]
+    rerender(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    expect(within(transcript).queryByText('Searching transactions…')).not.toBeInTheDocument()
+    expect(within(transcript).getByText('Done.')).toBeInTheDocument()
   })
 
   it('shows error status inline and disables empty sends', async () => {

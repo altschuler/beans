@@ -19,6 +19,16 @@ describe('team data assistant Flue agent', () => {
     expect(mod.teamDataAssistantInstructions).toContain('category or category group')
     expect(mod.teamDataAssistantInstructions).toContain('re-read')
     expect(mod.teamDataAssistantInstructions).toContain('stop remaining category-management operations')
+    expect(mod.teamDataAssistantInstructions).toContain('Interactive bulk categorization mode')
+    expect(mod.teamDataAssistantInstructions).toContain('explicitly asks for bulk, backlog, or initial categorization')
+    expect(mod.teamDataAssistantInstructions).toContain('50 or more eligible transactions')
+    expect(mod.teamDataAssistantInstructions).toContain('/work/bulk-categorization/eligible-transactions.jsonl')
+    expect(mod.teamDataAssistantInstructions).toContain('/work/bulk-categorization/category-decisions.jsonl')
+    expect(mod.teamDataAssistantInstructions).toContain('Do not treat the initial bulk categorization request as permission to write')
+    expect(mod.teamDataAssistantInstructions).toContain('applyCategorizations')
+    expect(mod.teamDataAssistantInstructions).toContain('verify remaining eligible transactions before saying the group or run is done')
+    expect(mod.teamDataAssistantInstructions).toContain('Do not create durable merchant/category rules')
+    expect(mod.teamDataAssistantInstructions).toContain('Report progress in chat')
   })
 
   it('exposes confirmed chat write tools instead of the autonomous suggestion tool', async () => {
@@ -26,9 +36,20 @@ describe('team data assistant Flue agent', () => {
     const id = encodeTeamDataAssistantId({teamId: 'team-1', userId: 'user-1'})
 
     const agent = mod.createTeamDataAssistantConfig({id})
-    expect(agent.tools.map(tool => tool.name)).toContain('applyCategorization')
+    expect(agent.tools.map(tool => tool.name)).toContain('applyCategorizations')
     expect(agent.tools.map(tool => tool.name)).toContain('manageCategory')
+    expect(agent.tools.map(tool => tool.name)).not.toContain('applyCategorization')
     expect(agent.tools.map(tool => tool.name)).not.toContain('applyCategorizationSuggestion')
+  })
+
+  it('uses the stronger bulk-capable model and a predictable virtual workspace cwd', async () => {
+    const mod = await import('../../../../apps/flue/src/agents/team-data-assistant')
+    const id = encodeTeamDataAssistantId({teamId: 'team-1', userId: 'user-1'})
+
+    const agent = mod.createTeamDataAssistantConfig({id})
+
+    expect(agent.model).toBe('openai/gpt-5.4-mini')
+    expect(agent.cwd).toBe('/workspace')
   })
 
   it('rejects HTTP access without the internal token or matching scope headers', async () => {

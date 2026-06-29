@@ -81,6 +81,31 @@ describe('Flue categorization read tools', () => {
     const accounts = await tools.searchLedgerAccounts.run({input: {eligibleCategoryOnly: true, limit: 10}}) as Array<Record<string, unknown>>
     expect(accounts.map(account => account.id)).toEqual(['groceries'])
   })
+
+  it('allows bulk-mode bank transaction reads above the previous hundred-row cap', async () => {
+    await db.insert(bankTransactions).values(
+      Array.from({length: 125}, (_, index) =>
+        bankTransaction(
+          `bulk-bank-transaction-${String(index + 1).padStart(3, '0')}`,
+          'bank-account-1',
+          `Bulk uncategorized purchase ${index + 1}`,
+          index % 2 === 0 ? 'Netto' : 'Rema 1000',
+          0,
+          `2026-05-${String((index % 28) + 1).padStart(2, '0')}`,
+        ),
+      ),
+    )
+
+    const tools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'app-run-1'})
+
+    const rows = await tools.searchBankTransactions.run({
+      input: {reviewStatus: 'uncategorized', limit: 500},
+    }) as Array<Record<string, unknown>>
+
+    expect(rows).toHaveLength(125)
+    expect(rows.every(row => String(row.id).startsWith('bulk-bank-transaction-'))).toBe(true)
+    expect(rows.every(row => row.canWrite === true)).toBe(true)
+  })
 })
 
 type BankTransactionDetailToolResult = Record<string, unknown> & {

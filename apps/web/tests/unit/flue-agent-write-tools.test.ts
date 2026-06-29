@@ -264,13 +264,17 @@ describe('Flue categorization write tools', () => {
     const before = await currentInterpretationForBankTransaction('bank-transaction-2')
     const tools = chatToolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
 
-    await expect(tools.applyCategorization.run({
+    await expect(tools.applyCategorizations.run({
       input: {
-        bankTransactionId: 'bank-transaction-2',
-        expectedCategorizationRevision: 0,
-        interpretation: {kind: 'category', categoryAccountId: 'groceries'},
+        categorizations: [
+          {
+            bankTransactionId: 'bank-transaction-2',
+            expectedCategorizationRevision: 0,
+            interpretation: {kind: 'category', categoryAccountId: 'groceries'},
+          },
+        ],
       },
-    })).resolves.toEqual({ok: true, status: 'applied'})
+    })).resolves.toMatchObject({ok: true, status: 'completed', appliedCount: 1, rejectedCount: 0, conflictCount: 0})
 
     const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-2'))
     const after = await currentInterpretationForBankTransaction('bank-transaction-2')
@@ -281,6 +285,49 @@ describe('Flue categorization write tools', () => {
       {accountId: 'groceries', amount: 1_000_000, bankTransactionId: null},
     ])
     expect(bankTransaction).toMatchObject({aiConfidence: null, aiReasoning: null, categorizationRevision: 1})
+  })
+
+  it('applies multiple confirmed chat categorizations independently and reports conflicts', async () => {
+    const tools = chatToolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
+
+    const result = await tools.applyCategorizations.run({
+      input: {
+        categorizations: [
+          {
+            bankTransactionId: 'bank-transaction-1',
+            expectedCategorizationRevision: 0,
+            interpretation: {kind: 'category', categoryAccountId: 'groceries'},
+          },
+          {
+            bankTransactionId: 'bank-transaction-2',
+            expectedCategorizationRevision: 99,
+            interpretation: {kind: 'category', categoryAccountId: 'household'},
+          },
+          {
+            bankTransactionId: 'bank-transfer-counter',
+            expectedCategorizationRevision: 0,
+            interpretation: {kind: 'category', categoryAccountId: 'household'},
+          },
+        ],
+      },
+    }) as Record<string, unknown> & {results: Array<Record<string, unknown>>}
+
+    expect(result).toMatchObject({ok: true, status: 'completed', appliedCount: 2, rejectedCount: 0, conflictCount: 1})
+    expect(result.results).toEqual([
+      {ok: true, status: 'applied', bankTransactionId: 'bank-transaction-1'},
+      expect.objectContaining({
+        ok: false,
+        status: 'conflict',
+        bankTransactionId: 'bank-transaction-2',
+        expectedCategorizationRevision: 99,
+        actualCategorizationRevision: 0,
+      }),
+      {ok: true, status: 'applied', bankTransactionId: 'bank-transfer-counter'},
+    ])
+
+    expect(await currentInterpretationForBankTransaction('bank-transaction-1')).toMatchObject({ledgerTransaction: {status: 'confirmed', categorizedBy: 'user'}})
+    expect(await currentInterpretationForBankTransaction('bank-transaction-2')).toBeNull()
+    expect(await currentInterpretationForBankTransaction('bank-transfer-counter')).toMatchObject({ledgerTransaction: {status: 'confirmed', categorizedBy: 'user'}})
   })
 
   it('rejects user-confirmed needs-review rows without bumping the revision', async () => {
