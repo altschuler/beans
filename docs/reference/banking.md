@@ -1,38 +1,46 @@
 # Bank accounts and sync
 
+## Adding bank accounts
+
+The bank accounts page (`/app/bank-accounts`) lets the user:
+
+- view bank accounts
+- sync one provider-linked account
+- open the connect-account flow
+
+The connect-account flow offers two paths:
+
+- **Connect for automatic sync** links GoCardless accounts.
+- **Add transactions yourself** creates a manual account for transactions the user enters directly.
+
 ## Bank linking
 
-Penge links bank accounts through GoCardless. The bank accounts page (`/app/bank-accounts`) lets the user:
-
-- view linked accounts
-- sync one account
-- open the dedicated bank connection page
-
-The bank connection page (`/app/bank-accounts/connect`) lets the user:
-
-- search Danish institutions
-- start a bank link flow
+Penge links external bank accounts through GoCardless. The bank connection page lets the user search Danish institutions and start a bank link flow.
 
 Bank connections store the provider institution id plus the display metadata returned by GoCardless during link start, including institution name and optional logo URL. The bank management UI groups linked accounts under that connection/institution name.
 
 The GoCardless callback creates or updates bank account rows, fetches provider account details for each linked account, stores the available account metadata, and ensures each linked bank account has a corresponding bank-linked ledger account.
 
-## Imported bank accounts
+## Bank account records
 
-A linked bank account has two related records:
+Every bank account has two related records:
 
 - `bank_accounts`: provider/account metadata, sync state, and display name
 - `ledger_accounts`: the internal bank-like ledger account used for postings and balances
 
 The ledger account is linked through `ledger_accounts.linked_bank_account_id` and is not an editable category.
 
-## Imported bank transactions
+Provider-linked accounts have `bank_accounts.provider = 'gocardless'` and belong to a `bank_connections` row. Manual accounts have `bank_accounts.provider = 'manual'`, no bank connection, stable app-generated provider identifiers, idle sync fields, and app-owned manual metadata in `providerAccountRaw`.
 
-Bank sync upserts `bank_transactions` from provider data. These rows are imported evidence and should not be changed by categorization, AI, confirmation, or reset actions.
+## Bank transactions
+
+Provider sync and manual entry both create `bank_transactions` rows. These rows are transaction evidence and should not be changed by categorization, AI, confirmation, or reset actions.
 
 Provider amount strings are parsed at import into canonical scale-4 integer money amounts and stored with their currency code. Invalid amount syntax fails at the import boundary and surfaces through the existing sync error path.
 
-Current sync imports bank transactions and ensures the bank-linked ledger account exists. Categorization can happen later through the Transactions page or AI.
+Manual transactions are entered from a manual bank account page. The user provides date, description, and a signed decimal amount; the account and currency come from the manual account. Penge stores them as booked `bank_transactions` with app-generated `providerTransactionId` values and a small manual `raw` marker. Manual transaction entry does not create `ledger_transactions` or `ledger_postings`.
+
+Because no ledger interpretation is created during manual entry, manual transactions appear in the existing transaction review flow as uncategorized / needing review. Users categorize them later through the same Transactions page, chat, or AI paths used for synced bank transactions.
 
 Provider facts that matter for reconciliation — bank account, amount, and currency — are guarded after reconciliation. If a provider later reports conflicting facts for an already reconciled transaction, the sync path should not silently leave the ledger inconsistent.
 
@@ -51,10 +59,17 @@ The refresh-safe background-task design is not implemented. Current sync server 
 
 ## Sync all
 
-Sync all lists accessible linked bank accounts and syncs them sequentially. It continues after individual failures and returns a summary with synced, failed, skipped, fetched, and upserted counts.
+Sync all lists accessible GoCardless-linked bank accounts and syncs them sequentially. Manual accounts are excluded because they do not sync with a provider. Sync all continues after individual failures and returns a summary with synced, failed, skipped, fetched, and upserted counts.
 
-The UI disables sync-all when there are no accounts, when any account is currently syncing, or while the local sync-all request is pending.
+The UI disables sync-all when there are no syncable accounts, when any syncable account is currently syncing, or while the local sync-all request is pending.
 
-## Read path
+## Write and read paths
 
-Bank connections, accounts, and imported transactions are Zero-backed domain data. Auth/session tables and provider credentials stay server-only and are excluded from Zero.
+Bank connections, accounts, and bank transactions are Zero-backed domain data. Auth/session tables and provider credentials stay server-only and are excluded from Zero.
+
+User-facing manual-account and manual-transaction writes go through Zero custom mutators:
+
+- `banking.createManualBankAccount` creates the manual `bank_accounts` row and linked bank ledger account after checking team access.
+- `banking.createManualTransaction` creates a booked manual `bank_transactions` row after checking that the user can access the account and that the account is manual.
+
+Opening balances, bulk imports, category selection during manual transaction entry, editing manual transactions, and deleting manual transactions are not part of the current manual-entry slice.

@@ -2,9 +2,9 @@
 
 ## What the Transactions page is for
 
-The Transactions page shows imported bank transactions that need review or have already been interpreted. Rows are bank-transaction-first: the row id and all row actions use `bankTransactionId`.
+The Transactions page shows bank transactions that need review or have already been interpreted. Rows are bank-transaction-first: the row id and all row actions use `bankTransactionId`.
 
-A row may have no ledger interpretation yet. In that case it still appears as `Choose category` and needs review.
+Rows can come from provider sync or manual entry. A row may have no ledger interpretation yet; newly entered manual transactions intentionally start that way. In that case it still appears as `Choose category` and needs review.
 
 ## Category selector
 
