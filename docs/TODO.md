@@ -18,7 +18,6 @@
 
 ## Production ready
 
-- Update Flue to `1.0.0-beta.8` or newer once Postgres durability packages are verified compatible. Current npm latests are split: runtime/cli/sdk/react are beta.8 while `@flue/postgres` is still beta.3; beta.8 changes the persistence contract, so test the sidecar against durable Postgres and reset Flue-owned `flue_*` tables as part of the eventual upgrade.
 - Add a soft per-row agent activity marker for Flue categorization. The first agentic workflow will use team-level active workflow state only; a future UI improvement can show “agent is considering this row” as informational activity, not as a claim, lease, or write lock.
 - Replace the first-slice Flue internal service token with a proper least-privilege authorization boundary. The Flue sidecar should not have broad read/write authority over Penge data; long term it should operate through authenticated app/domain APIs or capability-scoped services so every read and write is constrained to the authenticated user's authorized `userId` and `teamId`.
 - Add production zero-cache config before deploy. No production deployment/config exists beyond dev/env-example basics. Separate `ZERO_CVR_DB`/`ZERO_CHANGE_DB`, set `ZERO_ADMIN_PASSWORD`, configure a persistent `ZERO_REPLICA_FILE`, enable CVR garbage collection, and define an explicit publication.
@@ -35,4 +34,3 @@ Findings from an idiomatic-usage review against the official Zero docs. The plum
 ### Cleanups (minor)
 
 - Add cross-tenant isolation tests for each query — the type system won't catch a missing `whereExists`.
-- Prefer `NODE_EXTRA_CA_CERTS` over `NODE_TLS_REJECT_UNAUTHORIZED=0` in the `dev:zero` script (the `build` script already does this); confirmed not in the `start` path.

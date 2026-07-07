@@ -43,7 +43,7 @@ describe('TeamChatSheet', () => {
     expect(within(panel).queryByText('Personal chat for this team. Confirm categorization changes in chat before they are applied.')).not.toBeInTheDocument()
     expect(within(panel).getByText('What needs review?')).toBeInTheDocument()
     expect(within(panel).getByText('Three transactions need review.')).toBeInTheDocument()
-    expect(useFlueAgent).toHaveBeenCalledWith(expect.objectContaining({name: 'team-data-assistant', live: 'sse', history: 20}))
+    expect(useFlueAgent).toHaveBeenCalledWith(expect.objectContaining({name: 'team-data-assistant', live: 'sse'}))
   })
 
   it('renders simple markdown formatting in chat messages', async () => {

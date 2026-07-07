@@ -64,7 +64,7 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: Team
   const [chatId, setChatId] = useState(createChatId)
   const titleId = useId()
   const conversationId = useMemo(() => (teamId && userId ? encodeTeamDataAssistantId({teamId, userId, chatId}) : undefined), [chatId, teamId, userId])
-  const agent = useFlueAgent({name: 'team-data-assistant', id: conversationId, history: 20, live: 'sse'})
+  const agent = useFlueAgent({name: 'team-data-assistant', id: conversationId, live: 'sse'})
   const canSend = Boolean(conversationId && input.trim() && !isSubmitting)
   const messages = agent.messages as ChatMessage[]
   const activity = useStableChatActivity(getChatActivity({status: agent.status, error: agent.error, isSubmitting, messages}))
