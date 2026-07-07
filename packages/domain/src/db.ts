@@ -5,6 +5,7 @@ import * as schema from './schema'
 const connectionString = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/penge'
 
 export const sql = postgres(connectionString, {
+  onnotice: () => undefined,
   prepare: false,
 })
 

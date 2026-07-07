@@ -10,7 +10,7 @@ test('tracked dev commands consume generated checkout ports', async () => {
   const fluePackage = await readJson('apps/flue/package.json')
   const playwrightConfig = await readFile('apps/web/playwright.config.ts', 'utf8')
 
-  assert.match(compose, /'\$\{POSTGRES_PORT:-5432\}:5432'/)
+  assert.match(compose, /'127\.0\.0\.1:\$\{POSTGRES_PORT:-5432\}:5432'/)
   assert.match(webPackage.scripts['dev:app'], /dotenv -e \.env -- sh -c 'vite dev --host 0\.0\.0\.0 --port \$\{PORT:-3100\}'/)
   assert.match(webPackage.scripts['dev:zero'], /--port \$\{ZERO_PORT:-4848\}/)
   assert.match(webPackage.scripts['dev:zero'], /--change-streamer-port \$\{ZERO_CHANGE_STREAMER_PORT:-4849\}/)
