@@ -12,6 +12,7 @@ test('tracked dev commands consume generated checkout ports', async () => {
 
   assert.match(compose, /'127\.0\.0\.1:\$\{POSTGRES_PORT:-5432\}:5432'/)
   assert.match(webPackage.scripts['dev:app'], /dotenv -e \.env -- sh -c 'vite dev --host 0\.0\.0\.0 --port \$\{PORT:-3100\}'/)
+  assert.match(webPackage.scripts['dev:zero'], /--app-publications penge_zero_app/)
   assert.match(webPackage.scripts['dev:zero'], /--port \$\{ZERO_PORT:-4848\}/)
   assert.match(webPackage.scripts['dev:zero'], /--change-streamer-port \$\{ZERO_CHANGE_STREAMER_PORT:-4849\}/)
   assert.match(fluePackage.scripts.dev, /dotenv -e \.env -- sh -c 'flue dev --target node --port \$\{FLUE_PORT:-3101\}'/)
@@ -23,7 +24,7 @@ test('tracked dev commands consume generated checkout ports', async () => {
 test('justfile exposes managed worktree lifecycle and seed reset recipes', async () => {
   const justfile = await readFile('justfile', 'utf8')
 
-  for (const recipe of ['init:', 'worktree-create branch:', 'worktree-remove branch *args:', 'worktree-list:', 'seed-capture:', 'seed-restore:', 'db-reset:']) {
+  for (const recipe of ['init:', 'worktree-create branch:', 'worktree-remove branch *args:', 'worktree-list:', 'seed-capture:', 'seed-restore:', 'db-reset:', 'zero-reset:']) {
     assert.match(justfile, new RegExp(`(^|\\n)${recipe.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
   }
 
@@ -35,6 +36,9 @@ test('justfile exposes managed worktree lifecycle and seed reset recipes', async
   assert.doesNotMatch(justfile, /--table=verification/)
   assert.doesNotMatch(justfile, /dev-login/)
   assert.match(justfile, /\.local\/dev-seed\/penge-data\.dump/)
+  assert.match(justfile, /DROP SCHEMA IF EXISTS "zero" CASCADE/)
+  assert.match(justfile, /DROP SCHEMA IF EXISTS "zero_0\/cdc" CASCADE/)
+  assert.match(justfile, /DROP SCHEMA IF EXISTS "zero_0\/cvr" CASCADE/)
 })
 
 test('agent guidance prevents bypassing managed worktree commands', async () => {

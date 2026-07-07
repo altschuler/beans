@@ -2,7 +2,7 @@
 
 Postgres is the durable database. The web app's Drizzle schema lives in `apps/web/src/db/schema.ts`, and web app migrations live in `apps/web/drizzle/`.
 
-Flue runtime persistence also uses Postgres through `@flue/postgres`, but it owns separate `flue_*` tables. Those tables store Flue sessions, submissions, workflow runs, and events; they are not Penge domain tables and must not be exposed through Zero.
+Flue runtime persistence also uses Postgres through `@flue/postgres`, but it owns separate `flue_*` tables. Those tables store Flue sessions, submissions, workflow runs, attachments, and events; they are not Penge domain tables and must not be exposed through Zero. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
 
 Zero is the required sync layer for app/domain data. Any user-facing application data that should be available to the client must be exposed through Zero rather than fetched directly from server routes or ad-hoc client APIs.
 
@@ -23,7 +23,7 @@ Use Zero for all app/domain tables and queries:
 - Add Zero queries in `apps/web/src/zero/queries.ts` for client-readable domain data.
 - Keep Zero query authorization scoped by the authenticated user, usually through team membership. Shared Zero permission helpers may centralize the predicates, but Zero reads remain filter-authorized per query.
 
-Current Zero-synced app/domain tables:
+Current Zero-synced app/domain tables, and the only tables included in the local `penge_zero_app` publication:
 
 - `teams`
 - `team_members`
@@ -106,3 +106,5 @@ Use `just zero-generate` after changing Drizzle tables or `apps/web/drizzle-zero
 `zero-cache-dev` keeps a local SQLite replica. In dev, keep it under `apps/web/.zero-cache/` via `ZERO_REPLICA_FILE` so `just db-reset` can remove it.
 
 After migrations that rewrite existing synced data without changing Zero column types (for example changing money `number` semantics from decimal major units to scale-4 integers), reset the Zero replica before restarting the app. Zero's client schema hash is derived from generated table/column shape, so representation-only changes may not invalidate cached replica rows by themselves.
+
+Changing the table set in `penge_zero_app` requires resetting Zero's local replica and upstream dev metadata because Zero must resync from the updated publication. Run `just zero-reset` before restarting `just dev`; deleting only `apps/web/.zero-cache/` can leave stale upstream Zero metadata behind.

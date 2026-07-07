@@ -42,6 +42,7 @@ test('syncs managed web env keys while preserving manually managed secrets', asy
       DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/old',
       PORT: '9999',
       COMPOSE_PROJECT_NAME: 'old-project',
+      ZERO_APP_PUBLICATIONS: 'old-publication',
       BETTER_AUTH_SECRET: 'keep-this-secret',
       GOCARDLESS_SECRET_ID: 'keep-this-id',
       EXTRA_LOCAL_SECRET: 'keep-this-too',

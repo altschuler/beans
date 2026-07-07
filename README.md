@@ -80,7 +80,7 @@ just db-migrate
 just db-reset
 ```
 
-Postgres runs in Docker with `wal_level=logical` so Zero can replicate changes. Flue runtime persistence uses the same Postgres database via separate `flue_*` tables.
+Postgres runs in Docker with `wal_level=logical` so Zero can replicate changes. Flue runtime persistence uses the same Postgres database via separate `flue_*` tables. Zero dev uses the explicit `penge_zero_app` publication so those Flue runtime tables are not part of Zero's change stream.
 
 ## Tests and checks
 
@@ -113,3 +113,5 @@ just zero-generate
 ```
 
 Do not hand-edit `apps/web/src/zero/schema.ts`.
+
+The database migration `apps/web/drizzle/0020_zero_publication.sql` creates the local `penge_zero_app` Postgres publication, which limits Zero replication to app/domain tables. If the publication table set changes, run `just zero-reset` before restarting dev so both the local replica and Zero's upstream dev metadata are rebuilt.
