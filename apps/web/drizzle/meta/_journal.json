@@ -169,6 +169,13 @@
       "when": 1783506138572,
       "tag": "0023_misty_captain_stacy",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1783538735121,
+      "tag": "0024_oval_red_skull",
+      "breakpoints": true
     }
   ]
 }

@@ -43,6 +43,7 @@ export default drizzleZeroConfig(drizzleSchema, {
       updatedAt: true,
       lastUsedAt: true,
       firstSubmittedAt: true,
+      currentPage: true,
     },
     bankConnections: {
       id: true,

@@ -1,0 +1,1 @@
+ALTER TABLE "team_data_assistant_chats" ADD COLUMN "current_page" text;

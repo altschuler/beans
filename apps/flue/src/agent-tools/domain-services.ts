@@ -24,6 +24,7 @@ export {
   searchLedgerAccounts,
   searchLedgerTransactions,
 } from '@penge/domain/read-projections'
+export {getPersistedTeamChatUiContext} from '@penge/domain/team-chat-ui-context'
 export type {
   BankTransactionDetail,
   BankTransactionSearchResult,

@@ -7,6 +7,7 @@ describe('Flue proxy', () => {
     const handler = createFlueProxyHandler({
       getSession: vi.fn(async () => null),
       userCanAccessTeam: vi.fn(),
+      storeTeamDataAssistantClientContext: vi.fn(async () => undefined),
       resolveWorkflowRunTeamIdForFlueRunId: vi.fn(async () => null),
       fetch: vi.fn(),
       env: {PENGE_FLUE_BASE_URL: 'http://flue.test', PENGE_FLUE_INTERNAL_TOKEN: 'secret'},
@@ -44,6 +45,33 @@ describe('Flue proxy', () => {
 
     expect(response.status).toBe(202)
     expect(await response.text()).toBe('{"ok":true}')
+    expect(upstreamFetch).toHaveBeenCalledOnce()
+  })
+
+  it('stores validated team-data assistant UI context from prompt bodies and strips it before forwarding to Flue', async () => {
+    const id = encodeTeamDataAssistantId({teamId: 'team-1', userId: 'user-1', chatId: 'chat-1'})
+    const storeContext = vi.fn(async () => undefined)
+    const upstreamFetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      expect(await new Response(init?.body).text()).toBe('{"message":"what should I do here?"}')
+      return new Response('{"ok":true}', {status: 202, headers: {'content-type': 'application/json'}})
+    })
+    const handler = createFlueProxyHandler({
+      getSession: vi.fn(async () => ({user: {id: 'user-1'}})),
+      userCanAccessTeam: vi.fn(async () => true),
+      storeTeamDataAssistantClientContext: storeContext,
+      resolveWorkflowRunTeamIdForFlueRunId: vi.fn(async () => null),
+      fetch: upstreamFetch,
+      env: {PENGE_FLUE_BASE_URL: 'http://flue.test/', PENGE_FLUE_INTERNAL_TOKEN: 'secret'},
+    })
+
+    const response = await handler(new Request(`https://app.test/api/flue/agents/team-data-assistant/${id}`, {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({message: 'what should I do here?', context: {currentPage: 'transactions'}}),
+    }))
+
+    expect(response.status).toBe(202)
+    expect(storeContext).toHaveBeenCalledWith({teamId: 'team-1', userId: 'user-1', chatId: 'chat-1', context: {currentPage: 'transactions'}})
     expect(upstreamFetch).toHaveBeenCalledOnce()
   })
 

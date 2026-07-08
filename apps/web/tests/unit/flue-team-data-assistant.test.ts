@@ -29,6 +29,10 @@ describe('team data assistant Flue agent', () => {
     expect(mod.teamDataAssistantInstructions).toContain('verify remaining eligible transactions before saying the group or run is done')
     expect(mod.teamDataAssistantInstructions).toContain('Do not create durable merchant/category rules')
     expect(mod.teamDataAssistantInstructions).toContain('Report progress in chat')
+    expect(mod.teamDataAssistantInstructions).toContain('getCurrentUiContext')
+    expect(mod.teamDataAssistantInstructions).toContain('this page')
+    expect(mod.teamDataAssistantInstructions).toContain('navigation help')
+    expect(mod.teamDataAssistantInstructions).toContain('must not invent dynamic ids')
   })
 
   it('exposes confirmed chat write tools instead of the autonomous suggestion tool', async () => {
@@ -38,6 +42,7 @@ describe('team data assistant Flue agent', () => {
     const agent = mod.createTeamDataAssistantConfig({id})
     expect(agent.tools.map(tool => tool.name)).toContain('applyCategorizations')
     expect(agent.tools.map(tool => tool.name)).toContain('manageCategory')
+    expect(agent.tools.map(tool => tool.name)).toContain('getCurrentUiContext')
     expect(agent.tools.map(tool => tool.name)).not.toContain('applyCategorization')
     expect(agent.tools.map(tool => tool.name)).not.toContain('applyCategorizationSuggestion')
   })

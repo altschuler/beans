@@ -36,9 +36,8 @@ test('justfile exposes managed worktree lifecycle and seed reset recipes', async
   assert.doesNotMatch(justfile, /--table=verification/)
   assert.doesNotMatch(justfile, /dev-login/)
   assert.match(justfile, /\.local\/dev-seed\/penge-data\.dump/)
-  assert.match(justfile, /DROP SCHEMA IF EXISTS "zero" CASCADE/)
-  assert.match(justfile, /DROP SCHEMA IF EXISTS "zero_0\/cdc" CASCADE/)
-  assert.match(justfile, /DROP SCHEMA IF EXISTS "zero_0\/cvr" CASCADE/)
+  assert.match(justfile, /pnpm --dir apps\/web exec dotenv -e \.env -- zero-out/)
+  assert.match(justfile, /rm -rf apps\/web\/\.zero-cache apps\/web\/zero\.db/)
 })
 
 test('agent guidance prevents bypassing managed worktree commands', async () => {

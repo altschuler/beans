@@ -1,8 +1,9 @@
 import '@tanstack/react-start/server-only'
 
-import {eq} from 'drizzle-orm'
+import {and, eq} from 'drizzle-orm'
 import {decodeTeamDataAssistantId} from '@penge/domain/team-data-assistant-id'
-import {agentWorkflowRuns} from '@penge/domain/schema'
+import {parseTeamChatClientCurrentPage} from '@penge/domain/team-chat-ui-context'
+import {agentWorkflowRuns, teamDataAssistantChats} from '@penge/domain/schema'
 import {db} from '@/db/client'
 import {getSessionFromRequest} from '@/auth/session.server'
 import {userCanAccessTeam} from '@/teams/team-access.server'
@@ -17,6 +18,7 @@ type ProxySession = {user: {id: string}}
 type FlueProxyDependencies = {
   getSession(request: Request): Promise<ProxySession | null>
   userCanAccessTeam(input: {userId: string; teamId: string}): Promise<boolean>
+  storeTeamDataAssistantClientContext?(input: {teamId: string; userId: string; chatId?: string; context: unknown}): Promise<void>
   resolveWorkflowRunTeamIdForFlueRunId(flueRunId: string): Promise<string | null>
   fetch: typeof fetch
   env: Partial<Record<'PENGE_FLUE_BASE_URL' | 'PENGE_FLUE_INTERNAL_TOKEN', string>>
@@ -62,13 +64,17 @@ export function createFlueProxyHandler(deps: FlueProxyDependencies) {
     headers.set('x-penge-user-id', scope.userId)
     headers.set('x-penge-team-id', scope.teamId)
 
-    return forwardFlueRequest({request, baseUrl, token, upstreamPath, search: requestUrl.search, headers, fetch: deps.fetch})
+    const bodyOverride = request.method === 'POST' && !isAbortRequest && !isAttachmentRequest
+      ? await extractAndStoreTeamDataAssistantContext({request, scope, storeContext: deps.storeTeamDataAssistantClientContext})
+      : undefined
+
+    return forwardFlueRequest({request, baseUrl, token, upstreamPath, search: requestUrl.search, headers, bodyOverride, fetch: deps.fetch})
   }
 }
 
-async function forwardFlueRequest(input: {request: Request; baseUrl: string; token: string; upstreamPath: string; search: string; fetch: typeof fetch; headers?: Headers}) {
+async function forwardFlueRequest(input: {request: Request; baseUrl: string; token: string; upstreamPath: string; search: string; fetch: typeof fetch; headers?: Headers; bodyOverride?: BodyInit | null}) {
   const headers = input.headers ?? trustedForwardHeaders(input.request.headers, input.token)
-  const body = input.request.method === 'GET' || input.request.method === 'HEAD' ? undefined : await input.request.arrayBuffer()
+  const body = input.request.method === 'GET' || input.request.method === 'HEAD' ? undefined : input.bodyOverride ?? await input.request.arrayBuffer()
   const upstream = `${input.baseUrl.replace(/\/+$/, '')}${input.upstreamPath}${input.search}`
   const upstreamResponse = await input.fetch(upstream, {method: input.request.method, headers, body})
 
@@ -83,6 +89,7 @@ function trustedForwardHeaders(input: HeadersInit, token: string) {
   const headers = stripHopByHopHeaders(input)
   headers.delete('cookie')
   headers.delete('host')
+  headers.delete('content-length')
   headers.set('authorization', `Bearer ${token}`)
   return headers
 }
@@ -103,8 +110,38 @@ export const handleFlueProxyRequest = createFlueProxyHandler({
   userCanAccessTeam: input => userCanAccessTeam(input.teamId, input.userId),
   resolveWorkflowRunTeamIdForFlueRunId,
   fetch,
+  storeTeamDataAssistantClientContext,
   env: process.env,
 })
+
+async function extractAndStoreTeamDataAssistantContext(input: {
+  request: Request
+  scope: {teamId: string; userId: string; chatId?: string}
+  storeContext?: FlueProxyDependencies['storeTeamDataAssistantClientContext']
+}) {
+  const originalBody = await input.request.text()
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(originalBody)
+  } catch {
+    return originalBody
+  }
+
+  if (!parsed || typeof parsed !== 'object' || !Object.hasOwn(parsed, 'context')) return originalBody
+
+  const {context, ...upstreamBody} = parsed as Record<string, unknown> & {context?: unknown}
+  if (input.storeContext) await input.storeContext({...input.scope, context})
+  return JSON.stringify(upstreamBody)
+}
+
+async function storeTeamDataAssistantClientContext(input: {teamId: string; userId: string; chatId?: string; context: unknown}) {
+  if (!input.chatId) return
+  const currentPage = parseTeamChatClientCurrentPage(input.context)
+  await db
+    .update(teamDataAssistantChats)
+    .set({currentPage, updatedAt: new Date()})
+    .where(and(eq(teamDataAssistantChats.id, input.chatId), eq(teamDataAssistantChats.teamId, input.teamId), eq(teamDataAssistantChats.userId, input.userId)))
+}
 
 async function resolveWorkflowRunTeamIdForFlueRunId(flueRunId: string) {
   const [row] = await db

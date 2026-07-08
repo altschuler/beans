@@ -21,8 +21,11 @@ const flueMocks = vi.hoisted(() => {
 })
 const flueAgent = flueMocks.flueAgent
 
+const routeMocks = vi.hoisted(() => ({pathname: '/app'}))
+
 const zeroMocks = vi.hoisted(() => {
-  type TeamDataAssistantChat = {id: string; teamId: string; userId: string; createdAt: number; updatedAt: number; lastUsedAt: number; firstSubmittedAt?: number | null}
+  type TeamDataAssistantChatPageKey = 'home' | 'transactions' | 'categories' | 'bankAccounts' | 'bankAccountTransactions' | 'categoryDetail' | 'ledger'
+  type TeamDataAssistantChat = {id: string; teamId: string; userId: string; createdAt: number; updatedAt: number; lastUsedAt: number; firstSubmittedAt?: number | null; currentPage?: TeamDataAssistantChatPageKey | null}
   const chats: TeamDataAssistantChat[] = []
   const mutate = {
     flue: {
@@ -30,12 +33,13 @@ const zeroMocks = vi.hoisted(() => {
         chats.push(input)
         return {server: Promise.resolve({type: 'ok'})}
       }),
-      touchTeamDataAssistantChat: vi.fn((input: {chatId: string; lastUsedAt: number; firstSubmittedAt?: number}) => {
+      touchTeamDataAssistantChat: vi.fn((input: {chatId: string; lastUsedAt: number; firstSubmittedAt?: number; currentPage?: TeamDataAssistantChatPageKey | null}) => {
         const chat = chats.find(row => row.id === input.chatId)
         if (chat) {
           chat.lastUsedAt = input.lastUsedAt
           chat.updatedAt = input.lastUsedAt
           chat.firstSubmittedAt ??= input.firstSubmittedAt
+          if (Object.hasOwn(input, 'currentPage')) chat.currentPage = input.currentPage
         }
         return {server: Promise.resolve({type: 'ok'})}
       }),
@@ -48,6 +52,10 @@ const zeroMocks = vi.hoisted(() => {
 vi.mock('@flue/react', () => ({
   useFlueAgent: vi.fn(() => flueMocks.flueAgent),
   useFlueClient: vi.fn(() => flueMocks.flueClient),
+}))
+
+vi.mock('@tanstack/react-router', () => ({
+  useRouterState: ({select}: {select: (state: {location: {pathname: string}}) => string}) => select({location: {pathname: routeMocks.pathname}}),
 }))
 
 vi.mock('@rocicorp/zero/react', () => ({
@@ -97,6 +105,7 @@ describe('TeamChatSheet', () => {
     flueAgent.failedSends = []
     flueAgent.sendMessage.mockResolvedValue(undefined)
     flueMocks.flueClient.agents.abort.mockResolvedValue({aborted: true})
+    routeMocks.pathname = '/app'
     zeroMocks.chats.splice(0)
   })
 
@@ -257,6 +266,19 @@ describe('TeamChatSheet', () => {
     }
   })
 
+  it('syncs the latest page context when the selected chat route changes', async () => {
+    zeroMocks.chats.push(makeChat({id: 'recent-chat', teamId: 'team-1', userId: 'user-1'}))
+    routeMocks.pathname = '/app/transactions'
+    const {rerender} = render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    await waitFor(() => expect(zeroMocks.mutate.flue.touchTeamDataAssistantChat).toHaveBeenCalledWith(expect.objectContaining({chatId: 'recent-chat', currentPage: 'transactions'})))
+
+    routeMocks.pathname = '/app/categories'
+    rerender(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    await waitFor(() => expect(zeroMocks.mutate.flue.touchTeamDataAssistantChat).toHaveBeenCalledWith(expect.objectContaining({chatId: 'recent-chat', currentPage: 'categories'})))
+  })
+
   it('submits the composer on Enter', async () => {
     const user = userEvent.setup()
     render(<TeamChatSheet teamId="team-1" userId="user-1" />)
@@ -280,6 +302,21 @@ describe('TeamChatSheet', () => {
 
     expect(input).toHaveValue('first line\nsecond line')
     expect(flueAgent.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('touches the chat with the latest page context before sending trimmed input', async () => {
+    routeMocks.pathname = '/app/transactions'
+    const user = userEvent.setup()
+    render(<TeamChatSheet teamId="team-1" userId="user-1" />)
+
+    await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
+    await user.type(screen.getByLabelText('Message Ask Penge'), '  what should I do here?  ')
+    await user.click(screen.getByRole('button', {name: 'Send message'}))
+
+    const created = zeroMocks.mutate.flue.createTeamDataAssistantChat.mock.calls.at(-1)?.[0]
+    expect(zeroMocks.mutate.flue.touchTeamDataAssistantChat).toHaveBeenCalledWith(expect.objectContaining({chatId: created?.id, firstSubmittedAt: expect.any(Number), currentPage: 'transactions'}))
+    expect(flueAgent.sendMessage).toHaveBeenCalledWith('what should I do here?')
+    expect(screen.getByLabelText('Message Ask Penge')).toHaveValue('')
   })
 
   it('sends trimmed input and clears the composer', async () => {

@@ -114,7 +114,7 @@ zero-generate:
 # Reset Zero's local replica and upstream dev metadata without deleting app data.
 zero-reset:
   just db-up
-  docker compose exec -T postgres psql -U postgres -d penge -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS "zero" CASCADE; DROP SCHEMA IF EXISTS "zero_0/cdc" CASCADE; DROP SCHEMA IF EXISTS "zero_0/cvr" CASCADE;'
+  pnpm --dir apps/web exec dotenv -e .env -- zero-out
   rm -rf apps/web/.zero-cache apps/web/zero.db apps/web/zero.db-shm apps/web/zero.db-wal apps/web/zero.db-wal2
 
 test:

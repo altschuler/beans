@@ -3,6 +3,7 @@ import {groupBy, uniq} from 'lodash-es'
 import {z} from 'zod'
 import {absoluteMoneyAmount, parseDecimalMoneyToAmount} from '@penge/domain/money'
 import {isCategorizationAccount, validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@penge/domain/categorization'
+import {teamChatPageKeys} from '@penge/domain/team-chat-ui-context'
 import {requireUserID} from './context'
 import {zql, type BankAccount, type BankTransaction, type LedgerAccount, type LedgerAccountGroup, type LedgerPosting, type LedgerTransaction, type Schema as ZeroSchema} from './schema'
 
@@ -38,6 +39,7 @@ export const managedCategoryTypeInput = z.enum(['expense', 'income', 'savings'])
 export const manualBankAccountTypeInput = z.enum(['checking', 'savings', 'credit-card', 'loan', 'cash'])
 
 const trimmedNonEmptyString = z.string().trim().min(1)
+const teamChatPageInput = z.enum(teamChatPageKeys)
 
 export const createTeamDataAssistantChatInput = z.object({
   id: trimmedNonEmptyString,
@@ -47,12 +49,14 @@ export const createTeamDataAssistantChatInput = z.object({
   updatedAt: z.number().int(),
   lastUsedAt: z.number().int(),
   firstSubmittedAt: z.number().int().nullable(),
+  currentPage: teamChatPageInput.nullable().optional(),
 })
 
 export const touchTeamDataAssistantChatInput = z.object({
   chatId: trimmedNonEmptyString,
   lastUsedAt: z.number().int(),
   firstSubmittedAt: z.number().int().optional(),
+  currentPage: teamChatPageInput.nullable().optional(),
 })
 const isoDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   const parsed = new Date(`${value}T00:00:00.000Z`)
@@ -349,6 +353,7 @@ async function optimisticallyCreateTeamDataAssistantChat(input: {tx: ClientTx} &
       updatedAt: input.updatedAt,
       lastUsedAt: input.lastUsedAt,
       ...(input.firstSubmittedAt && !existing.firstSubmittedAt ? {firstSubmittedAt: input.firstSubmittedAt} : {}),
+      ...(Object.hasOwn(input, 'currentPage') ? {currentPage: input.currentPage ?? null} : {}),
     })
     return
   }
@@ -361,10 +366,11 @@ async function optimisticallyCreateTeamDataAssistantChat(input: {tx: ClientTx} &
     updatedAt: input.updatedAt,
     lastUsedAt: input.lastUsedAt,
     firstSubmittedAt: input.firstSubmittedAt,
+    currentPage: input.currentPage ?? null,
   })
 }
 
-async function optimisticallyTouchTeamDataAssistantChat(input: {tx: ClientTx; userId: string; chatId: string; lastUsedAt: number; firstSubmittedAt?: number}) {
+async function optimisticallyTouchTeamDataAssistantChat(input: {tx: ClientTx; userId: string; chatId: string; lastUsedAt: number; firstSubmittedAt?: number; currentPage?: z.infer<typeof teamChatPageInput> | null}) {
   const chat = await input.tx.run(zql.teamDataAssistantChats.where('id', input.chatId).one())
   if (!chat || chat.userId !== input.userId) return
   await input.tx.mutate.teamDataAssistantChats.update({
@@ -372,6 +378,7 @@ async function optimisticallyTouchTeamDataAssistantChat(input: {tx: ClientTx; us
     updatedAt: input.lastUsedAt,
     lastUsedAt: input.lastUsedAt,
     ...(input.firstSubmittedAt && !chat.firstSubmittedAt ? {firstSubmittedAt: input.firstSubmittedAt} : {}),
+    ...(Object.hasOwn(input, 'currentPage') ? {currentPage: input.currentPage ?? null} : {}),
   })
 }
 

@@ -1,15 +1,29 @@
 import {useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react'
 import {History, MessageCircle, Send, Square, X} from 'lucide-react'
 import ReactMarkdown, {type Components} from 'react-markdown'
+import {useRouterState} from '@tanstack/react-router'
 import {useFlueAgent, useFlueClient, type FlueConversationMessage, type FlueConversationPart} from '@flue/react'
 import {useQuery, useZero} from '@rocicorp/zero/react'
 import {encodeTeamDataAssistantId} from '@penge/domain/team-data-assistant-id'
+import {type TeamChatPageKey} from '@penge/domain/team-chat-ui-context'
+import {Bubble, BubbleContent} from '@/components/ui/bubble'
 import {Button} from '@/components/ui/button'
+import {Marker, MarkerContent} from '@/components/ui/marker'
+import {Message, MessageContent, MessageHeader} from '@/components/ui/message'
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from '@/components/ui/message-scroller'
 import {Textarea} from '@/components/ui/textarea'
 import {runZeroMutation} from '@/lib/run-mutation'
 import {cn} from '@/lib/utils'
 import {mutators} from '@/zero/mutators'
 import {queries} from '@/zero/queries'
+import {getTeamChatClientContextForPathname, setLatestTeamChatClientContext} from './team-chat-ui-context'
 
 type TeamChatSheetProps = {
   teamId: string | null
@@ -73,6 +87,9 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: Team
   const chatQuery = teamId && userId ? queries.domain.teamDataAssistantChatsByTeamUser({teamId, userId}) : queries.domain.teamDataAssistantChatsByTeamUser({teamId: pendingChatScopeSentinel, userId: pendingChatScopeSentinel})
   const [chatHistory, chatHistoryStatus] = useQuery(chatQuery)
   const zero = useZero()
+  const pathname = useRouterState({select: state => state.location.pathname})
+  const clientContext = useMemo(() => getTeamChatClientContextForPathname(pathname), [pathname])
+  const currentPage = clientContext.currentPage ?? null
   const conversationId = useMemo(() => (teamId && userId && selectedChat?.teamId === teamId && selectedChat.userId === userId ? encodeTeamDataAssistantId({teamId, userId, chatId: selectedChat.id}) : undefined), [selectedChat, teamId, userId])
   const currentConversationIdRef = useRef(conversationId)
   const stopRequestIdRef = useRef(0)
@@ -96,14 +113,31 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: Team
     return chat.id
   }, [zero])
 
-  const touchChat = useCallback((chatId: string, options: {submitted?: boolean} = {}) => {
+  const touchChat = useCallback((chatId: string, options: {submitted?: boolean; currentPage?: TeamChatPageKey | null} = {}) => {
     const now = Date.now()
-    void runZeroMutation(zero.mutate(mutators.flue.touchTeamDataAssistantChat({chatId, lastUsedAt: now, ...(options.submitted ? {firstSubmittedAt: now} : {})})), 'Could not update chat history')
+    void runZeroMutation(
+      zero.mutate(mutators.flue.touchTeamDataAssistantChat({
+        chatId,
+        lastUsedAt: now,
+        ...(options.submitted ? {firstSubmittedAt: now} : {}),
+        ...(Object.hasOwn(options, 'currentPage') ? {currentPage: options.currentPage} : {}),
+      })),
+      'Could not update chat history',
+    )
   }, [zero])
 
   useEffect(() => {
     currentConversationIdRef.current = conversationId
   }, [conversationId])
+
+  useEffect(() => {
+    setLatestTeamChatClientContext(clientContext)
+  }, [clientContext])
+
+  useEffect(() => {
+    if (!selectedChat || selectedChat.teamId !== teamId || selectedChat.userId !== userId) return
+    touchChat(selectedChat.id, {currentPage})
+  }, [currentPage, selectedChat, teamId, touchChat, userId])
 
   useEffect(() => {
     if (!teamId || !userId) {
@@ -173,7 +207,7 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: Team
     setAbortError(null)
     setIsSubmitting(true)
     try {
-      if (selectedChat) touchChat(selectedChat.id, {submitted: true})
+      if (selectedChat) touchChat(selectedChat.id, {submitted: true, currentPage})
       await agent.sendMessage(message)
     } catch {
       // Flue exposes send failures through agent.error/failedSends; keep the event handler settled.
@@ -254,15 +288,37 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: Team
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-muted/30 p-4" role="log" aria-label="Ask Penge chat transcript" aria-live="polite">
-        {agent.messages.length === 0 && !activity ? (
-          <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
-            Ask about transactions, categories, or what needs review.
-          </div>
-        ) : null}
-        {messages.map((message) => <ChatBubble key={message.id} message={message} />)}
-        {activity ? <ChatActivityBubble activity={activity} /> : null}
-      </div>
+      <MessageScrollerProvider key={conversationId ?? 'pending'} autoScroll defaultScrollPosition="last-anchor">
+        <MessageScroller className="min-h-0 flex-1 bg-muted/30">
+          <MessageScrollerViewport className="p-4">
+            <MessageScrollerContent className="gap-3" aria-label="Ask Penge chat transcript">
+              {messages.length === 0 && !activity ? (
+                <MessageScrollerItem messageId="empty-state">
+                  <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
+                    Ask about transactions, categories, or what needs review.
+                  </div>
+                </MessageScrollerItem>
+              ) : null}
+              {messages.map((message) => {
+                const text = getMessageText(message)
+                if (!text) return null
+
+                return (
+                  <MessageScrollerItem key={message.id} messageId={message.id} scrollAnchor={message.role === 'user'}>
+                    <ChatMessage role={message.role}>{text}</ChatMessage>
+                  </MessageScrollerItem>
+                )
+              })}
+              {activity ? (
+                <MessageScrollerItem messageId="activity">
+                  <ChatActivityMarker activity={activity} />
+                </MessageScrollerItem>
+              ) : null}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton />
+        </MessageScroller>
+      </MessageScrollerProvider>
 
       <div className="border-t bg-background p-3">
         <form className="flex items-end gap-2" onSubmit={submit}>
@@ -314,17 +370,28 @@ function formatChatDate(timestamp: number) {
   return new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(timestamp))
 }
 
-function ChatBubble({message}: {message: FlueConversationMessage}) {
-  const isUser = message.role === 'user'
-  const textParts = message.parts.filter((part) => part.type === 'text')
-  const text = textParts.map((part) => part.text).join('\n\n').trim()
-  if (!text) return null
+function getMessageText(message: FlueConversationMessage) {
+  return message.parts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join('\n\n')
+    .trim()
+}
+
+function ChatMessage({role, children}: {role: FlueConversationMessage['role']; children: string}) {
+  const isUser = role === 'user'
 
   return (
-    <article className={cn('max-w-[85%] rounded-lg border px-3 py-2 text-sm', isUser ? 'ml-auto bg-primary text-primary-foreground' : 'bg-background')}>
-      <div className="mb-1 text-xs font-medium opacity-70">{isUser ? 'You' : 'Penge'}</div>
-      <ChatMarkdown>{text}</ChatMarkdown>
-    </article>
+    <Message align={isUser ? 'end' : 'start'}>
+      <MessageContent>
+        <MessageHeader>{isUser ? 'You' : 'Penge'}</MessageHeader>
+        <Bubble variant={isUser ? 'default' : 'outline'}>
+          <BubbleContent>
+            <ChatMarkdown>{children}</ChatMarkdown>
+          </BubbleContent>
+        </Bubble>
+      </MessageContent>
+    </Message>
   )
 }
 
@@ -378,12 +445,11 @@ type ChatActivity = {
   tone: 'muted' | 'error'
 }
 
-function ChatActivityBubble({activity}: {activity: ChatActivity}) {
+function ChatActivityMarker({activity}: {activity: ChatActivity}) {
   return (
-    <article className={cn('max-w-[85%] rounded-lg border bg-background px-3 py-2 text-sm', activity.tone === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
-      <div className="mb-1 text-xs font-medium opacity-70">Penge</div>
-      {activity.text}
-    </article>
+    <Marker role="status">
+      <MarkerContent className={activity.tone === 'error' ? 'text-destructive' : 'shimmer'}>{activity.text}</MarkerContent>
+    </Marker>
   )
 }
 

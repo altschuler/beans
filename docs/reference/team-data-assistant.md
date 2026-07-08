@@ -19,6 +19,8 @@ The app shell owns one root chat surface:
 
 Conversation ids are encoded as `team-data:{...}` values containing trusted `teamId`, `userId`, and a per-chat `chatId`. Penge stores app-owned chat records in `team_data_assistant_chats` so each user/team pair has durable conversation history while Flue remains the message-history source. When the chat client loads, it resumes the latest submitted chat for the current user/team if it was used less than one hour ago; otherwise opening Ask Penge starts a new chat row. Clearing chat also creates a new persisted chat id, but only chats with a submitted message are shown in the timestamp-labelled history list so empty placeholder chat ids do not send users to missing Flue history.
 
+The chat client also reports a small page-context hint for the selected chat. Route changes and message sends update the latest validated page key on the app-owned chat row. This context is not prepended to the user's message and should not appear in rendered user bubbles or persisted Flue message text.
+
 ## Flue proxy boundary
 
 The browser never receives `PENGE_FLUE_INTERNAL_TOKEN`. The web `/api/flue` proxy authenticates the web session, decodes the team-data assistant id, verifies that the id's `userId` matches the session user, verifies team membership, strips hop-by-hop headers, then forwards the request to Flue with:
@@ -27,7 +29,9 @@ The browser never receives `PENGE_FLUE_INTERNAL_TOKEN`. The web `/api/flue` prox
 - `x-penge-user-id`
 - `x-penge-team-id`
 
-The Flue agent route repeats the boundary check: the internal token must match, the agent id must decode, and the decoded scope must match the trusted forwarded headers. Agent tools close over that trusted scope.
+The Flue agent route repeats the boundary check: the internal token must match, the agent id must decode, and the decoded scope must match the trusted forwarded headers.
+
+For team-data assistant prompt requests, the browser fetch wrapper may include a web-only `context` object in the `/api/flue` request body. The proxy validates and stores the recognized page key against the app-owned chat row, removes `context`, and forwards the normal Flue prompt body unchanged. Agent tools close over that trusted scope.
 
 ## Reads
 
@@ -37,8 +41,9 @@ The assistant uses scoped Flue read tools to inspect current data before answeri
 - `getBankTransactionDetail`
 - `searchLedgerTransactions`
 - `searchLedgerAccounts`
+- `getCurrentUiContext`
 
-Read results are scoped to the trusted user/team and expose compact domain projections rather than arbitrary raw database rows or provider payloads.
+Read results are scoped to the trusted user/team and expose compact domain projections rather than arbitrary raw database rows or provider payloads. `getCurrentUiContext` returns the latest normalized page context plus a server-owned sitemap for page-relative questions and navigation guidance; UI context is a hint, not authorization or finance data.
 
 ## Live turn progress
 

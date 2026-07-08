@@ -11,23 +11,55 @@ const flueAgent = vi.hoisted(() => ({
   sendMessage: vi.fn(async () => undefined),
 }))
 
+const routeState = vi.hoisted(() => ({pathname: '/app'}))
+
 const queryRows = vi.hoisted(() => ({
   teams: [{id: 'team-1', name: 'Personal'}],
+  chats: [] as Array<{id: string; teamId: string; userId: string; createdAt: number; updatedAt: number; lastUsedAt: number; firstSubmittedAt: number | null; currentPage?: string | null}>,
+}))
+
+const zeroMocks = vi.hoisted(() => ({
+  mutate: vi.fn((mutation: unknown) => mutation),
+  createChat: vi.fn((input: unknown) => ({server: Promise.resolve({type: 'ok'}), input})),
+  touchChat: vi.fn((input: unknown) => ({server: Promise.resolve({type: 'ok'}), input})),
 }))
 
 vi.mock('@flue/react', () => ({
-  useFlueAgent: vi.fn(() => flueAgent),
+  useFlueAgent: vi.fn(() => ({...flueAgent, failedSends: []})),
+  useFlueClient: vi.fn(() => ({agents: {abort: vi.fn(async () => ({aborted: true}))}})),
+}))
+
+vi.mock('@tanstack/react-router', () => ({
+  useRouterState: ({select}: {select: (state: {location: {pathname: string}}) => string}) => select({location: {pathname: routeState.pathname}}),
 }))
 
 vi.mock('@rocicorp/zero/react', () => ({
-  useQuery: vi.fn((query: {name: string}) => {
+  useQuery: vi.fn((query: {name: string; teamId?: string; userId?: string}) => {
     if (query.name === 'teams') return [queryRows.teams, {type: 'complete'}]
+    if (query.name === 'teamDataAssistantChats') {
+      return [queryRows.chats.filter(chat => chat.teamId === query.teamId && chat.userId === query.userId), {type: 'complete'}]
+    }
     throw new Error(`Unexpected query: ${query.name}`)
   }),
+  useZero: vi.fn(() => ({mutate: zeroMocks.mutate})),
 }))
 
 vi.mock('@/zero/queries', () => ({
-  queries: {domain: {teams: () => ({name: 'teams'})}},
+  queries: {domain: {
+    teams: () => ({name: 'teams'}),
+    teamDataAssistantChatsByTeamUser: (input: {teamId: string; userId: string}) => ({name: 'teamDataAssistantChats', ...input}),
+  }},
+}))
+
+vi.mock('@/zero/mutators', () => ({
+  mutators: {flue: {
+    createTeamDataAssistantChat: (input: unknown) => zeroMocks.createChat(input),
+    touchTeamDataAssistantChat: (input: unknown) => zeroMocks.touchChat(input),
+  }},
+}))
+
+vi.mock('@/lib/run-mutation', () => ({
+  runZeroMutation: vi.fn(async () => true),
 }))
 
 vi.mock('@/auth/client', () => ({
@@ -51,6 +83,11 @@ describe('TeamChatSidebar', () => {
     flueAgent.status = 'idle'
     flueAgent.error = null
     flueAgent.sendMessage.mockResolvedValue(undefined)
+    queryRows.chats = []
+    routeState.pathname = '/app'
+    zeroMocks.mutate.mockClear()
+    zeroMocks.createChat.mockClear()
+    zeroMocks.touchChat.mockClear()
   })
 
   it('opens a root-level sidebar from any trigger and scopes chat to the current team and user', async () => {

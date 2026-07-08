@@ -136,6 +136,7 @@ export const teamDataAssistantChats = pgTable(
     updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
     lastUsedAt: timestamp('last_used_at', {mode: 'date'}).notNull(),
     firstSubmittedAt: timestamp('first_submitted_at', {mode: 'date'}),
+    currentPage: text('current_page'),
   },
   table => ({
     teamUserLastUsedIdx: index('team_data_assistant_chats_team_user_last_used_idx').on(table.teamId, table.userId, table.lastUsedAt),
