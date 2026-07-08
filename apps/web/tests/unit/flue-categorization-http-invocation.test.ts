@@ -2,7 +2,12 @@ import {beforeEach, describe, expect, it, vi} from 'vitest'
 
 const dbLimit = vi.fn(async () => [{teamId: 'team-1'}])
 const reserveActiveAgentWorkflowRun = vi.fn(async () => ({id: 'app-run-1'}))
+const attachFlueRunId = vi.fn(async () => undefined)
+const failStaleActiveAgentWorkflowRuns = vi.fn(async () => [])
+const listActiveAgentWorkflowRuns = vi.fn(async () => [])
+const markAgentWorkflowRunCompletedByFlueRunId = vi.fn(async () => undefined)
 const markAgentWorkflowRunFailed = vi.fn(async () => undefined)
+const markAgentWorkflowRunFailedByFlueRunId = vi.fn(async () => undefined)
 
 vi.mock('@/db/client', () => ({
   db: {
@@ -24,7 +29,12 @@ vi.mock('@penge/domain/workflow-runs', () => ({
     readonly code = 'ACTIVE_WORKFLOW_RUN_EXISTS'
   },
   reserveActiveAgentWorkflowRun,
+  attachFlueRunId,
+  failStaleActiveAgentWorkflowRuns,
+  listActiveAgentWorkflowRuns,
+  markAgentWorkflowRunCompletedByFlueRunId,
   markAgentWorkflowRunFailed,
+  markAgentWorkflowRunFailedByFlueRunId,
 }))
 
 describe('Flue categorization HTTP invocation', () => {

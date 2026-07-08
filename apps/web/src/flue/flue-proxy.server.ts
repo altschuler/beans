@@ -8,7 +8,7 @@ import {getSessionFromRequest} from '@/auth/session.server'
 import {userCanAccessTeam} from '@/teams/team-access.server'
 
 const flueProxyPrefix = '/api/flue'
-const teamDataAssistantPath = /^\/agents\/team-data-assistant\/([^/?#]+)(\/abort)?$/
+const teamDataAssistantPath = /^\/agents\/team-data-assistant\/([^/?#]+)(?:(\/abort)|\/attachments\/([^/?#]+))?$/
 const workflowRunPath = /^\/runs\/([^/?#]+)$/
 const hopByHopHeaders = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']
 
@@ -49,12 +49,14 @@ export function createFlueProxyHandler(deps: FlueProxyDependencies) {
     const match = teamDataAssistantPath.exec(upstreamPath)
     if (!match) return new Response('Not found', {status: 404})
     const isAbortRequest = match[2] === '/abort'
+    const isAttachmentRequest = match[3] !== undefined
     if (isAbortRequest && request.method !== 'POST') return new Response('Not found', {status: 404})
 
     const agentId = decodeURIComponent(match[1]!)
     const scope = decodeTeamDataAssistantId(agentId)
     if (!scope || scope.userId !== session.user.id) return new Response('Not found', {status: 404})
     if (!(await deps.userCanAccessTeam({userId: session.user.id, teamId: scope.teamId}))) return new Response('Not found', {status: 404})
+    if (isAttachmentRequest && request.method !== 'GET' && request.method !== 'HEAD') return new Response('Not found', {status: 404})
 
     const headers = trustedForwardHeaders(request.headers, token)
     headers.set('x-penge-user-id', scope.userId)

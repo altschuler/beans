@@ -3,6 +3,7 @@ import {
   CATEGORIZE_TRANSACTIONS_WORKFLOW_LIMITS,
   buildCategorizationWorkflowPrompt,
   executeCategorizationWorkflow,
+  recordCategorizationWorkflowRunEnd,
   recordCategorizationWorkflowRunStart,
   route,
   runs,
@@ -58,6 +59,32 @@ describe('Flue categorize-transactions workflow', () => {
     expect(runs).toBe(route)
   })
 
+  it('settles the app workflow run from Flue run end events', async () => {
+    const lifecycle = {
+      markCompletedByFlueRunId: vi.fn(async () => undefined),
+      markFailedByFlueRunId: vi.fn(async () => undefined),
+    }
+
+    await recordCategorizationWorkflowRunEnd({
+      type: 'run_end',
+      runId: 'flue-run-1',
+      isError: false,
+      result: {status: 'completed'},
+      durationMs: 100,
+    }, lifecycle)
+
+    await recordCategorizationWorkflowRunEnd({
+      type: 'run_end',
+      runId: 'flue-run-2',
+      isError: true,
+      error: new Error('provider unavailable'),
+      durationMs: 100,
+    }, lifecycle)
+
+    expect(lifecycle.markCompletedByFlueRunId).toHaveBeenCalledWith({flueRunId: 'flue-run-1'})
+    expect(lifecycle.markFailedByFlueRunId).toHaveBeenCalledWith({flueRunId: 'flue-run-2', error: 'provider unavailable'})
+  })
+
   it('provides scoped tools and completes the app workflow run on success', async () => {
     const prompt = vi.fn(async () => ({text: 'done', usage: {}, model: {provider: 'test', id: 'model'}}))
     const harness = fakeHarness('flue-run-1', prompt)
@@ -66,6 +93,8 @@ describe('Flue categorize-transactions workflow', () => {
       attachFlueRunId: vi.fn(async () => undefined),
       markCompleted: vi.fn(async () => undefined),
       markFailed: vi.fn(async () => undefined),
+      markCompletedByFlueRunId: vi.fn(async () => undefined),
+      markFailedByFlueRunId: vi.fn(async () => undefined),
     }
 
     await expect(executeCategorizationWorkflow({
@@ -80,8 +109,11 @@ describe('Flue categorize-transactions workflow', () => {
       createTools: () => tools,
     })).resolves.toEqual({status: 'completed'})
 
+    const promptCalls = prompt.mock.calls as unknown as Array<[string, {tools?: TestTool[]}]>
+    const promptedTools = promptCalls[0]?.[1].tools
     expect(lifecycle.attachFlueRunId).not.toHaveBeenCalled()
-    expect(prompt).toHaveBeenCalledWith(expect.stringContaining('bank-transaction-1'), {tools})
+    expect(promptCalls[0]?.[0]).toEqual(expect.stringContaining('bank-transaction-1'))
+    expect(promptedTools?.map((tool) => tool.name)).toEqual(['searchBankTransactions', 'applyCategorizationSuggestion'])
     expect(lifecycle.markCompleted).toHaveBeenCalledWith({appRunId: 'app-run-1'})
     expect(lifecycle.markFailed).not.toHaveBeenCalled()
   })
@@ -95,6 +127,8 @@ describe('Flue categorize-transactions workflow', () => {
       attachFlueRunId: vi.fn(async () => undefined),
       markCompleted: vi.fn(async () => undefined),
       markFailed: vi.fn(async () => undefined),
+      markCompletedByFlueRunId: vi.fn(async () => undefined),
+      markFailedByFlueRunId: vi.fn(async () => undefined),
     }
 
     await expect(executeCategorizationWorkflow({

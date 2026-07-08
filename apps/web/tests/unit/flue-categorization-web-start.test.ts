@@ -11,7 +11,10 @@ const defaultDeps = () => {
       return {id: 'app-run-1'}
     }),
     invokeFlueWorkflow: vi.fn(async () => ({runId: 'flue-run-1'})),
+    attachFlueRunId: vi.fn(async () => undefined),
     markWorkflowRunFailed: vi.fn(async () => undefined),
+    reconcileWorkflowRuns: vi.fn(async () => undefined),
+    sweepStaleWorkflowRuns: vi.fn(async () => undefined),
     reservedRuns,
   }
 }
@@ -41,6 +44,7 @@ describe('Flue categorization web workflow starter', () => {
       teamId: 'team-1',
       targetBankTransactionIds: ['bank-transaction-1'],
     })
+    expect(deps.attachFlueRunId).toHaveBeenCalledWith({id: 'app-run-1', flueRunId: 'flue-run-1'})
   })
 
   it('reserves an app workflow run and starts Flue for the current team batch without target ids', async () => {
@@ -62,6 +66,7 @@ describe('Flue categorization web workflow starter', () => {
       userId: 'user-1',
       teamId: 'team-1',
     })
+    expect(deps.attachFlueRunId).toHaveBeenCalledWith({id: 'app-run-1', flueRunId: 'flue-run-1'})
   })
 
   it('turns duplicate active run conflicts into a user-facing message', async () => {
@@ -72,6 +77,17 @@ describe('Flue categorization web workflow starter', () => {
 
     await expect(starter.startBatch({userId: 'user-1'})).rejects.toThrow('AI categorization is already running for this team')
     expect(deps.invokeFlueWorkflow).not.toHaveBeenCalled()
+  })
+
+  it('reconciles stale active app runs before reserving a new workflow run', async () => {
+    const deps = defaultDeps()
+    const {createFlueCategorizationWorkflowStarter} = await import('@/ledger/flue-categorization-workflow.server')
+    const starter = createFlueCategorizationWorkflowStarter(deps)
+
+    await starter.startBatch({userId: 'user-1'})
+
+    expect(deps.reconcileWorkflowRuns).toHaveBeenCalledWith({teamId: 'team-1', workflowName: 'categorize-transactions'})
+    expect(deps.reserveWorkflowRun.mock.invocationCallOrder[0]).toBeGreaterThan(deps.reconcileWorkflowRuns.mock.invocationCallOrder[0] ?? 0)
   })
 
   it('marks the reserved app run failed when Flue admission fails', async () => {

@@ -91,7 +91,7 @@ const queryRows = vi.hoisted(() => ({
     }
   }>,
   bankAccounts: [] as Array<{id: string; name: string; teamId?: string; syncStatus?: string; provider?: string; currency?: string | null}>,
-  activeWorkflowRuns: [] as Array<{id: string; workflowName: string; teamId: string; status: string; flueRunId: string | null}>,
+  activeWorkflowRuns: [] as Array<{id: string; workflowName: string; teamId: string; status: string; flueRunId: string | null; updatedAt?: number}>,
 }))
 
 const zeroMutate = vi.hoisted(() => vi.fn(async () => undefined))
@@ -115,6 +115,7 @@ const aiCategorizeNeedsReviewBatch = vi.hoisted(() =>
     skipped: 0,
   })),
 )
+const reconcileAiCategorizationWorkflows = vi.hoisted(() => vi.fn(async () => undefined))
 const toastSuccess = vi.hoisted(() => vi.fn())
 const toastError = vi.hoisted(() => vi.fn())
 const syncAllBankAccounts = vi.hoisted(() =>
@@ -327,6 +328,7 @@ vi.mock('@/banking/banking-fns', () => ({
 vi.mock('@/ledger/ai-categorization-fns', () => ({
   aiCategorizeTransaction,
   aiCategorizeNeedsReviewBatch,
+  reconcileAiCategorizationWorkflows,
 }))
 
 vi.mock('@/components/ledger/categorization-workflow-trace', async () => {
@@ -393,6 +395,7 @@ describe('LedgerDashboard', () => {
     requestedActiveWorkflowRunsByTeamArgs.length = 0
     requestedQueryNames.length = 0
     renderedWorkflowTraces.length = 0
+    reconcileAiCategorizationWorkflows.mockClear()
     queryStatuses.groups = 'complete'
     queryStatuses.accounts = 'complete'
     queryStatuses.ledgerTransactions = 'complete'
@@ -771,6 +774,45 @@ describe('LedgerDashboard', () => {
     expect(markup).toContain('flue-run-1')
     expect(renderedWorkflowTraces).toContainEqual({flueRunId: 'flue-run-1'})
     expect(findButton('Auto-categorize')?.disabled).toBe(true)
+  })
+
+  it('asks the server to reconcile visible active workflow runs', async () => {
+    queryRows.activeWorkflowRuns = [{id: 'app-run-1', workflowName: 'categorize-transactions', teamId: 'team-1', status: 'active', flueRunId: 'flue-run-1'}]
+
+    render(React.createElement(LedgerDashboard))
+    await waitFor(() => {
+      expect(reconcileAiCategorizationWorkflows).toHaveBeenCalledWith({data: {teamId: 'team-1'}})
+    })
+  })
+
+  it('does not block the dashboard on stale preparing workflow rows', () => {
+    queryRows.ledgerTransactions = []
+    queryRows.postings = []
+    queryRows.bankTransactions = queryRows.bankTransactions.map((transaction) => ({
+      id: transaction.id,
+      bankAccountId: transaction.bankAccountId,
+      amount: transaction.amount,
+      currency: transaction.currency,
+      bookingDate: transaction.bookingDate,
+      valueDate: transaction.valueDate,
+      description: transaction.description,
+      aiConfidence: null,
+      aiReasoning: null,
+    }))
+    queryRows.activeWorkflowRuns = [{
+      id: 'app-run-1',
+      workflowName: 'categorize-transactions',
+      teamId: 'team-1',
+      status: 'active',
+      flueRunId: null,
+      updatedAt: 0,
+    }]
+
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    expect(markup).not.toContain('AI categorization is running for this team')
+    expect(renderedWorkflowTraces).toContainEqual({flueRunId: undefined})
+    expect(findButton('Auto-categorize')?.disabled).toBe(false)
   })
 
   it('confirms the current transaction category through a narrow Zero mutator', async () => {

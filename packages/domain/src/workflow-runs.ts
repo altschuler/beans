@@ -121,6 +121,21 @@ export async function markAgentWorkflowRunCompleted(
   return requireWorkflowRun(rows, input.id)
 }
 
+export async function markAgentWorkflowRunCompletedByFlueRunId(
+  sql: Sql,
+  input: {flueRunId: string; now?: Date},
+): Promise<AgentWorkflowRun> {
+  const now = input.now ?? new Date()
+  const timestamp = now.toISOString()
+  const rows = await sql<AgentWorkflowRunRow[]>`
+    update agent_workflow_runs
+    set status = 'completed', error = null, updated_at = ${timestamp}, finished_at = ${timestamp}
+    where flue_run_id = ${input.flueRunId} and status = 'active'
+    returning *
+  `
+  return requireWorkflowRun(rows, input.flueRunId)
+}
+
 export async function markAgentWorkflowRunFailed(
   sql: Sql,
   input: {id: string; error: string; now?: Date},
@@ -134,6 +149,58 @@ export async function markAgentWorkflowRunFailed(
     returning *
   `
   return requireWorkflowRun(rows, input.id)
+}
+
+export async function markAgentWorkflowRunFailedByFlueRunId(
+  sql: Sql,
+  input: {flueRunId: string; error: string; now?: Date},
+): Promise<AgentWorkflowRun> {
+  const now = input.now ?? new Date()
+  const timestamp = now.toISOString()
+  const rows = await sql<AgentWorkflowRunRow[]>`
+    update agent_workflow_runs
+    set status = 'failed', error = ${shortError(input.error)}, updated_at = ${timestamp}, finished_at = ${timestamp}
+    where flue_run_id = ${input.flueRunId} and status = 'active'
+    returning *
+  `
+  return requireWorkflowRun(rows, input.flueRunId)
+}
+
+export async function failStaleActiveAgentWorkflowRuns(
+  sql: Sql,
+  input: {teamId: string; workflowName: string; staleBefore: Date; now?: Date; error?: string},
+): Promise<AgentWorkflowRun[]> {
+  const now = input.now ?? new Date()
+  const timestamp = now.toISOString()
+  const rows = await sql<AgentWorkflowRunRow[]>`
+    update agent_workflow_runs
+    set status = 'failed',
+        error = ${shortError(input.error ?? 'Workflow did not report progress and was marked stale')},
+        updated_at = ${timestamp},
+        finished_at = ${timestamp}
+    where team_id = ${input.teamId}
+      and workflow_name = ${input.workflowName}
+      and status = 'active'
+      and flue_run_id is null
+      and updated_at < ${input.staleBefore.toISOString()}
+    returning *
+  `
+  return rows.map(mapWorkflowRun)
+}
+
+export async function listActiveAgentWorkflowRuns(
+  sql: Sql,
+  input: {teamId: string; workflowName: string},
+): Promise<AgentWorkflowRun[]> {
+  const rows = await sql<AgentWorkflowRunRow[]>`
+    select *
+    from agent_workflow_runs
+    where team_id = ${input.teamId}
+      and workflow_name = ${input.workflowName}
+      and status = 'active'
+    order by created_at desc
+  `
+  return rows.map(mapWorkflowRun)
 }
 
 function requireWorkflowRun(rows: AgentWorkflowRunRow[], id: string) {

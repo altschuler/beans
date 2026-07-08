@@ -15,8 +15,15 @@ type TraceItem = {
   detail: string
 }
 
-const maxJsonPreviewLength = 240
 const followBottomThresholdPx = 16
+const workflowProgressEventName = 'penge.workflow.progress'
+const workflowProgressMessages = new Set([
+  'Finding transactions that need review…',
+  'Checking available categories…',
+  'Reviewing prior categorizations…',
+  'Applying categorization suggestions…',
+  'Finishing workflow…',
+])
 
 export function WorkflowTrace({
   flueRunId,
@@ -96,79 +103,56 @@ function buildUsefulTraceItems(events: FlueEvent[]) {
   const items: TraceItem[] = []
   const indexes = new Map<string, number>()
 
-  function upsert(key: string, label: string, detail: string, mode: 'replace' | 'append' = 'replace') {
+  function upsert(key: string, detail: string) {
     const index = indexes.get(key)
     if (index === undefined) {
       indexes.set(key, items.length)
-      items.push({key, label, detail})
+      items.push({key, label: 'Progress', detail})
       return
     }
 
     const current = items[index]
     if (!current) return
-    items[index] = {
-      ...current,
-      label,
-      detail: mode === 'append' ? `${current.detail}${detail}` : detail,
-    }
+    items[index] = {...current, detail}
   }
 
   for (const event of events) {
-    switch (event.type) {
-      case 'thinking_delta':
-        upsert(reasoningKey(event), 'Thinking', event.delta, 'append')
-        break
-      case 'thinking_end':
-        upsert(reasoningKey(event), 'Thinking', event.content)
-        break
-      case 'text_delta':
-        upsert(textKey(event), 'Agent', event.text, 'append')
-        break
-      case 'tool_start':
-        upsert(toolKey(event), 'Tool', `Calling ${event.toolName}${event.args === undefined ? '' : ` with ${formatJsonPreview(event.args)}`}`)
-        break
-      case 'tool':
-        upsert(toolKey(event), 'Tool', toolResultDetail(event), 'append')
-        break
-      case 'log':
-        upsert(`log:${event.timestamp}:${event.eventIndex}`, 'Log', event.message)
-        break
-      default:
-        break
-    }
+    const progressEvent = readWorkflowProgressEvent(event)
+    if (!progressEvent) continue
+    upsert(progressEventKey(progressEvent), progressEvent.data.message)
   }
 
-  return items.filter(item => item.detail.trim())
+  return items
 }
 
-function reasoningKey(event: Extract<FlueEvent, {type: 'thinking_delta' | 'thinking_end'}>) {
-  return `thinking:${event.turnId ?? 'unknown'}:${event.contentIndex ?? 'latest'}`
+type WorkflowProgressEvent = {
+  type: 'data'
+  name: typeof workflowProgressEventName
+  id?: string
+  eventIndex: number
+  data: {message: string}
 }
 
-function textKey(event: Extract<FlueEvent, {type: 'text_delta'}>) {
-  return `text:${event.turnId ?? 'unknown'}`
-}
-
-function toolKey(event: Extract<FlueEvent, {type: 'tool_start' | 'tool'}>) {
-  return `tool:${event.toolCallId}`
-}
-
-function toolResultDetail(event: Extract<FlueEvent, {type: 'tool'}>) {
-  const status = event.isError ? 'Failed' : 'Finished'
-  return ` · ${status} in ${event.durationMs} ms`
-}
-
-function formatJsonPreview(value: unknown) {
-  const json = stringifyPreview(value)
-  return json.length > maxJsonPreviewLength ? `${json.slice(0, maxJsonPreviewLength - 1)}…` : json
-}
-
-function stringifyPreview(value: unknown) {
-  try {
-    return JSON.stringify(value) ?? String(value)
-  } catch {
-    return String(value)
+function readWorkflowProgressEvent(event: unknown): WorkflowProgressEvent | null {
+  if (typeof event !== 'object' || event === null) return null
+  const candidate = event as {type?: unknown; name?: unknown; id?: unknown; eventIndex?: unknown; data?: unknown}
+  if (candidate.type !== 'data' || candidate.name !== workflowProgressEventName) return null
+  if (candidate.id !== undefined && typeof candidate.id !== 'string') return null
+  if (typeof candidate.eventIndex !== 'number') return null
+  if (typeof candidate.data !== 'object' || candidate.data === null) return null
+  const message = (candidate.data as {message?: unknown}).message
+  if (typeof message !== 'string' || !workflowProgressMessages.has(message)) return null
+  return {
+    type: 'data',
+    name: workflowProgressEventName,
+    id: candidate.id,
+    eventIndex: candidate.eventIndex,
+    data: {message},
   }
+}
+
+function progressEventKey(event: WorkflowProgressEvent) {
+  return `${event.name}:${event.id ?? event.eventIndex}`
 }
 
 function getStatusDetail(status: ReturnType<typeof useFlueWorkflow>['status'], error: unknown) {

@@ -1,4 +1,4 @@
-import {useRef, useState, type FormEvent} from 'react'
+import {useEffect, useRef, useState, type FormEvent} from 'react'
 import {useQuery, useZero} from '@rocicorp/zero/react'
 import {MoreHorizontal} from 'lucide-react'
 import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
@@ -15,7 +15,7 @@ import {toast} from 'sonner'
 import {useDialog} from '@/hooks/use-dialogs'
 import {showErrorToast} from '@/lib/show-error-toast'
 import {runZeroMutation} from '@/lib/run-mutation'
-import {aiCategorizeNeedsReviewBatch, aiCategorizeTransaction} from '@/ledger/ai-categorization-fns'
+import {aiCategorizeNeedsReviewBatch, aiCategorizeTransaction, reconcileAiCategorizationWorkflows} from '@/ledger/ai-categorization-fns'
 import {createManualTransactionInput, mutators} from '@/zero/mutators'
 import {queries} from '@/zero/queries'
 import {CategorizationWorkflowTrace} from './categorization-workflow-trace'
@@ -24,6 +24,7 @@ import {saveDashboardSplitTransaction} from './save-dashboard-split-transaction'
 
 const CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME = 'categorize-transactions'
 const PENDING_TEAM_ID_SENTINEL = '__pending_team__'
+const stalePreparingWorkflowMs = 5 * 60 * 1000
 
 type LedgerDashboardView = 'transactions' | 'bankAccountTransactions'
 
@@ -60,10 +61,13 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   })
 
   const activeCategorizationWorkflowRun = activeTeamId
-    ? activeWorkflowRuns.find((run) => run.workflowName === CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME)
+    ? activeWorkflowRuns.find((run) => run.workflowName === CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME && !isStalePreparingWorkflowRun(run))
     : undefined
   const isCategorizeWorkflowActive = Boolean(activeCategorizationWorkflowRun)
   const isAiStartDisabled = isAiRequestPending || isCategorizeWorkflowActive
+  const activeWorkflowReconciliationKey = activeTeamId && activeWorkflowRuns.length > 0
+    ? `${activeTeamId}:${activeWorkflowRuns.map(run => `${run.id}:${run.updatedAt}`).join('|')}`
+    : null
   const bankAccountsComplete = bankAccountsStatus.type === 'complete'
   const bankTransactionsComplete = bankTransactionsStatus.type === 'complete'
   const selectedBankAccountMissing = view === 'bankAccountTransactions' && !selectedBankAccount && bankAccountsComplete
@@ -140,6 +144,11 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   }
 
   const aiEligibleReviewCount = model.transactionRows.filter((row) => row.needsReview).length
+
+  useEffect(() => {
+    if (!activeTeamId || activeWorkflowRuns.length === 0) return
+    void reconcileAiCategorizationWorkflows({data: {teamId: activeTeamId}})
+  }, [activeTeamId, activeWorkflowReconciliationKey, activeWorkflowRuns.length])
 
   const dashboardClassName = view === 'transactions' ? 'flex h-full min-h-0 flex-col' : 'space-y-6'
   function renderTransactionHeaderActions() {
@@ -254,6 +263,10 @@ type ManualTransactionDialogProps = {
   bankAccountId: string
   onOpenChange: (open: boolean) => void
   onSave: (input: {id: string; bankAccountId: string; date: string; description: string; amount: string}) => void
+}
+
+function isStalePreparingWorkflowRun(run: {flueRunId: string | null; updatedAt?: number}) {
+  return run.flueRunId === null && typeof run.updatedAt === 'number' && Date.now() - run.updatedAt > stalePreparingWorkflowMs
 }
 
 function ManualTransactionDialog(props: ManualTransactionDialogProps) {

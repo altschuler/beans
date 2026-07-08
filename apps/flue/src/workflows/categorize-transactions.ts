@@ -4,7 +4,14 @@ import transactionCategorizer from '../agents/transaction-categorizer'
 import {createCategorizationReadTools} from '../agent-tools/read-tools'
 import {createCategorizationWriteTools} from '../agent-tools/write-tools'
 import {sql} from '@penge/domain/db'
-import {attachFlueRunId, markAgentWorkflowRunCompleted, markAgentWorkflowRunFailed} from '@penge/domain/workflow-runs'
+import {
+  AgentWorkflowRunNotFoundError,
+  attachFlueRunId,
+  markAgentWorkflowRunCompleted,
+  markAgentWorkflowRunCompletedByFlueRunId,
+  markAgentWorkflowRunFailed,
+  markAgentWorkflowRunFailedByFlueRunId,
+} from '@penge/domain/workflow-runs'
 
 export const CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME = 'categorize-transactions'
 export const CATEGORIZE_TRANSACTIONS_WORKFLOW_LIMITS = {
@@ -23,6 +30,8 @@ type CategorizationWorkflowLifecycle = {
   attachFlueRunId(input: {appRunId: string; flueRunId: string}): Promise<unknown>
   markCompleted(input: {appRunId: string}): Promise<unknown>
   markFailed(input: {appRunId: string; error: string}): Promise<unknown>
+  markCompletedByFlueRunId(input: {flueRunId: string}): Promise<unknown>
+  markFailedByFlueRunId(input: {flueRunId: string; error: string}): Promise<unknown>
 }
 
 type CategorizationWorkflowHarness = {
@@ -30,7 +39,32 @@ type CategorizationWorkflowHarness = {
   session(): Promise<{
     prompt(text: string, options?: {tools?: unknown[]}): Promise<unknown>
   }>
+} & Partial<CategorizationWorkflowProgressEmitter>
+
+type CategorizationWorkflowProgressEmitter = {
+  emit(event: CategorizationWorkflowProgressEvent): void
 }
+
+type CategorizationWorkflowProgressEvent = {
+  type: 'data'
+  name: typeof categorizationWorkflowProgressEventName
+  id: CategorizationProgressPhase
+  data: {
+    message: CategorizationProgressMessage
+  }
+}
+
+const categorizationWorkflowProgressEventName = 'penge.workflow.progress'
+const categorizationWorkflowProgress = {
+  'finding-transactions': 'Finding transactions that need review…',
+  'checking-categories': 'Checking available categories…',
+  'reviewing-prior-categorizations': 'Reviewing prior categorizations…',
+  'applying-suggestions': 'Applying categorization suggestions…',
+  finishing: 'Finishing workflow…',
+} as const
+
+type CategorizationProgressPhase = keyof typeof categorizationWorkflowProgress
+type CategorizationProgressMessage = typeof categorizationWorkflowProgress[CategorizationProgressPhase]
 
 const inputSchema = v.object({
   appRunId: v.string(),
@@ -58,6 +92,7 @@ export const runs = route
 
 observe((event) => {
   void recordCategorizationWorkflowRunStart(event)
+  void recordCategorizationWorkflowRunEnd(event)
 })
 
 export default defineWorkflow({
@@ -85,10 +120,15 @@ export async function executeCategorizationWorkflow(input: {
   const createTools = input.createTools ?? createScopedCategorizationTools
 
   try {
+    const emitProgress = createCategorizationProgressEmitter(input.harness)
+    emitProgress('finding-transactions')
+
     const session = await input.harness.session()
     await session.prompt(buildCategorizationWorkflowPrompt(input.input), {
-      tools: createTools(input.input) as ToolDefinition[],
+      tools: addCategorizationProgressToTools(createTools(input.input) as ToolDefinition[], emitProgress),
     })
+
+    emitProgress('finishing')
     await lifecycle.markCompleted({appRunId: input.input.appRunId})
     return {status: 'completed' as const}
   } catch (error) {
@@ -102,9 +142,25 @@ export async function recordCategorizationWorkflowRunStart(
   lifecycle: Pick<CategorizationWorkflowLifecycle, 'attachFlueRunId'> = domainWorkflowLifecycle,
 ) {
   if (event.type !== 'run_start' || event.workflowName !== CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME || typeof event.runId !== 'string') return
+  const runId = event.runId
   const input = event.input
   if (!isCategorizeTransactionsWorkflowInput(input)) return
-  await lifecycle.attachFlueRunId({appRunId: input.appRunId, flueRunId: event.runId})
+  await ignoreMissingWorkflowRun(() => lifecycle.attachFlueRunId({appRunId: input.appRunId, flueRunId: runId}))
+}
+
+export async function recordCategorizationWorkflowRunEnd(
+  event: FlueEvent | {type: string; runId?: string; isError?: boolean; error?: unknown},
+  lifecycle: Pick<CategorizationWorkflowLifecycle, 'markCompletedByFlueRunId' | 'markFailedByFlueRunId'> = domainWorkflowLifecycle,
+) {
+  if (event.type !== 'run_end' || typeof event.runId !== 'string') return
+  const runId = event.runId
+
+  if (event.isError) {
+    await ignoreMissingWorkflowRun(() => lifecycle.markFailedByFlueRunId({flueRunId: runId, error: errorMessage(event.error)}))
+    return
+  }
+
+  await ignoreMissingWorkflowRun(() => lifecycle.markCompletedByFlueRunId({flueRunId: runId}))
 }
 
 export function buildCategorizationWorkflowPrompt(input: CategorizeTransactionsWorkflowInput) {
@@ -145,6 +201,47 @@ function createScopedCategorizationTools(input: CategorizeTransactionsWorkflowIn
   ]
 }
 
+function createCategorizationProgressEmitter(harness: CategorizationWorkflowHarness) {
+  return (phase: CategorizationProgressPhase) => {
+    if (typeof harness.emit !== 'function') return
+
+    try {
+      harness.emit({
+        type: 'data',
+        name: categorizationWorkflowProgressEventName,
+        id: phase,
+        data: {message: categorizationWorkflowProgress[phase]},
+      })
+    } catch {
+      // Progress events must not make the categorization workflow fail.
+    }
+  }
+}
+
+function addCategorizationProgressToTools(tools: ToolDefinition[], emitProgress: (phase: CategorizationProgressPhase) => void) {
+  return tools.map(tool => {
+    const progressPhase = progressPhaseByToolName[tool.name]
+    if (!progressPhase) return tool
+
+    const wrapped: ToolDefinition = {
+      ...tool,
+      run(context) {
+        emitProgress(progressPhase)
+        return tool.run(context)
+      },
+    }
+    return wrapped
+  })
+}
+
+const progressPhaseByToolName: Partial<Record<string, CategorizationProgressPhase>> = {
+  searchBankTransactions: 'finding-transactions',
+  getBankTransactionDetail: 'finding-transactions',
+  searchLedgerAccounts: 'checking-categories',
+  searchLedgerTransactions: 'reviewing-prior-categorizations',
+  applyCategorizationSuggestion: 'applying-suggestions',
+}
+
 function isCategorizeTransactionsWorkflowInput(input: unknown): input is CategorizeTransactionsWorkflowInput {
   return typeof input === 'object'
     && input !== null
@@ -163,6 +260,20 @@ const domainWorkflowLifecycle: CategorizationWorkflowLifecycle = {
   markFailed(input) {
     return markAgentWorkflowRunFailed(sql, {id: input.appRunId, error: input.error})
   },
+  markCompletedByFlueRunId(input) {
+    return markAgentWorkflowRunCompletedByFlueRunId(sql, {flueRunId: input.flueRunId})
+  },
+  markFailedByFlueRunId(input) {
+    return markAgentWorkflowRunFailedByFlueRunId(sql, {flueRunId: input.flueRunId, error: input.error})
+  },
+}
+
+async function ignoreMissingWorkflowRun(action: () => Promise<unknown>) {
+  try {
+    await action()
+  } catch (error) {
+    if (!(error instanceof AgentWorkflowRunNotFoundError)) throw error
+  }
 }
 
 function errorMessage(error: unknown) {

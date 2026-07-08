@@ -65,6 +65,8 @@ export const route: AgentRouteHandler = async (c, next) => {
   await next()
 }
 
+export const attachments = route
+
 export function createTeamDataAssistantConfig({id}: {id: string}) {
   const scope = decodeTeamDataAssistantId(id)
   if (!scope) throw new Error('Invalid team data assistant id')

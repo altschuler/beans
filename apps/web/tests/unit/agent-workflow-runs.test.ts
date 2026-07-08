@@ -6,8 +6,11 @@ import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 import {
   ActiveWorkflowRunExistsError,
   attachFlueRunId,
+  failStaleActiveAgentWorkflowRuns,
   markAgentWorkflowRunCompleted,
+  markAgentWorkflowRunCompletedByFlueRunId,
   markAgentWorkflowRunFailed,
+  markAgentWorkflowRunFailedByFlueRunId,
   reserveActiveAgentWorkflowRun,
 } from '@penge/domain/workflow-runs'
 
@@ -124,6 +127,69 @@ describe('agent workflow run repository', () => {
     const rows = await db.select().from(agentWorkflowRuns).where(eq(agentWorkflowRuns.id, 'run-1'))
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({status: 'failed'})
+  })
+
+  it('settles active app workflow runs by Flue run id', async () => {
+    await reserveActiveAgentWorkflowRun(sql, {
+      id: 'run-1',
+      teamId: 'team-1',
+      workflowName: 'categorize-transactions',
+      requestedByUserId: 'user-1',
+      now,
+    })
+    await attachFlueRunId(sql, {id: 'run-1', flueRunId: 'flue-run-1', now: new Date('2026-06-24T10:01:00.000Z')})
+
+    await expect(
+      markAgentWorkflowRunCompletedByFlueRunId(sql, {flueRunId: 'flue-run-1', now: new Date('2026-06-24T10:02:00.000Z')}),
+    ).resolves.toMatchObject({id: 'run-1', status: 'completed', error: null})
+
+    await reserveActiveAgentWorkflowRun(sql, {
+      id: 'run-2',
+      teamId: 'team-1',
+      workflowName: 'categorize-transactions',
+      requestedByUserId: 'user-1',
+      now: new Date('2026-06-24T10:03:00.000Z'),
+    })
+    await attachFlueRunId(sql, {id: 'run-2', flueRunId: 'flue-run-2', now: new Date('2026-06-24T10:04:00.000Z')})
+
+    await expect(
+      markAgentWorkflowRunFailedByFlueRunId(sql, {flueRunId: 'flue-run-2', error: 'provider unavailable', now: new Date('2026-06-24T10:05:00.000Z')}),
+    ).resolves.toMatchObject({id: 'run-2', status: 'failed', error: 'provider unavailable'})
+  })
+
+  it('fails stale preparing runs so a new run can be reserved', async () => {
+    await reserveActiveAgentWorkflowRun(sql, {
+      id: 'stale-run',
+      teamId: 'team-1',
+      workflowName: 'categorize-transactions',
+      requestedByUserId: 'user-1',
+      now,
+    })
+
+    await expect(
+      failStaleActiveAgentWorkflowRuns(sql, {
+        teamId: 'team-1',
+        workflowName: 'categorize-transactions',
+        staleBefore: new Date('2026-06-24T10:05:00.000Z'),
+        now: new Date('2026-06-24T10:06:00.000Z'),
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: 'stale-run',
+        status: 'failed',
+        error: 'Workflow did not report progress and was marked stale',
+      }),
+    ])
+
+    await expect(
+      reserveActiveAgentWorkflowRun(sql, {
+        id: 'new-run',
+        teamId: 'team-1',
+        workflowName: 'categorize-transactions',
+        requestedByUserId: 'user-1',
+        now: new Date('2026-06-24T10:07:00.000Z'),
+      }),
+    ).resolves.toMatchObject({id: 'new-run', status: 'active'})
   })
 })
 
