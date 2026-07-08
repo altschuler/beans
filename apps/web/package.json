@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n app,zero -c cyan,magenta \"pnpm dev:app\" \"pnpm dev:zero\"",
-    "dev:app": "dotenv -e .env -- sh -c 'vite dev --host 0.0.0.0 --port ${PORT:-3100}'",
+    "dev:app": "dotenv -e .env -- sh -c 'vite dev --port ${PORT:-3100}'",
     "dev:zero": "NODE_EXTRA_CA_CERTS=.cert/localhost-cert.pem dotenv -e .env -- sh -c 'mkdir -p .zero-cache && ZERO_LOG_LEVEL=${ZERO_LOG_LEVEL:-warn} ZERO_REPLICA_FILE=${ZERO_REPLICA_FILE:-.zero-cache/zero.db} exec zero-cache-dev --app-publications penge_zero_app --port ${ZERO_PORT:-4848} --change-streamer-port ${ZERO_CHANGE_STREAMER_PORT:-4849}'",
     "build": "NODE_EXTRA_CA_CERTS=.cert/localhost-cert.pem vite build",
     "start": "node .output/server/index.mjs",
@@ -27,7 +27,7 @@
     "@penge/domain": "workspace:*",
     "@radix-ui/react-dialog": "1.1.17",
     "@radix-ui/react-slot": "1.2.4",
-    "@rocicorp/zero": "1.6.2",
+    "@rocicorp/zero": "1.7.0",
     "@tanstack/react-router": "1.170.15",
     "@tanstack/react-start": "1.168.25",
     "@tanstack/react-virtual": "3.14.3",
@@ -66,14 +66,13 @@
     "dotenv": "^17.4.2",
     "dotenv-cli": "11.0.0",
     "drizzle-kit": "0.31.10",
-    "drizzle-zero": "0.18.0",
+    "drizzle-zero": "0.19.0",
     "eslint": "10.5.0",
     "jsdom": "^29.1.1",
     "prettier": "3.8.4",
     "tailwindcss": "4.3.1",
     "typescript": "6.0.3",
     "vite": "8.0.16",
-    "vite-tsconfig-paths": "6.1.1",
     "vitest": "4.1.9"
   }
 }

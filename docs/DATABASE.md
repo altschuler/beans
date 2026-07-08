@@ -2,7 +2,9 @@
 
 Postgres is the durable database. The web app's Drizzle schema lives in `apps/web/src/db/schema.ts`, and web app migrations live in `apps/web/drizzle/`.
 
-Flue runtime persistence also uses Postgres through `@flue/postgres`, but it owns separate `flue_*` tables. Those tables store Flue sessions, submissions, workflow runs, attachments, and events; they are not Penge domain tables and must not be exposed through Zero. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
+Flue runtime persistence also uses Postgres through `@flue/postgres`, but it owns separate `flue_*` tables. Those tables store Flue canonical conversation streams, accepted submissions, workflow runs, attachments, events, and run indexes; they are not Penge domain tables and must not be exposed through Zero. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
+
+Flue `1.0.0-beta.9` uses runtime schema v4. This pre-1.0 schema is reset-only: if Flue reports a persisted schema mismatch in local or staging environments, stop Flue and clear only Flue-owned `flue_*` tables before restarting the sidecar. Do not clear Penge domain tables or Better Auth tables.
 
 Zero is the required sync layer for app/domain data. Any user-facing application data that should be available to the client must be exposed through Zero rather than fetched directly from server routes or ad-hoc client APIs.
 
@@ -28,6 +30,7 @@ Current Zero-synced app/domain tables, and the only tables included in the local
 - `teams`
 - `team_members`
 - `agent_workflow_runs`
+- `team_data_assistant_chats`
 - `bank_connections`
 - `bank_accounts`
 - `bank_transactions`

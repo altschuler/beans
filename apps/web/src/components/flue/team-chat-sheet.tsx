@@ -1,11 +1,15 @@
-import {useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react'
-import {MessageCircle, Send, X} from 'lucide-react'
+import {useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react'
+import {History, MessageCircle, Send, Square, X} from 'lucide-react'
 import ReactMarkdown, {type Components} from 'react-markdown'
-import {useFlueAgent} from '@flue/react'
+import {useFlueAgent, useFlueClient, type FlueConversationMessage, type FlueConversationPart} from '@flue/react'
+import {useQuery, useZero} from '@rocicorp/zero/react'
 import {encodeTeamDataAssistantId} from '@penge/domain/team-data-assistant-id'
 import {Button} from '@/components/ui/button'
 import {Textarea} from '@/components/ui/textarea'
+import {runZeroMutation} from '@/lib/run-mutation'
 import {cn} from '@/lib/utils'
+import {mutators} from '@/zero/mutators'
+import {queries} from '@/zero/queries'
 
 type TeamChatSheetProps = {
   teamId: string | null
@@ -27,14 +31,14 @@ export type TeamChatPanelProps = {
   className?: string
 }
 
-type TextPart = {type: 'text'; text: string; state?: string}
-type ChatMessagePart = TextPart | {type: string; state?: string; toolName?: string; tool?: string; name?: string; [key: string]: unknown}
-
-type ChatMessage = {
+type SelectedTeamChat = {
   id: string
-  role: string
-  parts?: ChatMessagePart[]
+  teamId: string
+  userId: string
 }
+
+const pendingChatScopeSentinel = '__pending_chat_scope__'
+const recentChatResumeWindowMs = 60 * 60 * 1000
 
 export function TeamChatSheet({teamId, userId, children}: TeamChatSheetProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -60,23 +64,92 @@ export function TeamChatSheet({teamId, userId, children}: TeamChatSheetProps) {
 export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: TeamChatPanelProps) {
   const [input, setInput] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isStopping, setIsStopping] = useState(false)
+  const [abortError, setAbortError] = useState<Error | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+  const [selectedChat, setSelectedChat] = useState<SelectedTeamChat | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const [chatId, setChatId] = useState(createChatId)
   const titleId = useId()
-  const conversationId = useMemo(() => (teamId && userId ? encodeTeamDataAssistantId({teamId, userId, chatId}) : undefined), [chatId, teamId, userId])
+  const chatQuery = teamId && userId ? queries.domain.teamDataAssistantChatsByTeamUser({teamId, userId}) : queries.domain.teamDataAssistantChatsByTeamUser({teamId: pendingChatScopeSentinel, userId: pendingChatScopeSentinel})
+  const [chatHistory, chatHistoryStatus] = useQuery(chatQuery)
+  const zero = useZero()
+  const conversationId = useMemo(() => (teamId && userId && selectedChat?.teamId === teamId && selectedChat.userId === userId ? encodeTeamDataAssistantId({teamId, userId, chatId: selectedChat.id}) : undefined), [selectedChat, teamId, userId])
+  const currentConversationIdRef = useRef(conversationId)
+  const stopRequestIdRef = useRef(0)
+  const flueClient = useFlueClient()
   const agent = useFlueAgent({name: 'team-data-assistant', id: conversationId, live: 'sse'})
-  const canSend = Boolean(conversationId && input.trim() && !isSubmitting)
-  const messages = agent.messages as ChatMessage[]
-  const activity = useStableChatActivity(getChatActivity({status: agent.status, error: agent.error, isSubmitting, messages}))
+  const isAgentWorking = isAbortableAgentStatus(agent.status)
+  const canSend = Boolean(conversationId && input.trim() && !isSubmitting && !isAgentWorking)
+  const canStop = Boolean(conversationId && isAgentWorking && !isStopping)
+  const messages = agent.messages
+  const latestFailedSendError = agent.failedSends.at(-1)?.error
+  const activity = useStableChatActivity(getChatActivity({status: agent.status, error: abortError ?? agent.error ?? latestFailedSendError, isSubmitting, isStopping, messages}))
+  const submittedChatHistory = chatHistory.filter(chat => chat.firstSubmittedAt)
+  const latestChat = submittedChatHistory[0]
+  const chatHistoryComplete = chatHistoryStatus.type === 'complete'
+
+  const createAndSelectNewChat = useCallback((scope: {teamId: string; userId: string}) => {
+    const now = Date.now()
+    const chat = {id: createChatId(), teamId: scope.teamId, userId: scope.userId, createdAt: now, updatedAt: now, lastUsedAt: now, firstSubmittedAt: null}
+    setSelectedChat({id: chat.id, teamId: chat.teamId, userId: chat.userId})
+    void runZeroMutation(zero.mutate(mutators.flue.createTeamDataAssistantChat(chat)), 'Could not save chat history')
+    return chat.id
+  }, [zero])
+
+  const touchChat = useCallback((chatId: string, options: {submitted?: boolean} = {}) => {
+    const now = Date.now()
+    void runZeroMutation(zero.mutate(mutators.flue.touchTeamDataAssistantChat({chatId, lastUsedAt: now, ...(options.submitted ? {firstSubmittedAt: now} : {})})), 'Could not update chat history')
+  }, [zero])
+
+  useEffect(() => {
+    currentConversationIdRef.current = conversationId
+  }, [conversationId])
+
+  useEffect(() => {
+    if (!teamId || !userId) {
+      // This effect synchronizes selected chat state to the current authenticated scope.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedChat(null)
+      return
+    }
+
+    if (selectedChat?.teamId === teamId && selectedChat.userId === userId) return
+    if (!chatHistoryComplete) return
+
+    // The recency check is time-based by design; it runs only while synchronizing Zero history in this effect.
+    // eslint-disable-next-line react-hooks/purity
+    if (latestChat && Date.now() - latestChat.lastUsedAt < recentChatResumeWindowMs) {
+      setSelectedChat({id: latestChat.id, teamId, userId})
+      return
+    }
+    if (!isOpen) return
+
+    createAndSelectNewChat({teamId, userId})
+  }, [chatHistoryComplete, createAndSelectNewChat, isOpen, latestChat, selectedChat, teamId, userId])
 
   useEffect(() => {
     resizeComposer(inputRef.current)
   }, [input])
 
   function clearChat() {
+    if (!teamId || !userId) return
+    stopRequestIdRef.current += 1
     setInput('')
     setIsSubmitting(false)
-    setChatId(createChatId())
+    setIsStopping(false)
+    setAbortError(null)
+    createAndSelectNewChat({teamId, userId})
+  }
+
+  function selectChatFromHistory(chat: {id: string; teamId: string; userId: string}) {
+    stopRequestIdRef.current += 1
+    setInput('')
+    setIsSubmitting(false)
+    setIsStopping(false)
+    setAbortError(null)
+    setSelectedChat({id: chat.id, teamId: chat.teamId, userId: chat.userId})
+    setShowHistory(false)
+    touchChat(chat.id)
   }
 
   function updateInput(element: HTMLTextAreaElement) {
@@ -94,14 +167,37 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: Team
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const message = input.trim()
-    if (!message || !conversationId || isSubmitting) return
+    if (!message || !conversationId || isSubmitting || isAgentWorking) return
 
     setInput('')
+    setAbortError(null)
     setIsSubmitting(true)
     try {
+      if (selectedChat) touchChat(selectedChat.id, {submitted: true})
       await agent.sendMessage(message)
+    } catch {
+      // Flue exposes send failures through agent.error/failedSends; keep the event handler settled.
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  async function stopResponse() {
+    if (!conversationId || !isAgentWorking || isStopping) return
+
+    const stoppedConversationId = conversationId
+    const stopRequestId = stopRequestIdRef.current + 1
+    stopRequestIdRef.current = stopRequestId
+    setAbortError(null)
+    setIsStopping(true)
+    try {
+      await flueClient.agents.abort('team-data-assistant', stoppedConversationId)
+    } catch (error) {
+      if (stopRequestIdRef.current === stopRequestId && currentConversationIdRef.current === stoppedConversationId) {
+        setAbortError(error instanceof Error ? error : new Error('Could not stop response'))
+      }
+    } finally {
+      if (stopRequestIdRef.current === stopRequestId && currentConversationIdRef.current === stoppedConversationId) setIsStopping(false)
     }
   }
 
@@ -120,7 +216,11 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: Team
             <h2 id={titleId} className="font-semibold text-foreground">Ask Penge</h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <Button type="button" variant="outline" size="sm" disabled={!conversationId} onClick={clearChat}>
+            <Button type="button" variant="outline" size="sm" disabled={submittedChatHistory.length === 0} aria-expanded={showHistory} onClick={() => setShowHistory((value) => !value)}>
+              <History className="h-4 w-4" aria-hidden="true" />
+              History
+            </Button>
+            <Button type="button" variant="outline" size="sm" disabled={!teamId || !userId} onClick={clearChat}>
               Clear chat
             </Button>
             <Button type="button" variant="ghost" size="icon" aria-label="Close chat" onClick={onClose}>
@@ -129,6 +229,30 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: Team
           </div>
         </div>
       </div>
+
+      {showHistory ? (
+        <div className="border-b bg-background p-3">
+          <div className="mb-2 text-xs font-medium text-muted-foreground">Recent chats</div>
+          <div role="list" aria-label="Ask Penge chat history" className="space-y-1">
+            {submittedChatHistory.map(chat => (
+              <div key={chat.id} role="listitem">
+                <button
+                  type="button"
+                  aria-current={selectedChat?.id === chat.id ? 'true' : undefined}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground',
+                    selectedChat?.id === chat.id ? 'bg-accent text-accent-foreground' : 'text-foreground',
+                  )}
+                  onClick={() => selectChatFromHistory(chat)}
+                >
+                  <span>{formatChatDate(chat.lastUsedAt)}</span>
+                  {selectedChat?.id === chat.id ? <span className="text-xs text-muted-foreground">Current</span> : null}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-muted/30 p-4" role="log" aria-label="Ask Penge chat transcript" aria-live="polite">
         {agent.messages.length === 0 && !activity ? (
@@ -153,9 +277,15 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: Team
             placeholder="Ask..."
             className="max-h-32 min-h-9 flex-1 resize-none overflow-y-auto py-2"
           />
-          <Button type="submit" size="sm" disabled={!canSend} aria-label="Send message" className="shrink-0">
-            <Send className="h-4 w-4" aria-hidden="true" />
-            Send
+          <Button
+            type={isAgentWorking ? 'button' : 'submit'}
+            size="sm"
+            disabled={isAgentWorking ? !canStop : !canSend}
+            aria-label={isAgentWorking ? 'Stop response' : 'Send message'}
+            className="shrink-0"
+            onClick={isAgentWorking ? stopResponse : undefined}
+          >
+            {isAgentWorking ? <Square className="h-4 w-4" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
           </Button>
         </form>
       </div>
@@ -180,9 +310,13 @@ function createChatId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-function ChatBubble({message}: {message: ChatMessage}) {
+function formatChatDate(timestamp: number) {
+  return new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(timestamp))
+}
+
+function ChatBubble({message}: {message: FlueConversationMessage}) {
   const isUser = message.role === 'user'
-  const textParts = (message.parts ?? []).filter((part): part is TextPart => part.type === 'text')
+  const textParts = message.parts.filter((part) => part.type === 'text')
   const text = textParts.map((part) => part.text).join('\n\n').trim()
   if (!text) return null
 
@@ -255,7 +389,7 @@ function ChatActivityBubble({activity}: {activity: ChatActivity}) {
 
 function useStableChatActivity(activity: ChatActivity | null) {
   const [displayedActivity, setDisplayedActivity] = useState(activity)
-  const shownAtRef = useRef(Date.now())
+  const shownAtRef = useRef<number | null>(null)
   const pendingActivityRef = useRef<ChatActivity | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activityText = activity?.text
@@ -278,6 +412,8 @@ function useStableChatActivity(activity: ChatActivity | null) {
       const nextActivity = activityText ? {text: activityText, tone: activityTone ?? 'muted'} : null
       if (displayedActivity?.text !== nextActivity?.text || displayedActivity?.tone !== nextActivity?.tone) {
         shownAtRef.current = Date.now()
+        // This effect intentionally synchronizes displayed progress with timer state.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setDisplayedActivity(nextActivity)
       }
       return
@@ -293,7 +429,7 @@ function useStableChatActivity(activity: ChatActivity | null) {
       return
     }
 
-    const elapsed = Date.now() - shownAtRef.current
+    const elapsed = Date.now() - (shownAtRef.current ?? Date.now())
     if (elapsed >= progressMinimumMs) {
       pendingActivityRef.current = null
       shownAtRef.current = Date.now()
@@ -316,8 +452,14 @@ function useStableChatActivity(activity: ChatActivity | null) {
   return displayedActivity
 }
 
-function getChatActivity({status, error, isSubmitting, messages}: {status?: string; error?: unknown; isSubmitting: boolean; messages: ChatMessage[]}): ChatActivity | null {
-  if (error instanceof Error) return {text: error.message, tone: 'error'}
+function isAbortableAgentStatus(status?: string) {
+  return status === 'submitted' || status === 'streaming'
+}
+
+function getChatActivity({status, error, isSubmitting, isStopping, messages}: {status?: string; error?: unknown; isSubmitting: boolean; isStopping: boolean; messages: FlueConversationMessage[]}): ChatActivity | null {
+  const errorText = getErrorText(error)
+  if (errorText) return {text: errorText, tone: 'error'}
+  if (isStopping) return {text: 'Stopping…', tone: 'muted'}
   if (isSubmitting) return {text: 'Sending…', tone: 'muted'}
   if (status === 'connecting') return {text: 'Connecting to Penge…', tone: 'muted'}
   if (status === 'submitted') return {text: 'Starting…', tone: 'muted'}
@@ -326,7 +468,13 @@ function getChatActivity({status, error, isSubmitting, messages}: {status?: stri
   return null
 }
 
-function getStreamingActivityText(messages: ChatMessage[]) {
+function getErrorText(error: unknown) {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  return null
+}
+
+function getStreamingActivityText(messages: FlueConversationMessage[]) {
   const latestAssistantMessage = getLatestAssistantMessage(messages)
   if (!latestAssistantMessage) return 'Thinking through the request…'
   if (hasStreamingText(latestAssistantMessage)) return 'Writing answer…'
@@ -335,30 +483,21 @@ function getStreamingActivityText(messages: ChatMessage[]) {
   return (toolName && toolProgressLabels[toolName]) || 'Thinking through the request…'
 }
 
-function getLatestAssistantMessage(messages: ChatMessage[]) {
+function getLatestAssistantMessage(messages: FlueConversationMessage[]) {
   return messages.filter((message) => message.role === 'assistant').at(-1)
 }
 
-function hasStreamingText(message: ChatMessage) {
-  return (message.parts ?? []).some((part) => part.type === 'text' && part.state === 'streaming')
+function hasStreamingText(message: FlueConversationMessage) {
+  return message.parts.some((part) => part.type === 'text' && part.state === 'streaming')
 }
 
-function getLatestStreamingToolName(message: ChatMessage) {
-  return (message.parts ?? [])
+function getLatestStreamingToolName(message: FlueConversationMessage) {
+  return message.parts
     .filter(isActiveToolPart)
-    .map(getToolName)
-    .filter((toolName): toolName is string => Boolean(toolName))
+    .map((part) => part.toolName)
     .at(-1)
 }
 
-function isActiveToolPart(part: ChatMessagePart) {
-  return Boolean(getToolName(part)) && part.state !== 'output-available' && part.state !== 'output-error'
-}
-
-function getToolName(part: ChatMessagePart) {
-  if ('toolName' in part && typeof part.toolName === 'string') return part.toolName
-  if ('tool' in part && typeof part.tool === 'string') return part.tool
-  if ('name' in part && typeof part.name === 'string') return part.name
-  if (part.type.startsWith('tool-')) return part.type.slice('tool-'.length)
-  return null
+function isActiveToolPart(part: FlueConversationPart): part is Extract<FlueConversationPart, {type: 'dynamic-tool'}> {
+  return part.type === 'dynamic-tool' && part.state === 'input-available'
 }

@@ -15,6 +15,7 @@ describe('zero schema', () => {
         'ledgerTransactions',
         'ledgerPostings',
         'agentWorkflowRuns',
+        'teamDataAssistantChats',
       ]),
     )
   })
@@ -56,6 +57,15 @@ describe('zero schema', () => {
     expect(schema.tables.agentWorkflowRuns.columns.status).toMatchObject({type: 'string', optional: false})
     expect(schema.tables.agentWorkflowRuns.columns.error).toMatchObject({type: 'string', optional: true})
     expect(schema.tables.agentWorkflowRuns.columns.finishedAt).toMatchObject({type: 'number', optional: true, serverName: 'finished_at'})
+  })
+
+  it('exposes team data assistant chat fields with server column names', () => {
+    const columns = schema.tables.teamDataAssistantChats.columns
+
+    expect(columns.teamId).toMatchObject({type: 'string', optional: false, serverName: 'team_id'})
+    expect(columns.userId).toMatchObject({type: 'string', optional: false, serverName: 'user_id'})
+    expect(columns.lastUsedAt).toMatchObject({type: 'number', optional: false, serverName: 'last_used_at'})
+    expect(columns.firstSubmittedAt).toMatchObject({type: 'number', optional: true, serverName: 'first_submitted_at'})
   })
 
   it('exposes ledger fields with server column names', () => {

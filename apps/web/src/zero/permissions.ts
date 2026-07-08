@@ -28,6 +28,13 @@ export function visibleAgentWorkflowRun(userID: string) {
     run.whereExists('team', visibleTeam(userID))
 }
 
+export function visibleTeamDataAssistantChat(userID: string) {
+  return <TReturn>(
+    chat: Query<'teamDataAssistantChats', Schema, TReturn>,
+  ): Query<'teamDataAssistantChats', Schema, TReturn> =>
+    chat.where('userId', userID).whereExists('team', visibleTeam(userID))
+}
+
 export function visibleBankAccount(userID: string) {
   return <TReturn>(
     account: Query<'bankAccounts', Schema, TReturn>,

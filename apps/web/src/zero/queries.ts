@@ -5,6 +5,7 @@ import {
   requireZeroUserID,
   visibleAgentWorkflowRun,
   visibleBankAccount,
+  visibleTeamDataAssistantChat,
   visibleBankConnection,
   visibleBankTransaction,
   visibleLedgerAccount,
@@ -14,6 +15,7 @@ import {
 } from './permissions'
 
 const activeAgentWorkflowRunsByTeamArgs = z.object({teamId: z.string().min(1)})
+const teamDataAssistantChatsByTeamUserArgs = z.object({teamId: z.string().min(1), userId: z.string().min(1)})
 const ledgerAccountDetailArgs = z.object({accountId: z.string().min(1)})
 const bankTransactionsForBankAccountArgs = z.object({bankAccountId: z.string().min(1)})
 
@@ -34,6 +36,10 @@ export const queries = defineQueries({
     activeAgentWorkflowRunsByTeam: defineQuery(activeAgentWorkflowRunsByTeamArgs, ({ctx, args}) => {
       const userID = requireZeroUserID(ctx)
       return visibleAgentWorkflowRun(userID)(zql.agentWorkflowRuns.where('teamId', args.teamId).where('status', 'active')).orderBy('createdAt', 'desc')
+    }),
+    teamDataAssistantChatsByTeamUser: defineQuery(teamDataAssistantChatsByTeamUserArgs, ({ctx, args}) => {
+      const userID = requireZeroUserID(ctx)
+      return visibleTeamDataAssistantChat(userID)(zql.teamDataAssistantChats.where('teamId', args.teamId).where('userId', args.userId)).orderBy('lastUsedAt', 'desc')
     }),
     bankAccounts: defineQuery(({ctx}) => {
       const userID = requireZeroUserID(ctx)

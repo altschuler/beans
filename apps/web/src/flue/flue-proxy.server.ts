@@ -8,7 +8,7 @@ import {getSessionFromRequest} from '@/auth/session.server'
 import {userCanAccessTeam} from '@/teams/team-access.server'
 
 const flueProxyPrefix = '/api/flue'
-const teamDataAssistantPath = /^\/agents\/team-data-assistant\/([^/?#]+)$/
+const teamDataAssistantPath = /^\/agents\/team-data-assistant\/([^/?#]+)(\/abort)?$/
 const workflowRunPath = /^\/runs\/([^/?#]+)$/
 const hopByHopHeaders = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']
 
@@ -48,6 +48,8 @@ export function createFlueProxyHandler(deps: FlueProxyDependencies) {
 
     const match = teamDataAssistantPath.exec(upstreamPath)
     if (!match) return new Response('Not found', {status: 404})
+    const isAbortRequest = match[2] === '/abort'
+    if (isAbortRequest && request.method !== 'POST') return new Response('Not found', {status: 404})
 
     const agentId = decodeURIComponent(match[1]!)
     const scope = decodeTeamDataAssistantId(agentId)

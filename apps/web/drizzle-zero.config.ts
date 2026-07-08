@@ -35,6 +35,15 @@ export default drizzleZeroConfig(drizzleSchema, {
       updatedAt: true,
       finishedAt: true,
     },
+    teamDataAssistantChats: {
+      id: true,
+      teamId: true,
+      userId: true,
+      createdAt: true,
+      updatedAt: true,
+      lastUsedAt: true,
+      firstSubmittedAt: true,
+    },
     bankConnections: {
       id: true,
       teamId: true,

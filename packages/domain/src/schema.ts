@@ -122,6 +122,27 @@ export const agentWorkflowRuns = pgTable(
   }),
 )
 
+export const teamDataAssistantChats = pgTable(
+  'team_data_assistant_chats',
+  {
+    id: text('id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, {onDelete: 'cascade'}),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, {onDelete: 'cascade'}),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+    lastUsedAt: timestamp('last_used_at', {mode: 'date'}).notNull(),
+    firstSubmittedAt: timestamp('first_submitted_at', {mode: 'date'}),
+  },
+  table => ({
+    teamUserLastUsedIdx: index('team_data_assistant_chats_team_user_last_used_idx').on(table.teamId, table.userId, table.lastUsedAt),
+    userIdx: index('team_data_assistant_chats_user_idx').on(table.userId),
+  }),
+)
+
 export const bankConnections = pgTable(
   'bank_connections',
   {
@@ -344,6 +365,7 @@ export const userRelations = relations(user, ({many}) => ({
   personalTeams: many(teams),
   teamMemberships: many(teamMembers),
   requestedWorkflowRuns: many(agentWorkflowRuns),
+  teamDataAssistantChats: many(teamDataAssistantChats),
 }))
 
 export const sessionRelations = relations(session, ({one}) => ({
@@ -367,6 +389,7 @@ export const teamsRelations = relations(teams, ({one, many}) => ({
   }),
   members: many(teamMembers),
   agentWorkflowRuns: many(agentWorkflowRuns),
+  teamDataAssistantChats: many(teamDataAssistantChats),
   bankConnections: many(bankConnections),
   bankAccounts: many(bankAccounts),
   ledgerAccountGroups: many(ledgerAccountGroups),
@@ -392,6 +415,17 @@ export const agentWorkflowRunsRelations = relations(agentWorkflowRuns, ({one}) =
   }),
   requestedByUser: one(user, {
     fields: [agentWorkflowRuns.requestedByUserId],
+    references: [user.id],
+  }),
+}))
+
+export const teamDataAssistantChatsRelations = relations(teamDataAssistantChats, ({one}) => ({
+  team: one(teams, {
+    fields: [teamDataAssistantChats.teamId],
+    references: [teams.id],
+  }),
+  user: one(user, {
+    fields: [teamDataAssistantChats.userId],
     references: [user.id],
   }),
 }))

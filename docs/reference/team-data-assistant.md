@@ -17,7 +17,7 @@ The app shell owns one root chat surface:
 - On desktop-sized viewports, opening chat renders a right sidebar sibling beside the routed content, reducing the available workspace width instead of overlaying it.
 - On narrow viewports, opening chat hides the routed page content and shows a chat-focused panel with a close control to return to the page.
 
-Conversation ids are encoded as `team-data:{...}` values containing trusted `teamId`, `userId`, and a per-chat `chatId`. Clearing chat generates a new `chatId`, so history is personal per user/team/chat rather than a shared team channel.
+Conversation ids are encoded as `team-data:{...}` values containing trusted `teamId`, `userId`, and a per-chat `chatId`. Penge stores app-owned chat records in `team_data_assistant_chats` so each user/team pair has durable conversation history while Flue remains the message-history source. When the chat client loads, it resumes the latest submitted chat for the current user/team if it was used less than one hour ago; otherwise opening Ask Penge starts a new chat row. Clearing chat also creates a new persisted chat id, but only chats with a submitted message are shown in the timestamp-labelled history list so empty placeholder chat ids do not send users to missing Flue history.
 
 ## Flue proxy boundary
 
@@ -47,6 +47,8 @@ During long turns, the chat transcript shows a small Penge activity bubble inste
 Progress text is app-authored and allowlisted. Known tool activity maps to labels such as “Searching transactions…”, “Reading transaction details…”, “Checking categories…”, and “Reviewing prior categorizations…”. Streaming assistant text shows “Writing answer…”, submitted turns show “Starting…”, and unknown or unclassified activity falls back to “Thinking through the request…”. Raw tool names, tool arguments, tool outputs, internal ids, model reasoning, and provider details must not be shown in the progress bubble.
 
 Progress labels remain visible for at least one second to avoid flicker. Errors bypass that delay and appear immediately, while final assistant text and idle states clear the activity bubble immediately.
+
+While an assistant turn is active, the composer send control becomes an icon-only stop control. Stopping calls Flue's agent abort API for the current chat instance, which asks Flue to abort in-flight and queued work for that Ask Penge conversation. The control stays in stop mode while Flue reports an active turn, then returns to send mode once Flue settles the turn.
 
 ## Interactive bulk categorization
 

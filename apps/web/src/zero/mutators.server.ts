@@ -1,7 +1,9 @@
 import '@tanstack/react-start/server-only'
 
+import {and, eq} from 'drizzle-orm'
 import {defineMutator, defineMutators} from '@rocicorp/zero'
 import {categorizeBankTransaction, clearLedgerCategorizations, confirmBankTransactionInterpretation, splitBankTransaction} from '@penge/domain/categorization-service'
+import {teamDataAssistantChats, teamMembers} from '@penge/domain/schema'
 import {createManualBankAccount, createManualTransaction} from '@/banking/repository.server'
 import {
   createCategoryAccount,
@@ -20,10 +22,12 @@ import {
   createCategoryGroupInput,
   createManualBankAccountInput,
   createManualTransactionInput,
+  createTeamDataAssistantChatInput,
   deleteCategoryAccountInput,
   deleteCategoryGroupInput,
   mutators,
   splitTransactionInput,
+  touchTeamDataAssistantChatInput,
   updateCategoryAccountInput,
   updateCategoryGroupInput,
 } from './mutators'
@@ -32,7 +36,80 @@ type CategorizationTransaction = Parameters<typeof categorizeBankTransaction>[0]
 type CategoryManagementTransaction = Parameters<typeof createCategoryAccount>[0]
 type BankingTransaction = Parameters<typeof createManualBankAccount>[0]
 
+type ChatHistoryTransaction = CategoryManagementTransaction
+
+async function requireTeamAccess(transaction: ChatHistoryTransaction, teamId: string, userId: string) {
+  const [membership] = await transaction
+    .select({id: teamMembers.id})
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
+    .limit(1)
+  if (!membership) throw new Error('Team not found')
+}
+
+function dateFromEpoch(value: number) {
+  return new Date(value)
+}
+
 export const serverMutators = defineMutators(mutators, {
+  flue: {
+    createTeamDataAssistantChat: defineMutator(createTeamDataAssistantChatInput, async ({args, ctx, tx}) => {
+      if (tx.location !== 'server') return
+      const userId = requireUserID(ctx)
+      if (args.userId !== userId) throw new Error('Unauthorized')
+      const transaction = tx.dbTransaction.wrappedTransaction as ChatHistoryTransaction
+      await requireTeamAccess(transaction, args.teamId, userId)
+      const [existing] = await transaction
+        .select({id: teamDataAssistantChats.id, teamId: teamDataAssistantChats.teamId, userId: teamDataAssistantChats.userId, firstSubmittedAt: teamDataAssistantChats.firstSubmittedAt})
+        .from(teamDataAssistantChats)
+        .where(eq(teamDataAssistantChats.id, args.id))
+        .limit(1)
+
+      if (existing) {
+        if (existing.teamId !== args.teamId || existing.userId !== userId) throw new Error('Chat not found')
+        await transaction
+          .update(teamDataAssistantChats)
+          .set({
+            updatedAt: dateFromEpoch(args.updatedAt),
+            lastUsedAt: dateFromEpoch(args.lastUsedAt),
+            ...(args.firstSubmittedAt && !existing.firstSubmittedAt ? {firstSubmittedAt: dateFromEpoch(args.firstSubmittedAt)} : {}),
+          })
+          .where(eq(teamDataAssistantChats.id, args.id))
+        return
+      }
+
+      await transaction.insert(teamDataAssistantChats).values({
+        id: args.id,
+        teamId: args.teamId,
+        userId,
+        createdAt: dateFromEpoch(args.createdAt),
+        updatedAt: dateFromEpoch(args.updatedAt),
+        lastUsedAt: dateFromEpoch(args.lastUsedAt),
+        firstSubmittedAt: args.firstSubmittedAt ? dateFromEpoch(args.firstSubmittedAt) : null,
+      })
+    }),
+    touchTeamDataAssistantChat: defineMutator(touchTeamDataAssistantChatInput, async ({args, ctx, tx}) => {
+      if (tx.location !== 'server') return
+      const userId = requireUserID(ctx)
+      const transaction = tx.dbTransaction.wrappedTransaction as ChatHistoryTransaction
+      const [chat] = await transaction
+        .select({id: teamDataAssistantChats.id, teamId: teamDataAssistantChats.teamId, userId: teamDataAssistantChats.userId, firstSubmittedAt: teamDataAssistantChats.firstSubmittedAt})
+        .from(teamDataAssistantChats)
+        .where(and(eq(teamDataAssistantChats.id, args.chatId), eq(teamDataAssistantChats.userId, userId)))
+        .limit(1)
+      if (!chat) throw new Error('Chat not found')
+      await requireTeamAccess(transaction, chat.teamId, userId)
+
+      await transaction
+        .update(teamDataAssistantChats)
+        .set({
+          updatedAt: dateFromEpoch(args.lastUsedAt),
+          lastUsedAt: dateFromEpoch(args.lastUsedAt),
+          ...(args.firstSubmittedAt && !chat.firstSubmittedAt ? {firstSubmittedAt: dateFromEpoch(args.firstSubmittedAt)} : {}),
+        })
+        .where(eq(teamDataAssistantChats.id, args.chatId))
+    }),
+  },
   banking: {
     createManualBankAccount: defineMutator(createManualBankAccountInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return

@@ -38,6 +38,22 @@ export const managedCategoryTypeInput = z.enum(['expense', 'income', 'savings'])
 export const manualBankAccountTypeInput = z.enum(['checking', 'savings', 'credit-card', 'loan', 'cash'])
 
 const trimmedNonEmptyString = z.string().trim().min(1)
+
+export const createTeamDataAssistantChatInput = z.object({
+  id: trimmedNonEmptyString,
+  teamId: trimmedNonEmptyString,
+  userId: trimmedNonEmptyString,
+  createdAt: z.number().int(),
+  updatedAt: z.number().int(),
+  lastUsedAt: z.number().int(),
+  firstSubmittedAt: z.number().int().nullable(),
+})
+
+export const touchTeamDataAssistantChatInput = z.object({
+  chatId: trimmedNonEmptyString,
+  lastUsedAt: z.number().int(),
+  firstSubmittedAt: z.number().int().optional(),
+})
 const isoDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   const parsed = new Date(`${value}T00:00:00.000Z`)
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
@@ -312,6 +328,40 @@ async function optimisticallyClearCategorizations(tx: ClientTx) {
   }
 }
 
+async function optimisticallyCreateTeamDataAssistantChat(input: {tx: ClientTx} & z.infer<typeof createTeamDataAssistantChatInput>) {
+  const existing = await input.tx.run(zql.teamDataAssistantChats.where('id', input.id).one())
+  if (existing) {
+    await input.tx.mutate.teamDataAssistantChats.update({
+      id: input.id,
+      updatedAt: input.updatedAt,
+      lastUsedAt: input.lastUsedAt,
+      ...(input.firstSubmittedAt && !existing.firstSubmittedAt ? {firstSubmittedAt: input.firstSubmittedAt} : {}),
+    })
+    return
+  }
+
+  await input.tx.mutate.teamDataAssistantChats.insert({
+    id: input.id,
+    teamId: input.teamId,
+    userId: input.userId,
+    createdAt: input.createdAt,
+    updatedAt: input.updatedAt,
+    lastUsedAt: input.lastUsedAt,
+    firstSubmittedAt: input.firstSubmittedAt,
+  })
+}
+
+async function optimisticallyTouchTeamDataAssistantChat(input: {tx: ClientTx; userId: string; chatId: string; lastUsedAt: number; firstSubmittedAt?: number}) {
+  const chat = await input.tx.run(zql.teamDataAssistantChats.where('id', input.chatId).one())
+  if (!chat || chat.userId !== input.userId) return
+  await input.tx.mutate.teamDataAssistantChats.update({
+    id: input.chatId,
+    updatedAt: input.lastUsedAt,
+    lastUsedAt: input.lastUsedAt,
+    ...(input.firstSubmittedAt && !chat.firstSubmittedAt ? {firstSubmittedAt: input.firstSubmittedAt} : {}),
+  })
+}
+
 async function optimisticallyCreateManualBankAccount(input: {tx: ClientTx; id: string; ledgerAccountId: string; bankLedgerGroupId: string; teamId: string; name: string; accountType: ManualBankAccountTypeInput; currency: string; notes: string}) {
   const now = Date.now()
   const name = input.name.trim()
@@ -491,6 +541,17 @@ function optimisticId(tx: ClientTx, suffix: string) {
 }
 
 export const mutators = defineMutators({
+  flue: {
+    createTeamDataAssistantChat: defineMutator(createTeamDataAssistantChatInput, async ({args, ctx, tx}) => {
+      if (tx.location !== 'client') return
+      if (args.userId !== requireUserID(ctx)) return
+      await optimisticallyCreateTeamDataAssistantChat({tx, ...args})
+    }),
+    touchTeamDataAssistantChat: defineMutator(touchTeamDataAssistantChatInput, async ({args, ctx, tx}) => {
+      if (tx.location !== 'client') return
+      await optimisticallyTouchTeamDataAssistantChat({tx, userId: requireUserID(ctx), ...args})
+    }),
+  },
   banking: {
     createManualBankAccount: defineMutator(createManualBankAccountInput, async ({args, tx}) => {
       if (tx.location !== 'client') return

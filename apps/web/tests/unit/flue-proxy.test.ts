@@ -47,6 +47,54 @@ describe('Flue proxy', () => {
     expect(upstreamFetch).toHaveBeenCalledOnce()
   })
 
+  it('forwards authorized team-data assistant abort requests with trusted headers', async () => {
+    const id = encodeTeamDataAssistantId({teamId: 'team-1', userId: 'user-1'})
+    const upstreamFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe(`http://flue.test/agents/team-data-assistant/${id}/abort`)
+      expect(init?.method).toBe('POST')
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer secret')
+      expect(new Headers(init?.headers).get('x-penge-user-id')).toBe('user-1')
+      expect(new Headers(init?.headers).get('x-penge-team-id')).toBe('team-1')
+      expect(new Headers(init?.headers).has('cookie')).toBe(false)
+      expect(init?.body).toBeInstanceOf(ArrayBuffer)
+      expect(await new Response(init?.body).text()).toBe('')
+      return new Response('{"aborted":true}', {status: 200, headers: {'content-type': 'application/json'}})
+    })
+    const handler = createFlueProxyHandler({
+      getSession: vi.fn(async () => ({user: {id: 'user-1'}})),
+      userCanAccessTeam: vi.fn(async () => true),
+      resolveWorkflowRunTeamIdForFlueRunId: vi.fn(async () => null),
+      fetch: upstreamFetch,
+      env: {PENGE_FLUE_BASE_URL: 'http://flue.test/', PENGE_FLUE_INTERNAL_TOKEN: 'secret'},
+    })
+
+    const response = await handler(new Request(`https://app.test/api/flue/agents/team-data-assistant/${id}/abort`, {
+      method: 'POST',
+      headers: {cookie: 'session=private'},
+    }))
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe('{"aborted":true}')
+    expect(upstreamFetch).toHaveBeenCalledOnce()
+  })
+
+  it('hides non-POST team-data assistant abort requests', async () => {
+    const id = encodeTeamDataAssistantId({teamId: 'team-1', userId: 'user-1'})
+    const upstreamFetch = vi.fn()
+    const handler = createFlueProxyHandler({
+      getSession: vi.fn(async () => ({user: {id: 'user-1'}})),
+      userCanAccessTeam: vi.fn(async () => true),
+      resolveWorkflowRunTeamIdForFlueRunId: vi.fn(async () => null),
+      fetch: upstreamFetch,
+      env: {PENGE_FLUE_BASE_URL: 'http://flue.test', PENGE_FLUE_INTERNAL_TOKEN: 'secret'},
+    })
+
+    const response = await handler(new Request(`https://app.test/api/flue/agents/team-data-assistant/${id}/abort`, {method: 'GET'}))
+
+    expect(response.status).toBe(404)
+    expect(upstreamFetch).not.toHaveBeenCalled()
+  })
+
   it('strips HTTP hop-by-hop headers from upstream responses', async () => {
     const id = encodeTeamDataAssistantId({teamId: 'team-1', userId: 'user-1'})
     const handler = createFlueProxyHandler({
