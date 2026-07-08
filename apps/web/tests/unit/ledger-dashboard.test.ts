@@ -27,6 +27,16 @@ const queryRows = vi.hoisted(() => ({
     sortOrder: number
     systemKey: string | null
     linkedBankAccountId: string | null
+    postings?: Array<{
+      id: string
+      ledgerTransactionId: string
+      accountId: string
+      amount: number
+      currency: string
+      bankTransactionId: string | null
+      sortOrder: number
+      ledgerTransaction?: {source: string}
+    }>
   }>,
   ledgerTransactions: [] as Array<{
     id: string
@@ -90,7 +100,7 @@ const queryRows = vi.hoisted(() => ({
       }
     }
   }>,
-  bankAccounts: [] as Array<{id: string; name: string; teamId?: string; syncStatus?: string; provider?: string; currency?: string | null}>,
+  bankAccounts: [] as Array<{id: string; name: string; teamId?: string; syncStatus?: string; provider?: string; currency?: string | null; lastSyncedAt?: number | null}>,
   activeWorkflowRuns: [] as Array<{id: string; workflowName: string; teamId: string; status: string; flueRunId: string | null; updatedAt?: number}>,
 }))
 
@@ -350,6 +360,13 @@ vi.mock('@/zero/mutators', () => ({
       return {success: Boolean(input.id && input.bankAccountId && validDate && input.description?.trim() && /^[+-]?\d+(\.\d+)?$/.test(amount) && Number.isSafeInteger(Math.round(parsedAmount * 10_000)) && Math.round(parsedAmount * 10_000) !== 0)}
     },
   },
+  setStartingBalanceInput: {
+    safeParse: (input: {bankAccountId?: string; currentBalance?: string}) => {
+      const amount = input.currentBalance ?? ''
+      const parsedAmount = Number(amount)
+      return {success: Boolean(input.bankAccountId && /^[+-]?\d+(\.\d+)?$/.test(amount) && Number.isSafeInteger(Math.round(parsedAmount * 10_000)))}
+    },
+  },
   mutators: {
     ledger: {
       categorizeTransaction: vi.fn((input) => ({
@@ -368,6 +385,7 @@ vi.mock('@/zero/mutators', () => ({
     },
     banking: {
       createManualTransaction: vi.fn((input) => ({type: 'createManualTransaction', input})),
+      setStartingBalance: vi.fn((input) => ({type: 'setStartingBalance', input})),
     },
   },
 }))
@@ -597,6 +615,8 @@ describe('LedgerDashboard', () => {
     expect(requestedBankTransactionsForBankAccountArgs).toEqual([{bankAccountId: 'bank-account-1'}])
     expect(renderedPageLayouts[0]?.breadcrumbs).toEqual([{title: 'Bank accounts', to: '/app/bank-accounts'}, {title: 'Checking'}])
     expect(markup).not.toContain('Review imported transactions for this bank account.')
+    expect(markup).not.toContain('Choose a category inline')
+    expect(markup).not.toContain('rounded-lg border bg-card')
     expect(markup).toContain('Netto')
     expect(markup).toContain('Category')
     expect(markup).not.toContain('Other Shop')
@@ -604,6 +624,88 @@ describe('LedgerDashboard', () => {
     expect(markup).not.toContain('Clear categorizations')
     expect(markup).not.toContain('Sync all accounts')
     expect(markup).toContain('aria-label="Category for Netto"')
+  })
+
+  it('shows the bank account current balance from opening balance plus imported movements', () => {
+    queryRows.accounts = queryRows.accounts.map(account => account.id === 'checking'
+      ? {
+          ...account,
+          postings: [
+            ...queryRows.postings,
+            {
+              id: 'opening-balance-posting',
+              ledgerTransactionId: 'opening-balance-transaction',
+              accountId: 'checking',
+              amount: 2_000_000,
+              currency: 'DKK',
+              bankTransactionId: null,
+              sortOrder: 0,
+              ledgerTransaction: {source: 'opening_balance'},
+            },
+          ],
+        }
+      : account)
+    queryRows.bankTransactions = [
+      ...queryRows.bankTransactions,
+      {
+        id: 'uncategorized-bank-transaction',
+        bankAccountId: 'bank-account-1',
+        amount: -250_000,
+        currency: 'DKK',
+        bookingDate: '2026-06-19',
+        valueDate: null,
+        description: 'Uncategorized café',
+        aiConfidence: null,
+        aiReasoning: null,
+      },
+    ]
+
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard, {view: 'bankAccountTransactions', bankAccountId: 'bank-account-1'}))
+
+    expect(markup).toContain('Current balance')
+    expect(markup).toContain('75.00 DKK')
+  })
+
+  it('shows Set starting balance on bank account pages and warns when a provider sync is stale', async () => {
+    const now = new Date('2026-07-07T12:00:00.000Z').getTime()
+    const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(now)
+    queryRows.bankAccounts = [{
+      id: 'bank-account-1',
+      name: 'Checking',
+      teamId: 'team-1',
+      provider: 'gocardless',
+      currency: 'DKK',
+      lastSyncedAt: now - 6 * 60 * 60 * 1000,
+    }]
+
+    render(React.createElement(LedgerDashboard, {view: 'bankAccountTransactions', bankAccountId: 'bank-account-1'}))
+
+    await userEvent.click(screen.getByRole('button', {name: 'Set starting balance'}))
+    const dialog = screen.getByRole('dialog', {name: 'Set starting balance'})
+    expect(within(dialog).getByText(/balance after the latest imported transaction/i)).toBeInTheDocument()
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/sync this account before setting the starting balance/i)
+    dateNowSpy.mockRestore()
+  })
+
+  it('sets starting balance for manual accounts without a sync warning', async () => {
+    const user = userEvent.setup()
+    queryRows.bankAccounts = [{id: 'manual-account-1', name: 'Cash wallet', teamId: 'team-1', provider: 'manual', currency: 'DKK'}]
+    queryRows.bankTransactions = []
+
+    render(React.createElement(LedgerDashboard, {view: 'bankAccountTransactions', bankAccountId: 'manual-account-1'}))
+
+    await user.click(screen.getByRole('button', {name: 'Set starting balance'}))
+    const dialog = screen.getByRole('dialog', {name: 'Set starting balance'})
+    expect(within(dialog).queryByRole('alert')).toBeNull()
+    await user.type(within(dialog).getByLabelText('Current balance'), '123.45')
+    await user.click(within(dialog).getByRole('button', {name: 'Save starting balance'}))
+
+    await waitFor(() => {
+      expect(zeroMutate).toHaveBeenCalledWith({
+        type: 'setStartingBalance',
+        input: {bankAccountId: 'manual-account-1', currentBalance: '123.45'},
+      })
+    })
   })
 
   it('shows Add transaction only on manual bank account pages', () => {
@@ -694,6 +796,7 @@ describe('LedgerDashboard', () => {
 
     expect(markup).toContain('Description')
     expect(markup).toContain('Date')
+    expect(markup).not.toContain('overflow-auto rounded-md border')
     expect(markup).toContain('Bank account')
     expect(markup).toContain('Category')
     expect(markup).toContain('Status')

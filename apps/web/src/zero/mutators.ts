@@ -58,7 +58,15 @@ const isoDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   const parsed = new Date(`${value}T00:00:00.000Z`)
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
 })
-const signedDecimalAmountInput = z.string().regex(/^[+-]?\d+(\.\d+)?$/).refine((value) => {
+const decimalMoneyAmountInput = z.string().regex(/^[+-]?\d+(\.\d+)?$/).refine((value) => {
+  try {
+    parseDecimalMoneyToAmount(value)
+    return true
+  } catch {
+    return false
+  }
+})
+const signedDecimalAmountInput = decimalMoneyAmountInput.refine((value) => {
   try {
     return parseDecimalMoneyToAmount(value) !== 0
   } catch {
@@ -119,6 +127,11 @@ export const createManualTransactionInput = z.object({
   date: isoDateInput,
   description: trimmedNonEmptyString,
   amount: signedDecimalAmountInput,
+})
+
+export const setStartingBalanceInput = z.object({
+  bankAccountId: trimmedNonEmptyString,
+  currentBalance: decimalMoneyAmountInput,
 })
 
 type ClientTx = Extract<Transaction<ZeroSchema>, {location: 'client'}>
@@ -560,6 +573,9 @@ export const mutators = defineMutators({
     createManualTransaction: defineMutator(createManualTransactionInput, async ({args, tx}) => {
       if (tx.location !== 'client') return
       await optimisticallyCreateManualTransaction({tx, ...args})
+    }),
+    setStartingBalance: defineMutator(setStartingBalanceInput, async () => {
+      // Server-authoritative: the write may need rows that are absent from the local replica.
     }),
   },
   ledger: {

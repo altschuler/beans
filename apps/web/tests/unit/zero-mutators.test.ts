@@ -12,6 +12,7 @@ const updateCategoryGroup = vi.hoisted(() => vi.fn(async () => undefined))
 const deleteCategoryGroup = vi.hoisted(() => vi.fn(async () => undefined))
 const createManualBankAccount = vi.hoisted(() => vi.fn(async () => undefined))
 const createManualTransaction = vi.hoisted(() => vi.fn(async () => undefined))
+const setBankAccountStartingBalance = vi.hoisted(() => vi.fn(async () => undefined))
 
 vi.mock('@penge/domain/categorization-service', () => ({categorizeBankTransaction, splitBankTransaction, confirmBankTransactionInterpretation, clearLedgerCategorizations}))
 vi.mock('@penge/domain/category-management', () => ({
@@ -25,6 +26,9 @@ vi.mock('@penge/domain/category-management', () => ({
 vi.mock('@/banking/repository.server', () => ({
   createManualBankAccount,
   createManualTransaction,
+}))
+vi.mock('@/banking/starting-balance.server', () => ({
+  setBankAccountStartingBalance,
 }))
 
 describe('ledger mutator input schemas', () => {
@@ -146,6 +150,15 @@ describe('ledger mutator input schemas', () => {
       description: 'Coffee',
       amount: '0',
     }).success).toBe(false)
+  })
+
+  it('accepts starting balance input including zero and negative balances', async () => {
+    const {setStartingBalanceInput} = await import('@/zero/mutators')
+
+    expect(setStartingBalanceInput.safeParse({bankAccountId: 'bank-account-1', currentBalance: '0'}).success).toBe(true)
+    expect(setStartingBalanceInput.safeParse({bankAccountId: 'bank-account-1', currentBalance: '-42.50'}).success).toBe(true)
+    expect(setStartingBalanceInput.safeParse({bankAccountId: '', currentBalance: '42.50'}).success).toBe(false)
+    expect(setStartingBalanceInput.safeParse({bankAccountId: 'bank-account-1', currentBalance: 'forty-two'}).success).toBe(false)
   })
 })
 
@@ -277,6 +290,26 @@ describe('ledger Zero mutators', () => {
       date: '2026-06-27',
       description: 'Coffee',
       amount: '-42.50',
+    })
+  })
+
+  it('sets starting balance on the server transaction', async () => {
+    const {serverMutators} = await import('@/zero/mutators.server')
+    const request = serverMutators.banking.setStartingBalance({
+      bankAccountId: 'bank-account-1',
+      currentBalance: '123.45',
+    })
+
+    await request.mutator.fn({
+      args: request.args,
+      ctx: {userID: 'user-1'},
+      tx: {location: 'server', dbTransaction: {wrappedTransaction: 'wrapped-tx'}} as never,
+    })
+
+    expect(setBankAccountStartingBalance).toHaveBeenCalledWith('wrapped-tx', {
+      userId: 'user-1',
+      bankAccountId: 'bank-account-1',
+      currentBalance: '123.45',
     })
   })
 

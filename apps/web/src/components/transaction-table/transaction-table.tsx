@@ -40,7 +40,7 @@ export function TransactionTable({
   }
 
   return (
-    <div ref={scrollContainerRef} className="h-full min-h-0 flex-1 overflow-auto rounded-md border">
+    <div ref={scrollContainerRef} className="h-full min-h-0 flex-1 overflow-auto border">
       <table className="grid w-full min-w-[860px] text-sm">
         <thead className="sticky top-0 z-10 bg-muted grid text-xs uppercase tracking-wide text-muted-foreground">
           <tr className="grid grid-cols-[minmax(14rem,1fr)_8rem_10rem_minmax(18rem,1fr)_5rem_8rem]">

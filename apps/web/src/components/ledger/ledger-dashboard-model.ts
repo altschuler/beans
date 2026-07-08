@@ -48,7 +48,7 @@ export type LedgerDashboardBankTransaction = {
   aiReasoning?: string | null
   posting?: LedgerDashboardPosting
 }
-export type LedgerDashboardBankAccount = {id: string; name: string}
+export type LedgerDashboardBankAccount = {id: string; name: string; currency?: string | null}
 export type LedgerDashboardStatusIndicator = {
   kind: 'uncategorized' | 'confirmed' | 'ai_confident' | 'needs_review' | 'ai_failed'
   title: string
@@ -126,6 +126,14 @@ export function buildLedgerDashboardModel(input: {
     postings.filter(posting => posting.bankTransactionId).map(posting => [posting.bankTransactionId!, posting]),
   )
 
+  const bankAccountCurrentBalance = deriveBankAccountCurrentBalance({
+    bankAccountId: input.bankAccountIdFilter,
+    bankAccounts: input.bankAccounts,
+    accounts,
+    postings,
+    bankTransactions,
+  })
+
   const transactionRows = bankTransactions
     .flatMap(bankTransaction => {
       const relatedBankPosting = bankTransaction.posting
@@ -186,9 +194,39 @@ export function buildLedgerDashboardModel(input: {
     accountGroups,
     categorizationAccounts,
     transferAccounts,
+    bankAccountCurrentBalance,
     transactionRows,
     reviewCount: transactionRows.filter(row => row.needsReview).length,
   }
+}
+
+function deriveBankAccountCurrentBalance(input: {
+  bankAccountId?: string | null
+  bankAccounts: ReadonlyArray<LedgerDashboardBankAccount>
+  accounts: NormalizedAccount[]
+  postings: NormalizedPosting[]
+  bankTransactions: ReadonlyArray<LedgerDashboardBankTransaction>
+}) {
+  if (!input.bankAccountId) return null
+
+  const bankAccount = input.bankAccounts.find(account => account.id === input.bankAccountId)
+  if (!bankAccount) return null
+
+  const bankLedgerAccount = input.accounts.find(account => account.linkedBankAccountId === input.bankAccountId)
+  const importedMovements = input.bankTransactions.filter(transaction => transaction.bankAccountId === input.bankAccountId)
+  const openingBalance = bankLedgerAccount
+    ? input.postings
+      .filter(posting =>
+        posting.accountId === bankLedgerAccount.id &&
+        posting.bankTransactionId === null &&
+        posting.ledgerTransaction?.source === 'opening_balance',
+      )
+      .reduce((total, posting) => total + posting.amount, 0)
+    : 0
+  const movementBalance = importedMovements.reduce((total, transaction) => total + transaction.amount, 0)
+  const currency = bankAccount.currency ?? importedMovements[0]?.currency ?? input.postings.find(posting => posting.accountId === bankLedgerAccount?.id)?.currency
+
+  return currency ? {amount: openingBalance + movementBalance, currency} : null
 }
 
 function normalizePostings(postings: ReadonlyArray<LedgerDashboardPosting>): NormalizedPosting[] {

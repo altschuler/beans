@@ -5,6 +5,7 @@ import {defineMutator, defineMutators} from '@rocicorp/zero'
 import {categorizeBankTransaction, clearLedgerCategorizations, confirmBankTransactionInterpretation, splitBankTransaction} from '@penge/domain/categorization-service'
 import {teamDataAssistantChats, teamMembers} from '@penge/domain/schema'
 import {createManualBankAccount, createManualTransaction} from '@/banking/repository.server'
+import {setBankAccountStartingBalance} from '@/banking/starting-balance.server'
 import {
   createCategoryAccount,
   createCategoryGroup,
@@ -23,6 +24,7 @@ import {
   createManualBankAccountInput,
   createManualTransactionInput,
   createTeamDataAssistantChatInput,
+  setStartingBalanceInput,
   deleteCategoryAccountInput,
   deleteCategoryGroupInput,
   mutators,
@@ -121,6 +123,11 @@ export const serverMutators = defineMutators(mutators, {
       if (tx.location !== 'server') return
       const transaction = tx.dbTransaction.wrappedTransaction as BankingTransaction
       await createManualTransaction(transaction, {...args, userId: requireUserID(ctx)})
+    }),
+    setStartingBalance: defineMutator(setStartingBalanceInput, async ({args, ctx, tx}) => {
+      if (tx.location !== 'server') return
+      const transaction = tx.dbTransaction.wrappedTransaction as BankingTransaction
+      await setBankAccountStartingBalance(transaction, {...args, userId: requireUserID(ctx)})
     }),
   },
   ledger: {

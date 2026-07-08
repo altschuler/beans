@@ -86,7 +86,9 @@ export const queries = defineQueries({
       const userID = requireZeroUserID(ctx)
       return zql.ledgerAccounts
         .whereExists('team', visibleTeam(userID))
-        .related('postings', posting => visibleLedgerPosting(userID)(posting).orderBy('sortOrder', 'asc'))
+        .related('postings', posting => visibleLedgerPosting(userID)(posting)
+          .related('ledgerTransaction', visibleLedgerTransaction(userID))
+          .orderBy('sortOrder', 'asc'))
         .orderBy('sortOrder', 'asc')
     }),
     ledgerAccountDetail: defineQuery(ledgerAccountDetailArgs, ({ctx, args}) => {

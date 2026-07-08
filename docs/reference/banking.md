@@ -42,6 +42,20 @@ Manual transactions are entered from a manual bank account page. The user provid
 
 Because no ledger interpretation is created during manual entry, manual transactions appear in the existing transaction review flow as uncategorized / needing review. Users categorize them later through the same Transactions page, chat, or AI paths used for synced bank transactions.
 
+## Starting balances
+
+A user can set a bank account starting balance from the individual bank account transaction page. The page shows the account's current balance as the opening-balance posting plus all imported bank transaction movements for that account, so uncategorized imported transactions are included before they have ledger interpretations. The entered balance is the bank balance after the latest imported transaction shown for that account. For provider-linked accounts, the dialog warns when the account has not synced recently, but the warning does not block saving; manual accounts use the same action without sync-age warnings.
+
+Penge calculates the opening balance from imported transaction evidence, not categorized ledger postings:
+
+```txt
+opening balance = entered current balance - sum(all bank_transactions.amount for the bank account)
+```
+
+This means uncategorized, categorized, reconciled, and unreconciled bank transactions all count equally. Saving replaces any existing opening-balance ledger transaction for that bank account. If the calculated amount is zero, Penge deletes the existing opening-balance transaction and creates no replacement.
+
+The opening-balance ledger transaction uses source `opening_balance`, status `confirmed`, the bank account currency, the linked bank ledger account, and the team's Opening balances system account. Its date is the day before the first imported transaction date when one exists, otherwise today.
+
 Provider facts that matter for reconciliation — bank account, amount, and currency — are guarded after reconciliation. If a provider later reports conflicting facts for an already reconciled transaction, the sync path should not silently leave the ledger inconsistent.
 
 ## Sync state
@@ -71,5 +85,6 @@ User-facing manual-account and manual-transaction writes go through Zero custom 
 
 - `banking.createManualBankAccount` creates the manual `bank_accounts` row and linked bank ledger account after checking team access.
 - `banking.createManualTransaction` creates a booked manual `bank_transactions` row after checking that the user can access the account and that the account is manual.
+- `banking.setStartingBalance` creates, replaces, or removes the opening-balance ledger transaction after checking that the user can access the account team.
 
-Opening balances, bulk imports, category selection during manual transaction entry, editing manual transactions, and deleting manual transactions are not part of the current manual-entry slice.
+Bulk imports, category selection during manual transaction entry, editing manual transactions, and deleting manual transactions are not part of the current manual-entry slice.

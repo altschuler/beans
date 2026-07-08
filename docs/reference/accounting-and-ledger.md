@@ -48,7 +48,7 @@ Ledger accounts include:
 - user categories such as Groceries, Salary, Vacation, or Dentist
 - locked system accounts such as Ready to budget, Uncategorized, and Opening balances
 
-Balances are derived from postings, not stored as editable account fields. Balance aggregation uses integer arithmetic and does not collapse mixed-currency totals into one misleading amount.
+Balances are derived from postings, not stored as editable account fields. Bank account balances can include an `opening_balance` ledger transaction that offsets the imported transaction history through the Opening balances system account. Balance aggregation uses integer arithmetic and does not collapse mixed-currency totals into one misleading amount.
 
 Display rules depend on account behavior:
 
