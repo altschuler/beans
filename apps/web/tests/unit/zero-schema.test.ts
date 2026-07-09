@@ -57,6 +57,8 @@ describe('zero schema', () => {
     expect(schema.tables.agentWorkflowRuns.columns.status).toMatchObject({type: 'string', optional: false})
     expect(schema.tables.agentWorkflowRuns.columns.error).toMatchObject({type: 'string', optional: true})
     expect(schema.tables.agentWorkflowRuns.columns.finishedAt).toMatchObject({type: 'number', optional: true, serverName: 'finished_at'})
+    expect(schema.tables.agentWorkflowRuns.columns).not.toHaveProperty('eveSessionId')
+    expect(schema.tables.agentWorkflowRuns.columns).not.toHaveProperty('eveNextStreamIndex')
   })
 
   it('exposes team data assistant chat fields with server column names', () => {
@@ -66,6 +68,9 @@ describe('zero schema', () => {
     expect(columns.userId).toMatchObject({type: 'string', optional: false, serverName: 'user_id'})
     expect(columns.lastUsedAt).toMatchObject({type: 'number', optional: false, serverName: 'last_used_at'})
     expect(columns.firstSubmittedAt).toMatchObject({type: 'number', optional: true, serverName: 'first_submitted_at'})
+    expect(columns).not.toHaveProperty('eveSessionId')
+    expect(columns).not.toHaveProperty('eveContinuationToken')
+    expect(columns).not.toHaveProperty('eveNextStreamIndex')
   })
 
   it('exposes ledger fields with server column names', () => {

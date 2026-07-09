@@ -100,6 +100,8 @@ export const agentWorkflowRuns = pgTable(
   {
     id: text('id').primaryKey(),
     flueRunId: text('flue_run_id'),
+    eveSessionId: text('eve_session_id'),
+    eveNextStreamIndex: integer('eve_next_stream_index').notNull().default(0),
     workflowName: text('workflow_name').notNull(),
     teamId: text('team_id')
       .notNull()
@@ -119,6 +121,7 @@ export const agentWorkflowRuns = pgTable(
       .on(table.teamId, table.workflowName)
       .where(sql`${table.status} = 'active'`),
     statusCheck: check('agent_workflow_runs_status_check', sql`${table.status} in ('active', 'completed', 'failed')`),
+    eveNextStreamIndexCheck: check('agent_workflow_runs_eve_next_stream_index_check', sql`${table.eveNextStreamIndex} >= 0`),
   }),
 )
 
@@ -137,10 +140,14 @@ export const teamDataAssistantChats = pgTable(
     lastUsedAt: timestamp('last_used_at', {mode: 'date'}).notNull(),
     firstSubmittedAt: timestamp('first_submitted_at', {mode: 'date'}),
     currentPage: text('current_page'),
+    eveSessionId: text('eve_session_id'),
+    eveContinuationToken: text('eve_continuation_token'),
+    eveNextStreamIndex: integer('eve_next_stream_index').notNull().default(0),
   },
   table => ({
     teamUserLastUsedIdx: index('team_data_assistant_chats_team_user_last_used_idx').on(table.teamId, table.userId, table.lastUsedAt),
     userIdx: index('team_data_assistant_chats_user_idx').on(table.userId),
+    eveNextStreamIndexCheck: check('team_data_assistant_chats_eve_next_stream_index_check', sql`${table.eveNextStreamIndex} >= 0`),
   }),
 )
 

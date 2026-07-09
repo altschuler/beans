@@ -8,6 +8,7 @@ import {
   ledgerAccounts,
   ledgerPostings,
   ledgerTransactions,
+  teamDataAssistantChats,
   teamMembers,
   teams,
 } from '@penge/domain/schema'
@@ -31,6 +32,14 @@ describe('banking schema exports', () => {
     expect(bankAccounts.syncStatus).toBeDefined()
     expect(bankAccounts.syncError).toBeDefined()
     expect(bankAccounts.syncStartedAt).toBeDefined()
+  })
+
+  it('exports eve runtime cursor columns on app-owned AI tables', () => {
+    expect(agentWorkflowRuns.eveSessionId).toBeDefined()
+    expect(agentWorkflowRuns.eveNextStreamIndex).toBeDefined()
+    expect(teamDataAssistantChats.eveSessionId).toBeDefined()
+    expect(teamDataAssistantChats.eveContinuationToken).toBeDefined()
+    expect(teamDataAssistantChats.eveNextStreamIndex).toBeDefined()
   })
 
   it('exports ledger tables', () => {

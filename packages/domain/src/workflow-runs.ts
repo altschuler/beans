@@ -6,6 +6,8 @@ export type AgentWorkflowRunStatus = 'active' | 'completed' | 'failed'
 export type AgentWorkflowRun = {
   id: string
   flueRunId: string | null
+  eveSessionId: string | null
+  eveNextStreamIndex: number
   workflowName: string
   teamId: string
   requestedByUserId: string
@@ -61,6 +63,8 @@ export async function reserveActiveAgentWorkflowRun(
       insert into agent_workflow_runs (
         id,
         flue_run_id,
+        eve_session_id,
+        eve_next_stream_index,
         workflow_name,
         team_id,
         requested_by_user_id,
@@ -72,6 +76,8 @@ export async function reserveActiveAgentWorkflowRun(
       ) values (
         ${id},
         null,
+        null,
+        0,
         ${input.workflowName},
         ${input.teamId},
         ${input.requestedByUserId},
@@ -100,6 +106,22 @@ export async function attachFlueRunId(
   const rows = await sql<AgentWorkflowRunRow[]>`
     update agent_workflow_runs
     set flue_run_id = ${input.flueRunId}, updated_at = ${now.toISOString()}
+    where id = ${input.id} and status = 'active'
+    returning *
+  `
+  return requireWorkflowRun(rows, input.id)
+}
+
+export async function attachEveSessionToAgentWorkflowRun(
+  sql: Sql,
+  input: {id: string; eveSessionId: string; eveNextStreamIndex?: number; now?: Date},
+): Promise<AgentWorkflowRun> {
+  const now = input.now ?? new Date()
+  const rows = await sql<AgentWorkflowRunRow[]>`
+    update agent_workflow_runs
+    set eve_session_id = ${input.eveSessionId},
+        eve_next_stream_index = ${input.eveNextStreamIndex ?? 0},
+        updated_at = ${now.toISOString()}
     where id = ${input.id} and status = 'active'
     returning *
   `
@@ -182,6 +204,7 @@ export async function failStaleActiveAgentWorkflowRuns(
       and workflow_name = ${input.workflowName}
       and status = 'active'
       and flue_run_id is null
+      and eve_session_id is null
       and updated_at < ${input.staleBefore.toISOString()}
     returning *
   `
@@ -224,6 +247,8 @@ function mapWorkflowRun(row: AgentWorkflowRunRow): AgentWorkflowRun {
   return {
     id: row.id,
     flueRunId: row.flue_run_id,
+    eveSessionId: row.eve_session_id,
+    eveNextStreamIndex: row.eve_next_stream_index,
     workflowName: row.workflow_name,
     teamId: row.team_id,
     requestedByUserId: row.requested_by_user_id,
@@ -244,6 +269,8 @@ function toDate(value: Date | string) {
 type AgentWorkflowRunRow = {
   id: string
   flue_run_id: string | null
+  eve_session_id: string | null
+  eve_next_stream_index: number
   workflow_name: string
   team_id: string
   requested_by_user_id: string

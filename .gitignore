@@ -6,6 +6,8 @@ node_modules/
 dist/
 build/
 .vinxi/
+.eve/
+.workflow-data/
 
 # Environment
 .env

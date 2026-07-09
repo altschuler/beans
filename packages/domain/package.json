@@ -8,6 +8,7 @@
     "./categorization-service": "./src/categorization-service.ts",
     "./category-management": "./src/category-management.ts",
     "./db": "./src/db.ts",
+    "./eve-service-capability": "./src/eve-service-capability.ts",
     "./money": "./src/money.ts",
     "./read-projections": "./src/read-projections.ts",
     "./schema": "./src/schema.ts",
