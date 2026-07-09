@@ -115,6 +115,7 @@ type PostingSummary = {
   accountName: string
   accountType: string
   linkedBankAccountId: string | null
+  systemKey: string | null
   amount: number
   currency: string
   bankTransactionId: string | null
@@ -186,7 +187,8 @@ export async function searchBankTransactions(
   const targetIds = input.targetBankTransactionIds ? new Set(input.targetBankTransactionIds) : null
 
   return rows.map(row => {
-    const reviewStatus = deriveReviewStatus(row.ledgerTransactionId, row.ledgerStatus, row.aiConfidence)
+    const kind = row.ledgerTransactionId ? interpretationKinds.get(row.ledgerTransactionId) ?? 'other' : null
+    const reviewStatus = deriveReviewStatus(row.ledgerTransactionId, row.ledgerStatus, row.aiConfidence, kind)
     const canWriteByStatus = reviewStatus === 'uncategorized' || (reviewStatus === 'needs_review' && !row.userConfirmedAt && !row.userConfirmedBy)
     return {
       id: row.id,
@@ -206,7 +208,7 @@ export async function searchBankTransactions(
             status: row.ledgerStatus ?? 'needs_review',
             categorizedBy: row.categorizedBy,
             userConfirmed: Boolean(row.userConfirmedAt || row.userConfirmedBy),
-            kind: interpretationKinds.get(row.ledgerTransactionId) ?? 'other',
+            kind: kind ?? 'other',
           }
         : null,
       aiConfidence: row.aiConfidence,
@@ -357,6 +359,7 @@ async function loadPostings(tx: DomainReadExecutor, scope: TrustedToolScope, led
       accountName: ledgerAccounts.name,
       accountType: ledgerAccounts.type,
       linkedBankAccountId: ledgerAccounts.linkedBankAccountId,
+      systemKey: ledgerAccounts.systemKey,
       amount: ledgerPostings.amount,
       currency: ledgerPostings.currency,
       bankTransactionId: ledgerPostings.bankTransactionId,
@@ -378,19 +381,21 @@ async function loadInterpretationKinds(tx: DomainReadExecutor, ledgerTransaction
       ledgerTransactionId: ledgerPostings.ledgerTransactionId,
       bankTransactionId: ledgerPostings.bankTransactionId,
       linkedBankAccountId: ledgerAccounts.linkedBankAccountId,
+      systemKey: ledgerAccounts.systemKey,
     })
     .from(ledgerPostings)
     .innerJoin(ledgerAccounts, eq(ledgerAccounts.id, ledgerPostings.accountId))
     .where(inArray(ledgerPostings.ledgerTransactionId, ids))
 
-  const grouped = new Map<string, Array<{bankTransactionId: string | null; linkedBankAccountId: string | null}>>()
+  const grouped = new Map<string, Array<{bankTransactionId: string | null; linkedBankAccountId: string | null; systemKey: string | null}>>()
   for (const row of rows) {
     grouped.set(row.ledgerTransactionId, [...(grouped.get(row.ledgerTransactionId) ?? []), row])
   }
   return new Map([...grouped.entries()].map(([id, group]) => [id, deriveInterpretationKindFromRaw(group)]))
 }
 
-function deriveReviewStatus(ledgerTransactionId: string | null, ledgerStatus: string | null, aiConfidence: number | null): ReviewStatusFilter {
+function deriveReviewStatus(ledgerTransactionId: string | null, ledgerStatus: string | null, aiConfidence: number | null, kind: InterpretationKind | null): ReviewStatusFilter {
+  if (kind === 'uncategorized') return aiConfidence === 0 ? 'ai_unable' : 'uncategorized'
   if (ledgerStatus === 'confirmed') return 'confirmed'
   if (ledgerStatus === 'needs_review') return 'needs_review'
   if (!ledgerTransactionId && aiConfidence === 0) return 'ai_unable'
@@ -399,10 +404,35 @@ function deriveReviewStatus(ledgerTransactionId: string | null, ledgerStatus: st
 
 function addReviewStatusCondition(conditions: SQL[], reviewStatus: ReviewStatusFilter | undefined) {
   if (!reviewStatus || reviewStatus === 'any') return
+  const missingOrUncategorized = or(
+    isNull(ledgerTransactions.id),
+    drizzleSql`exists (
+      select 1
+      from ledger_postings lp_uncat
+      join ledger_accounts la_uncat on la_uncat.id = lp_uncat.account_id
+      where lp_uncat.ledger_transaction_id = ${ledgerTransactions.id}
+        and lp_uncat.bank_transaction_id is null
+        and la_uncat.system_key = 'uncategorized'
+    )`,
+  )!
   if (reviewStatus === 'uncategorized') {
-    conditions.push(and(isNull(ledgerTransactions.id), or(isNull(bankTransactions.aiConfidence), ne(bankTransactions.aiConfidence, 0)))!)
+    conditions.push(and(missingOrUncategorized, or(isNull(bankTransactions.aiConfidence), ne(bankTransactions.aiConfidence, 0)))!)
   } else if (reviewStatus === 'ai_unable') {
-    conditions.push(and(isNull(ledgerTransactions.id), eq(bankTransactions.aiConfidence, 0))!)
+    conditions.push(and(missingOrUncategorized, eq(bankTransactions.aiConfidence, 0))!)
+  } else if (reviewStatus === 'needs_review') {
+    conditions.push(
+      and(
+        eq(ledgerTransactions.status, 'needs_review'),
+        drizzleSql`not exists (
+          select 1
+          from ledger_postings lp_uncat
+          join ledger_accounts la_uncat on la_uncat.id = lp_uncat.account_id
+          where lp_uncat.ledger_transaction_id = ${ledgerTransactions.id}
+            and lp_uncat.bank_transaction_id is null
+            and la_uncat.system_key = 'uncategorized'
+        )`,
+      )!,
+    )
   } else {
     conditions.push(eq(ledgerTransactions.status, reviewStatus))
   }
@@ -442,10 +472,11 @@ function deriveInterpretationKind(postings: PostingSummary[]): InterpretationKin
   return deriveInterpretationKindFromRaw(postings)
 }
 
-function deriveInterpretationKindFromRaw(postings: Array<{bankTransactionId: string | null; linkedBankAccountId: string | null}>): InterpretationKind {
+function deriveInterpretationKindFromRaw(postings: Array<{bankTransactionId: string | null; linkedBankAccountId: string | null; systemKey?: string | null}>): InterpretationKind {
   const bankPostings = postings.filter(posting => posting.bankTransactionId !== null)
   const categoryPostings = postings.filter(posting => posting.bankTransactionId === null)
   if (bankPostings.length === 0) return 'uncategorized'
+  if (bankPostings.length === 1 && categoryPostings.length === 1 && categoryPostings[0]?.systemKey === 'uncategorized') return 'uncategorized'
   if (bankPostings.length === 2 && categoryPostings.length === 0 && bankPostings.every(posting => posting.linkedBankAccountId)) return 'transfer'
   if (bankPostings.length === 1 && categoryPostings.length === 1) return 'category'
   if (bankPostings.length === 1 && categoryPostings.length > 1) return 'split'

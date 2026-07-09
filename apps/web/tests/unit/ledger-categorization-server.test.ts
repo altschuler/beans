@@ -120,8 +120,8 @@ async function seedCategorizationFixture() {
     createdAt: now,
     updatedAt: now,
   }, {
-    // Unreconciled team-2 bank transaction with no ledger interpretation, used to assert team-1 users
-    // cannot categorize or split a fresh import they don't own (the no-existing-interpretation path).
+    // Team-2 bank transaction without an interpretation in this fixture, used to assert team-1 users
+    // cannot categorize or split a fresh import they don't own.
     id: 'bank-transaction-team-2',
     bankAccountId: 'bank-account-team-2',
     providerTransactionId: 'provider-transaction-team-2',
@@ -261,6 +261,21 @@ async function currentInterpretationForBankTransaction(bankTransactionId: string
   return {bankPosting, transaction, postings}
 }
 
+function expectUuidLike(value: string) {
+  expect(value).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+}
+
+async function expectUncategorizedInterpretation(bankTransactionId: string, expected: {bankAmount: number; uncatAmount: number; ledgerAccountId?: string; expectUuid?: boolean}) {
+  const interpretation = await currentInterpretationForBankTransaction(bankTransactionId)
+  expect(interpretation).not.toBeNull()
+  expect(interpretation?.transaction).toMatchObject({source: 'bank_import', status: 'needs_review', categorizedBy: null, userConfirmedAt: null, userConfirmedBy: null})
+  expect(interpretation?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId, sortOrder: posting.sortOrder}))).toEqual([
+    {accountId: expected.ledgerAccountId ?? 'bank-ledger-account', amount: expected.bankAmount, bankTransactionId, sortOrder: 0},
+    {accountId: 'uncategorized', amount: expected.uncatAmount, bankTransactionId: null, sortOrder: 1},
+  ])
+  if (expected.expectUuid !== false) expectUuidLike(interpretation!.bankPosting.id)
+}
+
 async function categorizationRevisionFor(bankTransactionId: string) {
   const [row] = await sql`select categorization_revision from bank_transactions where id = ${bankTransactionId}`
   return row?.categorization_revision
@@ -277,11 +292,10 @@ describe('posting-based ledger categorization server functions', () => {
 
   // The categorization paths take no FOR UPDATE row lock; concurrency safety comes from the uniqueness of
   // the reconciled bank posting. Two concurrent first-time categorizations of the same bank transaction
-  // therefore don't both succeed — one commits, the other rolls back on a duplicate-key violation (and in
-  // production Zero would retry it, applying it as a last-writer-wins re-categorization). The bank posting
-  // id is derived deterministically from the bank transaction id, so the loser now collides on the primary
-  // key; the `ledger_postings.bankTransactionId` unique index guards the same invariant either way. What
-  // matters is that the loser corrupts nothing: exactly one balanced interpretation.
+  // therefore don't both succeed — one commits, the other rolls back on the
+  // `ledger_postings.bankTransactionId` unique index (and in production Zero would retry it, applying it as
+  // a last-writer-wins re-categorization). What matters is that the loser corrupts nothing: exactly one
+  // balanced interpretation.
   it('keeps concurrent categorization of the same unreconciled bank transaction safe (one wins, one rolls back)', async () => {
     const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-concurrent-category', amount: -1_000_000, description: 'Concurrent card purchase'})
@@ -344,6 +358,65 @@ describe('posting-based ledger categorization server functions', () => {
     expect(postings).toHaveLength(2)
     expect(postings[0]).toMatchObject({accountId: 'bank-ledger-account', amount: -1_000_000, bankTransactionId: 'bank-concurrent-category'})
     expect(['groceries', 'household']).toContain(postings[1]!.accountId)
+  })
+
+  it('creates a balanced uncategorized interpretation for an imported bank transaction', async () => {
+    const {ensureUncategorizedBankImportInterpretation} = await import('@penge/domain/categorization-service')
+    await insertUnreconciledBankTransaction({id: 'bank-import-uncat-1', amount: -1_000_000, description: 'Fresh card purchase'})
+
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-import-uncat-1', now: baseNow}))
+
+    await expectUncategorizedInterpretation('bank-import-uncat-1', {bankAmount: -1_000_000, uncatAmount: 1_000_000})
+  })
+
+  it('first categorization preserves the import-created bank posting id', async () => {
+    const {categorizeBankTransaction, ensureUncategorizedBankImportInterpretation} = await import('@penge/domain/categorization-service')
+    await insertUnreconciledBankTransaction({id: 'bank-transaction-import-first-category', amount: -1_000_000, description: 'Card purchase'})
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transaction-import-first-category', now: baseNow}))
+
+    const before = await currentInterpretationForBankTransaction('bank-transaction-import-first-category')
+    expectUuidLike(before!.bankPosting.id)
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transaction-import-first-category',
+        selection: {kind: 'category', accountId: 'groceries'},
+      }),
+    )
+
+    const after = await currentInterpretationForBankTransaction('bank-transaction-import-first-category')
+    expect(after?.bankPosting.id).toBe(before?.bankPosting.id)
+    expect(after?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId, sortOrder: posting.sortOrder}))).toEqual([
+      {accountId: 'bank-ledger-account', amount: -1_000_000, bankTransactionId: 'bank-transaction-import-first-category', sortOrder: 0},
+      {accountId: 'groceries', amount: 1_000_000, bankTransactionId: null, sortOrder: 1},
+    ])
+  })
+
+  it('split categorization preserves the import-created bank posting id and rebuilds only category postings', async () => {
+    const {splitBankTransaction, ensureUncategorizedBankImportInterpretation} = await import('@penge/domain/categorization-service')
+    await insertUnreconciledBankTransaction({id: 'bank-transaction-import-split', amount: -1_000_000, description: 'Mixed shop'})
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transaction-import-split', now: baseNow}))
+    const before = await currentInterpretationForBankTransaction('bank-transaction-import-split')
+
+    await db.transaction(tx =>
+      splitBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transaction-import-split',
+        lines: [
+          {accountId: 'groceries', amount: '70.00'},
+          {accountId: 'household', amount: '30.00'},
+        ],
+      }),
+    )
+
+    const after = await currentInterpretationForBankTransaction('bank-transaction-import-split')
+    expect(after?.bankPosting.id).toBe(before?.bankPosting.id)
+    expect(after?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId, sortOrder: posting.sortOrder}))).toEqual([
+      {accountId: 'bank-ledger-account', amount: -1_000_000, bankTransactionId: 'bank-transaction-import-split', sortOrder: 0},
+      {accountId: 'groceries', amount: 700_000, bankTransactionId: null, sortOrder: 1},
+      {accountId: 'household', amount: 300_000, bankTransactionId: null, sortOrder: 2},
+    ])
   })
 
   it('creates a ledger transaction when categorizing an unreconciled bank transaction', async () => {
@@ -560,6 +633,84 @@ describe('posting-based ledger categorization server functions', () => {
     expect(new Set(transferPostings.map(posting => posting.ledgerTransactionId)).size).toBe(1)
   })
 
+  it('creating a matched transfer preserves both import-created bank posting ids', async () => {
+    const {categorizeBankTransaction, ensureUncategorizedBankImportInterpretation} = await import('@penge/domain/categorization-service')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-import-source', bankAccountId: 'bank-account-1', amount: -10_000_000, bookingDate: '2026-06-20'})
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-import-counter', bankAccountId: 'bank-account-2', amount: 10_000_000, bookingDate: '2026-06-21'})
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transfer-import-source', now: baseNow}))
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transfer-import-counter', now: baseNow}))
+    const beforeSource = await currentInterpretationForBankTransaction('bank-transfer-import-source')
+    const beforeCounter = await currentInterpretationForBankTransaction('bank-transfer-import-counter')
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transfer-import-source',
+        selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+      }),
+    )
+
+    const afterSource = await currentInterpretationForBankTransaction('bank-transfer-import-source')
+    const afterCounter = await currentInterpretationForBankTransaction('bank-transfer-import-counter')
+    expect(afterSource?.bankPosting.id).toBe(beforeSource?.bankPosting.id)
+    expect(afterCounter?.bankPosting.id).toBe(beforeCounter?.bankPosting.id)
+    expect(afterCounter?.transaction?.id).toBe(afterSource?.transaction?.id)
+    expect(afterSource?.postings.map(posting => posting.bankTransactionId)).toEqual(['bank-transfer-import-source', 'bank-transfer-import-counter'])
+  })
+
+  it('rolls back transfer creation when the counter bank posting move is stale', async () => {
+    const {categorizeBankTransaction, ensureUncategorizedBankImportInterpretation} = await import('@penge/domain/categorization-service')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-stale-counter-source', bankAccountId: 'bank-account-1', amount: -10_000_000, bookingDate: '2026-06-20'})
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-stale-counter-counter', bankAccountId: 'bank-account-2', amount: 10_000_000, bookingDate: '2026-06-21'})
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transfer-stale-counter-source', now: baseNow}))
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transfer-stale-counter-counter', now: baseNow}))
+    const beforeSource = await currentInterpretationForBankTransaction('bank-transfer-stale-counter-source')
+    const beforeCounter = await currentInterpretationForBankTransaction('bank-transfer-stale-counter-counter')
+    const counterPostingId = beforeCounter?.bankPosting.id
+    expect(counterPostingId).toBeTruthy()
+
+    await sql`
+      create or replace function test_skip_stale_counter_posting_move()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        if old.bank_transaction_id = 'bank-transfer-stale-counter-counter' then
+          return null;
+        end if;
+        return new;
+      end;
+      $$
+    `
+    await sql`drop trigger if exists test_skip_stale_counter_posting_move on ledger_postings`
+    await sql`
+      create trigger test_skip_stale_counter_posting_move
+      before update on ledger_postings
+      for each row
+      execute function test_skip_stale_counter_posting_move()
+    `
+
+    try {
+      await expect(db.transaction(tx =>
+        categorizeBankTransaction(tx, {
+          userId: 'user-1',
+          bankTransactionId: 'bank-transfer-stale-counter-source',
+          selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+        }),
+      )).rejects.toThrow('Counter bank posting was changed concurrently, please retry')
+    } finally {
+      await sql`drop trigger if exists test_skip_stale_counter_posting_move on ledger_postings`
+      await sql`drop function if exists test_skip_stale_counter_posting_move()`
+    }
+
+    const afterSource = await currentInterpretationForBankTransaction('bank-transfer-stale-counter-source')
+    const afterCounter = await currentInterpretationForBankTransaction('bank-transfer-stale-counter-counter')
+    expect(afterSource?.transaction).toEqual(beforeSource?.transaction)
+    expect(afterSource?.postings).toEqual(beforeSource?.postings)
+    expect(afterCounter?.transaction).toEqual(beforeCounter?.transaction)
+    expect(afterCounter?.postings).toEqual(beforeCounter?.postings)
+  })
+
   it('bumps both bank transaction revisions when creating a transfer interpretation', async () => {
     const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-source-revision', bankAccountId: 'bank-account-1', amount: -10_000_000, description: 'Transfer out', bookingDate: '2026-06-20'})
@@ -688,10 +839,12 @@ describe('posting-based ledger categorization server functions', () => {
     expect(counterPosting).toHaveLength(1)
   })
 
-  it('recategorizing one side of a matched transfer detaches the old counter bank transaction', async () => {
-    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
+  it('recategorizing one side of a matched transfer restores the detached counter to uncategorized', async () => {
+    const {categorizeBankTransaction, ensureUncategorizedBankImportInterpretation} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transfer-recat-source', bankAccountId: 'bank-account-1', amount: -2_500_000})
     await insertUnreconciledBankTransaction({id: 'bank-transfer-recat-counter', bankAccountId: 'bank-account-2', amount: 2_500_000})
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transfer-recat-source', now: baseNow}))
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transfer-recat-counter', now: baseNow}))
 
     await db.transaction(tx =>
       categorizeBankTransaction(tx, {
@@ -700,6 +853,7 @@ describe('posting-based ledger categorization server functions', () => {
         selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
       }),
     )
+    const counterPostingId = (await currentInterpretationForBankTransaction('bank-transfer-recat-counter'))?.bankPosting.id
 
     await db.transaction(tx =>
       categorizeBankTransaction(tx, {
@@ -709,15 +863,75 @@ describe('posting-based ledger categorization server functions', () => {
       }),
     )
 
-    const sourcePostings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-recat-source'))
-    const counterPostings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transfer-recat-counter'))
-    expect(sourcePostings).toHaveLength(1)
-    expect(counterPostings).toHaveLength(0)
-    const postings = await getPostings(sourcePostings[0]!.ledgerTransactionId)
-    expect(postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId}))).toEqual([
+    const source = await currentInterpretationForBankTransaction('bank-transfer-recat-source')
+    const counter = await currentInterpretationForBankTransaction('bank-transfer-recat-counter')
+    expect(source?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId}))).toEqual([
       {accountId: 'bank-ledger-account', amount: -2_500_000, bankTransactionId: 'bank-transfer-recat-source'},
       {accountId: 'groceries', amount: 2_500_000, bankTransactionId: null},
     ])
+    expect(counter?.bankPosting.id).toBe(counterPostingId)
+    expect(counter?.transaction?.id).not.toBe(source?.transaction?.id)
+    await expectUncategorizedInterpretation('bank-transfer-recat-counter', {bankAmount: 2_500_000, uncatAmount: -2_500_000, ledgerAccountId: 'bank-ledger-account-2'})
+  })
+
+  it('does not detach a transfer counter when the guarded source claim fails', async () => {
+    const {categorizeBankTransaction, ensureUncategorizedBankImportInterpretation} = await import('@penge/domain/categorization-service')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-claim-fail-source', bankAccountId: 'bank-account-1', amount: -2_500_000})
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-claim-fail-counter', bankAccountId: 'bank-account-2', amount: 2_500_000})
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transfer-claim-fail-source', now: baseNow}))
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transfer-claim-fail-counter', now: baseNow}))
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transfer-claim-fail-source',
+        selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+      }),
+    )
+
+    const beforeSource = await currentInterpretationForBankTransaction('bank-transfer-claim-fail-source')
+    const beforeCounter = await currentInterpretationForBankTransaction('bank-transfer-claim-fail-counter')
+    expect(beforeSource?.transaction?.id).toBe(beforeCounter?.transaction?.id)
+
+    await sql`
+      create or replace function test_skip_transfer_claim_update()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        if old.id = (select ledger_transaction_id from ledger_postings where bank_transaction_id = 'bank-transfer-claim-fail-source') then
+          return null;
+        end if;
+        return new;
+      end;
+      $$
+    `
+    await sql`drop trigger if exists test_skip_transfer_claim_update on ledger_transactions`
+    await sql`
+      create trigger test_skip_transfer_claim_update
+      before update on ledger_transactions
+      for each row
+      execute function test_skip_transfer_claim_update()
+    `
+
+    try {
+      await expect(db.transaction(tx =>
+        categorizeBankTransaction(tx, {
+          userId: 'user-1',
+          bankTransactionId: 'bank-transfer-claim-fail-source',
+          selection: {kind: 'category', accountId: 'groceries'},
+        }),
+      )).resolves.toBe(false)
+    } finally {
+      await sql`drop trigger if exists test_skip_transfer_claim_update on ledger_transactions`
+      await sql`drop function if exists test_skip_transfer_claim_update()`
+    }
+
+    const afterSource = await currentInterpretationForBankTransaction('bank-transfer-claim-fail-source')
+    const afterCounter = await currentInterpretationForBankTransaction('bank-transfer-claim-fail-counter')
+    expect(afterSource?.transaction?.id).toBe(beforeSource?.transaction?.id)
+    expect(afterCounter?.transaction?.id).toBe(beforeCounter?.transaction?.id)
+    expect(afterCounter?.transaction?.id).toBe(afterSource?.transaction?.id)
+    expect(afterSource?.postings.map(posting => posting.bankTransactionId)).toEqual(['bank-transfer-claim-fail-source', 'bank-transfer-claim-fail-counter'])
   })
 
   it('updates an existing needs-review interpretation in place by bank transaction id and confirms', async () => {
@@ -793,7 +1007,7 @@ describe('posting-based ledger categorization server functions', () => {
     ])
   })
 
-  it('creates the reconciled bank posting under a deterministic id and keeps it stable across rewrites', async () => {
+  it('creates the reconciled bank posting under a UUID id and keeps it stable across rewrites', async () => {
     const {categorizeBankTransaction, splitBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-transaction-det-id', amount: -1_000_000, description: 'Card purchase'})
 
@@ -805,14 +1019,10 @@ describe('posting-based ledger categorization server functions', () => {
       }),
     )
 
-    // The source bank posting id is derived from the bank transaction id (bankPostingIdFor), shared with
-    // the client optimistic mutator so the two writes reconcile as one row.
     const created = await currentInterpretationForBankTransaction('bank-transaction-det-id')
-    expect(created?.bankPosting.id).toBe('bank-posting:bank-transaction-det-id')
+    expect(created?.bankPosting.id).not.toContain(`bank${'-posting:'}`)
+    expectUuidLike(created!.bankPosting.id)
 
-    // A rewrite must keep the bank-linked posting id (Zero clients sync it as an in-place edit); recreating
-    // it under a new key would transiently break the singular bankTransactions.posting relationship.
-    // Category postings are rebuilt under fresh ids.
     await db.transaction(tx =>
       splitBankTransaction(tx, {
         userId: 'user-1',
@@ -825,7 +1035,7 @@ describe('posting-based ledger categorization server functions', () => {
     )
 
     const rewritten = await currentInterpretationForBankTransaction('bank-transaction-det-id')
-    expect(rewritten?.bankPosting.id).toBe('bank-posting:bank-transaction-det-id')
+    expect(rewritten?.bankPosting.id).toBe(created?.bankPosting.id)
     expect(rewritten?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId, sortOrder: posting.sortOrder}))).toEqual([
       {accountId: 'bank-ledger-account', amount: -1_000_000, bankTransactionId: 'bank-transaction-det-id', sortOrder: 0},
       {accountId: 'groceries', amount: 700_000, bankTransactionId: null, sortOrder: 1},
@@ -833,12 +1043,12 @@ describe('posting-based ledger categorization server functions', () => {
     ])
   })
 
-  it('keeps a legacy (non-deterministic) source bank posting id untouched across a rewrite', async () => {
+  it('keeps a legacy non-UUID source bank posting id untouched across a rewrite', async () => {
     const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
 
     // bank-transaction-1 is seeded with a legacy-style bank posting id (ledger-transaction-1-bank-posting).
-    // Re-categorizing must preserve that id rather than switch it to the deterministic scheme, otherwise
-    // already-categorized rows would break on their first re-categorization.
+    // Re-categorizing must preserve that id so already-categorized rows keep their bank-linked posting row
+    // on their first re-categorization.
     const before = await currentInterpretationForBankTransaction('bank-transaction-1')
     expect(before?.bankPosting.id).toBe('ledger-transaction-1-bank-posting')
 
@@ -1010,6 +1220,40 @@ describe('posting-based ledger categorization server functions', () => {
     expect(didCategorize).toBe(true)
     expect(interpretation?.transaction).toMatchObject({status: 'needs_review', categorizedBy: 'ai', userConfirmedAt: null, userConfirmedBy: null})
     expect(bankTransaction).toMatchObject({aiConfidence: 1, aiReasoning: 'Plausible match.'})
+  })
+
+  it('filters Uncategorized ledger interpretations by their projected review status', async () => {
+    const {categorizeBankTransaction, ensureUncategorizedBankImportInterpretation} = await import('@penge/domain/categorization-service')
+    const {searchBankTransactions} = await import('@penge/domain/read-projections')
+    await insertUnreconciledBankTransaction({id: 'bank-read-uncat', amount: -1_000_000, description: 'Needs category'})
+    await insertUnreconciledBankTransaction({id: 'bank-read-ai-unable', amount: -2_000_000, description: 'AI unable'})
+    await insertUnreconciledBankTransaction({id: 'bank-read-needs-review', amount: -3_000_000, description: 'AI needs review'})
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-read-uncat', now: baseNow}))
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-read-ai-unable', now: baseNow}))
+    await db.update(bankTransactions).set({aiConfidence: 0, aiReasoning: 'Could not categorize.'}).where(eq(bankTransactions.id, 'bank-read-ai-unable'))
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-read-needs-review',
+        selection: {kind: 'category', accountId: 'groceries'},
+        status: 'needs_review',
+        categorizedBy: 'ai',
+        aiConfidence: 1,
+        aiReasoning: 'Plausible but needs review.',
+      }),
+    )
+
+    const filterIds = ['bank-read-uncat', 'bank-read-ai-unable', 'bank-read-needs-review']
+    const anyRows = await searchBankTransactions(db, {userId: 'user-1', teamId: 'team-1', filters: {bankTransactionIds: filterIds, reviewStatus: 'any', limit: 10}})
+    const uncategorizedRows = await searchBankTransactions(db, {userId: 'user-1', teamId: 'team-1', filters: {bankTransactionIds: filterIds, reviewStatus: 'uncategorized', limit: 10}})
+    const aiUnableRows = await searchBankTransactions(db, {userId: 'user-1', teamId: 'team-1', filters: {bankTransactionIds: filterIds, reviewStatus: 'ai_unable', limit: 10}})
+    const needsReviewRows = await searchBankTransactions(db, {userId: 'user-1', teamId: 'team-1', filters: {bankTransactionIds: filterIds, reviewStatus: 'needs_review', limit: 10}})
+
+    expect(anyRows.find(row => row.id === 'bank-read-uncat')).toMatchObject({reviewStatus: 'uncategorized', interpretation: {kind: 'uncategorized', status: 'needs_review'}})
+    expect(anyRows.find(row => row.id === 'bank-read-ai-unable')).toMatchObject({reviewStatus: 'ai_unable', interpretation: {kind: 'uncategorized', status: 'needs_review'}})
+    expect(uncategorizedRows.map(row => row.id)).toEqual(['bank-read-uncat'])
+    expect(aiUnableRows.map(row => row.id)).toEqual(['bank-read-ai-unable'])
+    expect(needsReviewRows.map(row => row.id)).toEqual(['bank-read-needs-review'])
   })
 
   it('confirms only transactions with real categories', async () => {
@@ -1228,7 +1472,46 @@ describe('posting-based ledger categorization server functions', () => {
     expect(transaction).toMatchObject({status: 'needs_review', userConfirmedBy: null})
   })
 
-  it('clears multi-reconciled transactions by deleting their ledger interpretation and counts transactions', async () => {
+  it('rolls back clear when the bank posting reset update is stale', async () => {
+    const {clearLedgerCategorizations} = await import('@penge/domain/categorization-service')
+    const before = await currentInterpretationForBankTransaction('bank-transaction-1')
+
+    await sql`
+      create or replace function test_skip_stale_uncategorized_reset()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        if old.bank_transaction_id = 'bank-transaction-1' then
+          return null;
+        end if;
+        return new;
+      end;
+      $$
+    `
+    await sql`drop trigger if exists test_skip_stale_uncategorized_reset on ledger_postings`
+    await sql`
+      create trigger test_skip_stale_uncategorized_reset
+      before update on ledger_postings
+      for each row
+      execute function test_skip_stale_uncategorized_reset()
+    `
+
+    try {
+      await expect(db.transaction(tx => clearLedgerCategorizations(tx, {userId: 'user-1'}))).rejects.toThrow(
+        'Bank posting was changed concurrently, please retry',
+      )
+    } finally {
+      await sql`drop trigger if exists test_skip_stale_uncategorized_reset on ledger_postings`
+      await sql`drop function if exists test_skip_stale_uncategorized_reset()`
+    }
+
+    const after = await currentInterpretationForBankTransaction('bank-transaction-1')
+    expect(after?.transaction).toEqual(before?.transaction)
+    expect(after?.postings).toEqual(before?.postings)
+  })
+
+  it('clears multi-reconciled transactions by resetting each bank posting to uncategorized and counts transactions', async () => {
     const {clearLedgerCategorizations} = await import('@penge/domain/categorization-service')
     await db.delete(ledgerTransactions).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     await db.insert(bankTransactions).values([
@@ -1289,10 +1572,12 @@ describe('posting-based ledger categorization server functions', () => {
     const bankPostings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-transaction-multi-1'))
     expect(result).toEqual({cleared: 1})
     expect(postings).toEqual([])
-    expect(bankPostings).toEqual([])
+    expect(bankPostings).toHaveLength(1)
+    await expectUncategorizedInterpretation('bank-transaction-multi-1', {bankAmount: -400_000, uncatAmount: 400_000, expectUuid: false})
+    await expectUncategorizedInterpretation('bank-transaction-multi-2', {bankAmount: -600_000, uncatAmount: 600_000, expectUuid: false})
   })
 
-  it('clears categorizations by deleting ledger interpretations while preserving bank transactions', async () => {
+  it('clears categorizations by resetting interpretations to uncategorized while preserving bank transactions', async () => {
     const {clearLedgerCategorizations} = await import('@penge/domain/categorization-service')
     await db.delete(ledgerPostings).where(eq(ledgerPostings.id, 'ledger-transaction-1-uncat-posting'))
     await db.insert(ledgerPostings).values([
@@ -1307,6 +1592,7 @@ describe('posting-based ledger categorization server functions', () => {
     const bankRowsAfter = await db.select().from(bankTransactions).orderBy(bankTransactions.id)
     expect(result).toEqual({cleared: 1})
     expect(postings).toEqual([])
+    await expectUncategorizedInterpretation('bank-transaction-1', {bankAmount: -1_000_000, uncatAmount: 1_000_000, expectUuid: false})
     expect(bankRowsAfter.map(row => row.id)).toEqual(bankRowsBefore.map(row => row.id))
     expect(await categorizationRevisionFor('bank-transaction-1')).toBe(1)
   })

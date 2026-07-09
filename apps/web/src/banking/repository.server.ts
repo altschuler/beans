@@ -1,10 +1,12 @@
 import '@tanstack/react-start/server-only'
 
-import {and, desc, eq, isNotNull, ne} from 'drizzle-orm'
+import {and, desc, eq, isNotNull, isNull, ne} from 'drizzle-orm'
 import {parseDecimalMoneyToAmount} from '@penge/domain/money'
+import {ensureUncategorizedBankImportInterpretation, refreshUncategorizedBankImportInterpretation} from '@penge/domain/categorization-service'
 import {db} from '@/db/client'
-import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, ledgerPostings, teamMembers} from '@penge/domain/schema'
+import {bankAccounts, bankConnections, bankTransactions, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from '@penge/domain/schema'
 import {ensureLedgerAccountForBankAccount} from '@/ledger/repository.server'
+import {alias} from 'drizzle-orm/pg-core'
 import type {GoCardlessAccountDetails} from './gocardless/types'
 import type {BankAccountSyncRepository} from './sync'
 import type {NormalizedBankTransaction} from './transactions'
@@ -50,6 +52,7 @@ const MANUAL_ACCOUNT_TYPES = ['checking', 'savings', 'credit-card', 'loan', 'cas
 
 type ManualAccountType = typeof MANUAL_ACCOUNT_TYPES[number]
 type BankingCommandTransaction = Pick<BankingSyncTransaction, 'select' | 'insert' | 'update' | 'delete'>
+type DomainCategorizationTransaction = Parameters<typeof ensureUncategorizedBankImportInterpretation>[0]
 
 export async function createManualBankAccount(tx: BankingCommandTransaction, input: {
   userId: string
@@ -134,6 +137,7 @@ export async function createManualTransaction(tx: BankingCommandTransaction, inp
     createdAt: now,
     updatedAt: now,
   })
+  await ensureUncategorizedBankImportInterpretation(tx as DomainCategorizationTransaction, {bankTransactionId: input.id, now})
 }
 
 async function requireTeamAccess(tx: BankingCommandTransaction, teamId: string, userId: string) {
@@ -330,34 +334,116 @@ function bankAccountDetailsForStorage(details?: GoCardlessAccountDetails) {
 
 type BankingSyncTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
+const bankLinkedPostings = alias(ledgerPostings, 'bank_linked_postings')
+const uncategorizedPostings = alias(ledgerPostings, 'uncategorized_postings')
+const uncategorizedAccounts = alias(ledgerAccounts, 'uncategorized_accounts')
+
 async function guardProviderFactsAfterReconciliation(
   tx: BankingSyncTransaction,
   bankAccount: {id: string; teamId: string; provider: string},
   transaction: NormalizedBankTransaction,
-) {
-  // Provider transaction ids are scoped by provider/team here so a reconciled bank transaction cannot silently move across bank accounts.
+): Promise<{id: string; factsChanged: boolean} | null> {
   const [existing] = await tx
     .select({
       id: bankTransactions.id,
       bankAccountId: bankTransactions.bankAccountId,
       amount: bankTransactions.amount,
       currency: bankTransactions.currency,
-      reconciledPostingId: ledgerPostings.id,
+      ledgerTransactionId: ledgerTransactions.id,
+      uncategorizedPostingId: uncategorizedPostings.id,
+      uncategorizedSystemKey: uncategorizedAccounts.systemKey,
     })
     .from(bankTransactions)
     .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
-    .leftJoin(ledgerPostings, eq(ledgerPostings.bankTransactionId, bankTransactions.id))
+    .leftJoin(bankLinkedPostings, eq(bankLinkedPostings.bankTransactionId, bankTransactions.id))
+    .leftJoin(ledgerTransactions, eq(ledgerTransactions.id, bankLinkedPostings.ledgerTransactionId))
+    .leftJoin(uncategorizedPostings, and(eq(uncategorizedPostings.ledgerTransactionId, ledgerTransactions.id), isNull(uncategorizedPostings.bankTransactionId)))
+    .leftJoin(uncategorizedAccounts, eq(uncategorizedAccounts.id, uncategorizedPostings.accountId))
     .where(and(eq(bankAccounts.teamId, bankAccount.teamId), eq(bankAccounts.provider, bankAccount.provider), eq(bankTransactions.providerTransactionId, transaction.providerTransactionId)))
     .limit(1)
 
-  if (!existing?.reconciledPostingId) return
+  if (!existing) return null
 
   const bankAccountChanged = existing.bankAccountId !== bankAccount.id
   const amountChanged = existing.amount !== transaction.amount
   const currencyChanged = existing.currency !== transaction.currency
-  if (bankAccountChanged || amountChanged || currencyChanged) {
+  const factsChanged = bankAccountChanged || amountChanged || currencyChanged
+  if (!existing.ledgerTransactionId) return {id: existing.id, factsChanged}
+
+  const isUncategorized = existing.uncategorizedSystemKey === 'uncategorized'
+  if (!isUncategorized && factsChanged) {
     throw new Error('Imported bank transaction facts changed after reconciliation')
   }
+  return {id: existing.id, factsChanged}
+}
+
+async function updateExistingProviderBankTransaction(
+  tx: BankingSyncTransaction,
+  bankTransactionId: string,
+  bankAccountId: string,
+  transaction: NormalizedBankTransaction,
+  now: Date,
+) {
+  const [bankTransaction] = await tx
+    .update(bankTransactions)
+    .set({
+      bankAccountId,
+      status: transaction.status,
+      bookingDate: transaction.bookingDate,
+      valueDate: transaction.valueDate,
+      amount: transaction.amount,
+      currency: transaction.currency,
+      description: transaction.description,
+      counterpartyName: transaction.counterpartyName,
+      raw: transaction.raw,
+      updatedAt: now,
+    })
+    .where(eq(bankTransactions.id, bankTransactionId))
+    .returning({id: bankTransactions.id})
+  if (!bankTransaction) throw new Error('Bank transaction not found')
+  return bankTransaction
+}
+
+async function insertProviderBankTransaction(
+  tx: BankingSyncTransaction,
+  bankAccountId: string,
+  transaction: NormalizedBankTransaction,
+  now: Date,
+) {
+  const [bankTransaction] = await tx
+    .insert(bankTransactions)
+    .values({
+      id: crypto.randomUUID(),
+      bankAccountId,
+      providerTransactionId: transaction.providerTransactionId,
+      status: transaction.status,
+      bookingDate: transaction.bookingDate,
+      valueDate: transaction.valueDate,
+      amount: transaction.amount,
+      currency: transaction.currency,
+      description: transaction.description,
+      counterpartyName: transaction.counterpartyName,
+      raw: transaction.raw,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [bankTransactions.bankAccountId, bankTransactions.providerTransactionId],
+      set: {
+        status: transaction.status,
+        bookingDate: transaction.bookingDate,
+        valueDate: transaction.valueDate,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        description: transaction.description,
+        counterpartyName: transaction.counterpartyName,
+        raw: transaction.raw,
+        updatedAt: now,
+      },
+    })
+    .returning({id: bankTransactions.id})
+  if (!bankTransaction) throw new Error('Bank transaction not found')
+  return bankTransaction
 }
 
 export const drizzleBankingSyncRepository: BankAccountSyncRepository = {
@@ -402,41 +488,17 @@ export const drizzleBankingSyncRepository: BankAccountSyncRepository = {
 
       const now = new Date()
       for (const transaction of transactions) {
-        await guardProviderFactsAfterReconciliation(tx, bankAccount, transaction)
+        const existingBankTransaction = await guardProviderFactsAfterReconciliation(tx, bankAccount, transaction)
 
-        const [bankTransaction] = await tx
-          .insert(bankTransactions)
-          .values({
-            id: crypto.randomUUID(),
-            bankAccountId,
-            providerTransactionId: transaction.providerTransactionId,
-            status: transaction.status,
-            bookingDate: transaction.bookingDate,
-            valueDate: transaction.valueDate,
-            amount: transaction.amount,
-            currency: transaction.currency,
-            description: transaction.description,
-            counterpartyName: transaction.counterpartyName,
-            raw: transaction.raw,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .onConflictDoUpdate({
-            target: [bankTransactions.bankAccountId, bankTransactions.providerTransactionId],
-            set: {
-              status: transaction.status,
-              bookingDate: transaction.bookingDate,
-              valueDate: transaction.valueDate,
-              amount: transaction.amount,
-              currency: transaction.currency,
-              description: transaction.description,
-              counterpartyName: transaction.counterpartyName,
-              raw: transaction.raw,
-              updatedAt: now,
-            },
-          })
-          .returning({id: bankTransactions.id})
-        void bankTransaction
+        const bankTransaction = existingBankTransaction
+          ? await updateExistingProviderBankTransaction(tx, existingBankTransaction.id, bankAccount.id, transaction, now)
+          : await insertProviderBankTransaction(tx, bankAccount.id, transaction, now)
+
+        await ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: bankTransaction.id, now})
+        const refreshed = await refreshUncategorizedBankImportInterpretation(tx, {bankTransactionId: bankTransaction.id, now})
+        if (existingBankTransaction?.factsChanged && !refreshed) {
+          throw new Error('Imported bank transaction facts changed after reconciliation')
+        }
       }
 
       return transactions.length

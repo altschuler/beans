@@ -83,9 +83,14 @@ Splits do not create multiple bank-linked postings. A split has one bank-linked 
 
 ### Imported transaction before categorization
 
-A card purchase of `-100 DKK` from Checking is imported. Before the user categorizes it, Penge stores only the imported bank transaction as external evidence. No ledger transaction or postings are created yet.
+A card purchase of `-100 DKK` from Checking is imported. Penge immediately stores a balanced internal interpretation using the Uncategorized adjustment account:
 
-The Transactions page still shows the bank transaction as needing a category. Once the user chooses a category, split, or transfer destination, Penge creates the internal ledger interpretation.
+```txt
+Checking        -100 DKK   reconciles imported bank transaction
+Uncategorized    100 DKK
+```
+
+The Transactions page still shows the bank transaction as needing a category. Once the user chooses a category, split, or transfer destination, Penge rewrites the explanatory Uncategorized side while preserving the reconciled Checking posting.
 
 ### Categorized card purchase
 
@@ -211,7 +216,7 @@ The model relies on these invariants:
 1. Imported bank transactions are immutable external evidence.
 2. A ledger transaction has at least two postings.
 3. Postings in a ledger transaction sum to zero per currency.
-4. An imported bank transaction may be unreconciled until the user or automation creates an internal ledger interpretation.
+4. An imported bank transaction starts reconciled to a balanced Uncategorized interpretation until the user or automation categorizes it.
 5. An imported bank transaction reconciles at most one ledger posting.
 6. A reconciled posting matches the bank transaction's amount, currency, and corresponding ledger account.
 7. A split transaction has one bank-linked posting and multiple opposite postings.

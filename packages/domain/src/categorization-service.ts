@@ -5,7 +5,7 @@ import {absoluteMoneyAmount, formatMoneyDecimal} from './money'
 import {bankAccounts, bankTransactions, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers} from './schema'
 import {
   buildBankTransactionCategorizationPostings,
-  buildBankTransactionTransferPostings,
+  buildBankTransactionUncategorizedPostings,
   isRealCategorizationAccount,
   validateLedgerPostingsBalance,
   type BuiltLedgerPosting,
@@ -143,6 +143,91 @@ export function normalizeAiReasoning(reasoning: string) {
   return reasoning.trim().slice(0, MAX_AI_REASONING_LENGTH)
 }
 
+export async function ensureUncategorizedBankImportInterpretation(
+  tx: DrizzleTransaction,
+  input: {bankTransactionId: string; now?: Date},
+) {
+  const existing = await loadExistingInterpretationForBankTransactionById(tx, input.bankTransactionId)
+  if (existing) return existing.ledgerTransaction.id
+
+  const loaded = await loadBankTransactionForUncategorizedInterpretation(tx, input.bankTransactionId)
+  const now = input.now ?? new Date()
+  const ledgerTransactionId = crypto.randomUUID()
+  const postings = buildBankTransactionUncategorizedPostings({
+    ledgerTransactionId,
+    source: {
+      bankTransactionId: loaded.bankTransaction.id,
+      bankLedgerAccountId: loaded.sourceLedgerAccount.id,
+      amount: loaded.bankTransaction.amount,
+      currency: loaded.bankTransaction.currency,
+    },
+    uncategorizedAccountId: loaded.uncategorizedAccount.id,
+    now,
+  })
+
+  await insertBankImportLedgerInterpretation(tx, {
+    ledgerTransactionId,
+    teamId: loaded.teamId,
+    userId: null,
+    date: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
+    description: null,
+    postings,
+    status: 'needs_review',
+    categorizedBy: null,
+    now,
+  })
+  return ledgerTransactionId
+}
+
+export async function refreshUncategorizedBankImportInterpretation(
+  tx: DrizzleTransaction,
+  input: {bankTransactionId: string; now?: Date},
+) {
+  const loaded = await loadRefreshableUncategorizedInterpretation(tx, input.bankTransactionId)
+  if (!loaded) return false
+
+  const now = input.now ?? new Date()
+  await tx
+    .update(ledgerTransactions)
+    .set({date: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate, updatedAt: now})
+    .where(eq(ledgerTransactions.id, loaded.ledgerTransaction.id))
+
+  const [updatedBankPosting] = await tx
+    .update(ledgerPostings)
+    .set({
+      accountId: loaded.sourceLedgerAccount.id,
+      amount: loaded.bankTransaction.amount,
+      currency: loaded.bankTransaction.currency,
+      updatedAt: now,
+    })
+    .where(and(eq(ledgerPostings.id, loaded.bankPosting.id), eq(ledgerPostings.ledgerTransactionId, loaded.ledgerTransaction.id)))
+    .returning({id: ledgerPostings.id})
+  if (!updatedBankPosting) {
+    throw new Error('Bank posting was changed concurrently, please retry')
+  }
+
+  const [updatedUncategorizedPosting] = await tx
+    .update(ledgerPostings)
+    .set({
+      amount: -loaded.bankTransaction.amount,
+      currency: loaded.bankTransaction.currency,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(ledgerPostings.id, loaded.uncategorizedPosting.id),
+        eq(ledgerPostings.ledgerTransactionId, loaded.ledgerTransaction.id),
+        isNull(ledgerPostings.bankTransactionId),
+      ),
+    )
+    .returning({id: ledgerPostings.id})
+  if (!updatedUncategorizedPosting) {
+    throw new Error('Uncategorized posting was changed concurrently, please retry')
+  }
+
+  await validatePersistedTransactionBalance(tx, loaded.ledgerTransaction.id)
+  return true
+}
 
 export async function categorizeBankTransaction(tx: DrizzleTransaction, input: CategorizeBankTransactionInput) {
   return applyBankTransactionInterpretation(tx, {
@@ -242,7 +327,7 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
   if (input.teamId && loaded.teamId !== input.teamId) return false
   if (input.targetBankTransactionIds && !input.targetBankTransactionIds.includes(loaded.bankTransaction.id)) return false
 
-  const existing = await loadExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
+  let existing = await loadExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
 
   const isAiCategorization = input.categorizedBy === 'ai'
   if (isAiCategorization && existing && isProtectedFromAiOverwrite(existing.ledgerTransaction)) {
@@ -264,14 +349,21 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
       now,
     })
   }
-  const existingBankTransactionIds = existing ? await loadBankTransactionIdsForLedgerTransaction(tx, existing.ledgerTransaction.id) : []
+
+  if (!existing) {
+    await ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: loaded.bankTransaction.id, now})
+    existing = await loadExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
+  }
+  if (!existing) throw new Error('Bank transaction interpretation not found')
+
+  const existingBankTransactionIds = await loadBankTransactionIdsForLedgerTransaction(tx, existing.ledgerTransaction.id)
   // Re-categorization updates the existing ledger transaction in place (reusing its id) rather than
   // deleting and re-inserting, so Zero syncs an update instead of a delete+insert and id-keyed lookups
   // stay stable. Category/counter postings are fully rebuilt, but the source bank posting is left
   // untouched (see claimExistingInterpretationForRewrite): recreating the row behind the singular
   // bankTransactions.posting relationship under a new key makes Zero clients transiently see two
   // postings for one bank transaction mid-sync, which errors the sync connection.
-  const ledgerTransactionId = existing ? existing.ledgerTransaction.id : crypto.randomUUID()
+  const ledgerTransactionId = existing.ledgerTransaction.id
   const writeFields = {
     ledgerTransactionId,
     teamId: loaded.teamId,
@@ -305,28 +397,29 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
           sourceDate: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
         })
 
-    // Claim the existing interpretation before counter matching: the guarded UPDATE is the
-    // optimistic-concurrency check, and the non-source postings it clears free the previous counter
-    // for re-matching. The source bank posting is preserved (keeps its primary key stable).
-    if (existing) {
-      const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, loaded.bankTransaction.id, writeFields)
-      if (!claimed) return false
+    const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, loaded.bankTransaction.id, writeFields)
+    if (!claimed) return false
+
+    await restoreDetachedBankPostingsToUncategorized(tx, existing.ledgerTransaction.id, loaded.bankTransaction.id, now)
+    await deleteExplanatoryPostings(tx, existing.ledgerTransaction.id)
+    await ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: transferTarget.counterBankTransaction.id, now})
+    const counterExisting = await loadExistingInterpretationForBankTransaction(tx, loaded.teamId, transferTarget.counterBankTransaction.id)
+    if (!counterExisting) throw new Error('Counter bank transaction interpretation not found')
+    if (!(await isUncategorizedLedgerInterpretation(tx, counterExisting.ledgerTransaction.id))) {
+      throw new Error('Invalid transfer counter transaction')
     }
 
-    const postings = buildBankTransactionTransferPostings({
-      ledgerTransactionId,
-      source: {
-        bankTransactionId: loaded.bankTransaction.id,
-        bankLedgerAccountId: loaded.sourceLedgerAccount.id,
-        amount: loaded.bankTransaction.amount,
-        currency: loaded.bankTransaction.currency,
-      },
-      targetLedgerAccountId: transferTarget.transferAccount.id,
-      counterBankTransactionId: transferTarget.counterBankTransaction.id,
-      now,
-    })
-
-    await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: Boolean(existing), sourceBankTransactionId: loaded.bankTransaction.id, postings})
+    await deleteExplanatoryPostings(tx, counterExisting.ledgerTransaction.id)
+    const [movedCounterPosting] = await tx
+      .update(ledgerPostings)
+      .set({ledgerTransactionId, sortOrder: 1, updatedAt: now})
+      .where(and(eq(ledgerPostings.id, counterExisting.bankPosting.id), eq(ledgerPostings.ledgerTransactionId, counterExisting.ledgerTransaction.id)))
+      .returning({id: ledgerPostings.id})
+    if (!movedCounterPosting) {
+      throw new Error('Counter bank posting was changed concurrently, please retry')
+    }
+    await tx.delete(ledgerTransactions).where(eq(ledgerTransactions.id, counterExisting.ledgerTransaction.id))
+    await validatePersistedTransactionBalance(tx, ledgerTransactionId)
     if (isAiCategorization) {
       await recordBankTransactionAiResult(tx, loaded.bankTransaction.id, input.aiConfidence ?? null, normalizedAiReasoning, now)
     } else {
@@ -347,10 +440,11 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
       : input.interpretation.lines
 
   await validateCategorizationAccounts(tx, loaded.teamId, lines.map(line => line.accountId))
-  if (existing) {
-    const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, loaded.bankTransaction.id, writeFields)
-    if (!claimed) return false
-  }
+  const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, loaded.bankTransaction.id, writeFields)
+  if (!claimed) return false
+
+  await restoreDetachedBankPostingsToUncategorized(tx, existing.ledgerTransaction.id, loaded.bankTransaction.id, now)
+  await deleteExplanatoryPostings(tx, existing.ledgerTransaction.id)
 
   const postings = buildBankTransactionCategorizationPostings({
     ledgerTransactionId,
@@ -364,7 +458,7 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
     now,
   })
 
-  await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: Boolean(existing), sourceBankTransactionId: loaded.bankTransaction.id, postings})
+  await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: true, sourceBankTransactionId: loaded.bankTransaction.id, postings})
   if (isAiCategorization) {
     await recordBankTransactionAiResult(tx, loaded.bankTransaction.id, input.aiConfidence ?? null, normalizedAiReasoning, now)
   } else {
@@ -377,6 +471,91 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
     now,
   })
   return true
+}
+
+async function deleteExplanatoryPostings(tx: DrizzleTransaction, ledgerTransactionId: string) {
+  await tx.delete(ledgerPostings).where(and(eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId), isNull(ledgerPostings.bankTransactionId)))
+}
+
+async function restoreDetachedBankPostingsToUncategorized(tx: DrizzleTransaction, ledgerTransactionId: string, sourceBankTransactionId: string, now: Date) {
+  const rows = await tx
+    .select({bankTransactionId: ledgerPostings.bankTransactionId})
+    .from(ledgerPostings)
+    .where(and(eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId), isNotNull(ledgerPostings.bankTransactionId)))
+
+  const counterIds = rows.flatMap(row => (row.bankTransactionId && row.bankTransactionId !== sourceBankTransactionId ? [row.bankTransactionId] : []))
+  for (const bankTransactionId of counterIds) {
+    await resetExistingBankPostingToUncategorizedInterpretation(tx, {bankTransactionId, now})
+  }
+}
+
+async function resetExistingBankPostingToUncategorizedInterpretation(
+  tx: DrizzleTransaction,
+  input: {bankTransactionId: string; now: Date},
+) {
+  const loaded = await loadBankPostingForUncategorizedReset(tx, input.bankTransactionId)
+  const ledgerTransactionId = crypto.randomUUID()
+  const postings = buildBankTransactionUncategorizedPostings({
+    ledgerTransactionId,
+    source: {
+      bankTransactionId: loaded.bankTransaction.id,
+      bankLedgerAccountId: loaded.sourceLedgerAccount.id,
+      amount: loaded.bankTransaction.amount,
+      currency: loaded.bankTransaction.currency,
+    },
+    uncategorizedAccountId: loaded.uncategorizedAccount.id,
+    bankPostingId: loaded.bankPosting.id,
+    now: input.now,
+  })
+  const bankPosting = postings[0]!
+  const uncategorizedPosting = postings[1]!
+
+  await tx.insert(ledgerTransactions).values({
+    id: ledgerTransactionId,
+    teamId: loaded.teamId,
+    source: 'bank_import',
+    status: 'needs_review',
+    categorizedBy: null,
+    userConfirmedAt: null,
+    userConfirmedBy: null,
+    date: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
+    description: null,
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
+  const [movedBankPosting] = await tx
+    .update(ledgerPostings)
+    .set({
+      ledgerTransactionId,
+      accountId: bankPosting.accountId,
+      amount: bankPosting.amount,
+      currency: bankPosting.currency,
+      bankTransactionId: bankPosting.bankTransactionId,
+      sortOrder: 0,
+      updatedAt: input.now,
+    })
+    .where(and(eq(ledgerPostings.id, loaded.bankPosting.id), eq(ledgerPostings.ledgerTransactionId, loaded.oldLedgerTransactionId)))
+    .returning({id: ledgerPostings.id})
+  if (!movedBankPosting) {
+    throw new Error('Bank posting was changed concurrently, please retry')
+  }
+  await tx.insert(ledgerPostings).values(uncategorizedPosting)
+  await validatePersistedTransactionBalance(tx, ledgerTransactionId)
+  await deleteBankImportTransactionsWithoutBankPostings(tx, [loaded.oldLedgerTransactionId])
+}
+
+async function deleteBankImportTransactionsWithoutBankPostings(tx: DrizzleTransaction, ledgerTransactionIds: string[]) {
+  const ids = uniq(ledgerTransactionIds)
+  for (const ledgerTransactionId of ids) {
+    const [bankPosting] = await tx
+      .select({id: ledgerPostings.id})
+      .from(ledgerPostings)
+      .where(and(eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId), isNotNull(ledgerPostings.bankTransactionId)))
+      .limit(1)
+    if (!bankPosting) {
+      await tx.delete(ledgerTransactions).where(and(eq(ledgerTransactions.id, ledgerTransactionId), eq(ledgerTransactions.source, 'bank_import')))
+    }
+  }
 }
 
 async function recordUnableAgentInterpretation(tx: DrizzleTransaction, input: ApplyAgentBankTransactionInterpretationInput) {
@@ -409,11 +588,6 @@ export async function clearLedgerCategorizations(tx: DrizzleTransaction, input: 
   const rows = await tx
     .select({
       ledgerTransactionId: ledgerTransactions.id,
-      teamId: ledgerTransactions.teamId,
-      bankPostingId: ledgerPostings.id,
-      bankPostingAccountId: ledgerPostings.accountId,
-      bankPostingAmount: ledgerPostings.amount,
-      bankPostingCurrency: ledgerPostings.currency,
       bankPostingBankTransactionId: ledgerPostings.bankTransactionId,
     })
     .from(ledgerTransactions)
@@ -426,9 +600,12 @@ export async function clearLedgerCategorizations(tx: DrizzleTransaction, input: 
   if (rows.length === 0) return {cleared: 0}
 
   const transactionIds = uniq(rows.map(row => row.ledgerTransactionId))
-  const bankTransactionIds = rows.flatMap(row => (row.bankPostingBankTransactionId ? [row.bankPostingBankTransactionId] : []))
+  const bankTransactionIds = uniq(rows.flatMap(row => (row.bankPostingBankTransactionId ? [row.bankPostingBankTransactionId] : [])))
   const now = new Date()
-  await tx.delete(ledgerTransactions).where(inArray(ledgerTransactions.id, transactionIds))
+  for (const bankTransactionId of bankTransactionIds) {
+    await resetExistingBankPostingToUncategorizedInterpretation(tx, {bankTransactionId, now})
+  }
+  await deleteBankImportTransactionsWithoutBankPostings(tx, transactionIds)
   await bumpCategorizationRevisions(tx, {bankTransactionIds, now})
 
   return {cleared: transactionIds.length}
@@ -465,6 +642,149 @@ export async function confirmBankTransactionInterpretation(tx: DrizzleTransactio
   })
 }
 
+
+async function loadExistingInterpretationForBankTransactionById(tx: DrizzleTransaction, bankTransactionId: string) {
+  const [row] = await tx
+    .select({ledgerTransaction: {id: ledgerTransactions.id}})
+    .from(ledgerPostings)
+    .innerJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerPostings.ledgerTransactionId))
+    .where(eq(ledgerPostings.bankTransactionId, bankTransactionId))
+    .limit(1)
+  return row ?? null
+}
+
+async function loadBankTransactionForUncategorizedInterpretation(tx: DrizzleTransaction, bankTransactionId: string) {
+  const [row] = await tx
+    .select({
+      teamId: bankAccounts.teamId,
+      bankTransaction: {
+        id: bankTransactions.id,
+        bankAccountId: bankTransactions.bankAccountId,
+        amount: bankTransactions.amount,
+        currency: bankTransactions.currency,
+        bookingDate: bankTransactions.bookingDate,
+        valueDate: bankTransactions.valueDate,
+      },
+      sourceLedgerAccount: {
+        id: ledgerAccounts.id,
+        linkedBankAccountId: ledgerAccounts.linkedBankAccountId,
+        teamId: ledgerAccounts.teamId,
+      },
+    })
+    .from(bankTransactions)
+    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+    .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
+    .where(eq(bankTransactions.id, bankTransactionId))
+    .limit(1)
+
+  if (!row) throw new Error('Bank transaction not found')
+  if (row.sourceLedgerAccount.teamId !== row.teamId || row.sourceLedgerAccount.linkedBankAccountId !== row.bankTransaction.bankAccountId) {
+    throw new Error('Reconciled posting account must match the bank transaction account')
+  }
+
+  const [uncategorizedAccount] = await tx
+    .select({id: ledgerAccounts.id})
+    .from(ledgerAccounts)
+    .where(and(eq(ledgerAccounts.teamId, row.teamId), eq(ledgerAccounts.systemKey, SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized)))
+    .limit(1)
+  if (!uncategorizedAccount) throw new Error('Uncategorized account not found')
+
+  return {...row, uncategorizedAccount}
+}
+
+async function loadBankPostingForUncategorizedReset(tx: DrizzleTransaction, bankTransactionId: string) {
+  const [row] = await tx
+    .select({
+      teamId: bankAccounts.teamId,
+      oldLedgerTransactionId: ledgerPostings.ledgerTransactionId,
+      bankPosting: {id: ledgerPostings.id},
+      bankTransaction: {
+        id: bankTransactions.id,
+        bankAccountId: bankTransactions.bankAccountId,
+        amount: bankTransactions.amount,
+        currency: bankTransactions.currency,
+        bookingDate: bankTransactions.bookingDate,
+        valueDate: bankTransactions.valueDate,
+      },
+      sourceLedgerAccount: {
+        id: ledgerAccounts.id,
+        linkedBankAccountId: ledgerAccounts.linkedBankAccountId,
+        teamId: ledgerAccounts.teamId,
+      },
+    })
+    .from(ledgerPostings)
+    .innerJoin(bankTransactions, eq(bankTransactions.id, ledgerPostings.bankTransactionId))
+    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+    .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
+    .where(eq(ledgerPostings.bankTransactionId, bankTransactionId))
+    .limit(1)
+
+  if (!row) throw new Error('Bank transaction interpretation not found')
+  if (row.sourceLedgerAccount.teamId !== row.teamId || row.sourceLedgerAccount.linkedBankAccountId !== row.bankTransaction.bankAccountId) {
+    throw new Error('Reconciled posting account must match the bank transaction account')
+  }
+
+  const [uncategorizedAccount] = await tx
+    .select({id: ledgerAccounts.id})
+    .from(ledgerAccounts)
+    .where(and(eq(ledgerAccounts.teamId, row.teamId), eq(ledgerAccounts.systemKey, SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized)))
+    .limit(1)
+  if (!uncategorizedAccount) throw new Error('Uncategorized account not found')
+
+  return {...row, uncategorizedAccount}
+}
+
+async function isUncategorizedLedgerInterpretation(tx: DrizzleTransaction, ledgerTransactionId: string) {
+  const [row] = await tx
+    .select({id: ledgerPostings.id})
+    .from(ledgerPostings)
+    .innerJoin(ledgerAccounts, eq(ledgerAccounts.id, ledgerPostings.accountId))
+    .where(
+      and(
+        eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId),
+        isNull(ledgerPostings.bankTransactionId),
+        eq(ledgerAccounts.systemKey, SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized),
+      ),
+    )
+    .limit(1)
+  return Boolean(row)
+}
+
+async function loadRefreshableUncategorizedInterpretation(tx: DrizzleTransaction, bankTransactionId: string) {
+  const [row] = await tx
+    .select({
+      ledgerTransaction: {id: ledgerTransactions.id},
+      bankPosting: {id: ledgerPostings.id},
+    })
+    .from(ledgerPostings)
+    .innerJoin(ledgerTransactions, eq(ledgerTransactions.id, ledgerPostings.ledgerTransactionId))
+    .where(eq(ledgerPostings.bankTransactionId, bankTransactionId))
+    .limit(1)
+  if (!row) return null
+
+  const [uncategorizedPosting] = await tx
+    .select({id: ledgerPostings.id, accountId: ledgerPostings.accountId})
+    .from(ledgerPostings)
+    .innerJoin(ledgerAccounts, eq(ledgerAccounts.id, ledgerPostings.accountId))
+    .where(
+      and(
+        eq(ledgerPostings.ledgerTransactionId, row.ledgerTransaction.id),
+        isNull(ledgerPostings.bankTransactionId),
+        eq(ledgerAccounts.systemKey, SYSTEM_LEDGER_ACCOUNT_KEYS.uncategorized),
+      ),
+    )
+    .limit(1)
+
+  if (!uncategorizedPosting) return null
+  const loaded = await loadBankTransactionForUncategorizedInterpretation(tx, bankTransactionId)
+  return {
+    ledgerTransaction: row.ledgerTransaction,
+    bankPosting: row.bankPosting,
+    uncategorizedPosting,
+    bankTransaction: loaded.bankTransaction,
+    sourceLedgerAccount: loaded.sourceLedgerAccount,
+  }
+}
 
 // Plain read, no row lock. Concurrency safety relies on the `ledger_postings.bankTransactionId`
 // unique index (a second concurrent attempt to create an interpretation for the same bank transaction
@@ -601,17 +921,16 @@ type RewriteLedgerTransactionFields = {
   now: Date
 }
 
-// Updates the existing ledger transaction row in place and clears its postings so they can be rebuilt
-// under the same id. The guarded UPDATE doubles as the optimistic-concurrency check (returning false on
-// a status mismatch). Ordering is critical: a bare `return false` does not roll back the surrounding
-// db.transaction, so we must run the guarded UPDATE before deleting any postings — otherwise a failed
-// guard would commit a transaction stripped of its postings. createdAt is preserved (only updatedAt moves).
+// Updates the existing ledger transaction row in place under an optimistic-concurrency guard. A false
+// result commits the surrounding db.transaction, so callers must run this claim before any posting moves,
+// resets, or deletes that would otherwise partially mutate a transfer when the guard fails. createdAt is
+// preserved (only updatedAt moves).
 //
 // The source bank posting (the one linked to the bank transaction being categorized) is deliberately
 // left untouched: its account/amount/currency are invariant across re-categorization, and preserving
 // its primary key keeps the singular bankTransactions.posting relationship an in-place edit on Zero
 // clients instead of a delete+insert that briefly exposes two postings for one bank transaction.
-async function claimExistingInterpretationForRewrite(tx: DrizzleTransaction, existingLedgerTransactionId: string, sourceBankTransactionId: string, fields: RewriteLedgerTransactionFields) {
+async function claimExistingInterpretationForRewrite(tx: DrizzleTransaction, existingLedgerTransactionId: string, _sourceBankTransactionId: string, fields: RewriteLedgerTransactionFields) {
   const conditions = [eq(ledgerTransactions.id, existingLedgerTransactionId)]
   if (fields.requiredExistingStatus) {
     conditions.push(eq(ledgerTransactions.status, fields.requiredExistingStatus))
@@ -631,14 +950,7 @@ async function claimExistingInterpretationForRewrite(tx: DrizzleTransaction, exi
     .where(and(...conditions))
     .returning({id: ledgerTransactions.id})
 
-  if (!updated) return false
-  await tx.delete(ledgerPostings).where(
-    and(
-      eq(ledgerPostings.ledgerTransactionId, existingLedgerTransactionId),
-      sql`${ledgerPostings.bankTransactionId} is distinct from ${sourceBankTransactionId}`,
-    ),
-  )
-  return true
+  return Boolean(updated)
 }
 
 async function writeRebuiltInterpretation(
@@ -740,13 +1052,11 @@ async function loadTransferTargetForCounterBankTransaction(
         status: ledgerAccounts.status,
         linkedBankAccountId: ledgerAccounts.linkedBankAccountId,
       },
-      existingPostingId: ledgerPostings.id,
       teamId: bankAccounts.teamId,
     })
     .from(bankTransactions)
     .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
     .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
-    .leftJoin(ledgerPostings, eq(ledgerPostings.bankTransactionId, bankTransactions.id))
     .where(eq(bankTransactions.id, input.counterBankTransactionId))
     .limit(1)
 
@@ -760,8 +1070,7 @@ async function loadTransferTargetForCounterBankTransaction(
     row.counterBankTransaction.id === input.sourceBankTransactionId ||
     row.counterBankTransaction.bankAccountId === input.sourceBankAccountId ||
     row.counterBankTransaction.amount !== -input.sourceAmount ||
-    row.counterBankTransaction.currency !== input.currency ||
-    row.existingPostingId
+    row.counterBankTransaction.currency !== input.currency
   ) {
     throw new Error('Invalid transfer counter transaction')
   }
@@ -796,20 +1105,24 @@ async function findExactCounterBankTransaction(input: {
     .select({id: bankTransactions.id, bookingDate: bankTransactions.bookingDate, valueDate: bankTransactions.valueDate})
     .from(bankTransactions)
     .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
-    .leftJoin(ledgerPostings, eq(ledgerPostings.bankTransactionId, bankTransactions.id))
     .where(
       and(
         eq(bankAccounts.teamId, input.teamId),
         eq(bankTransactions.bankAccountId, input.targetBankAccountId),
         eq(bankTransactions.amount, expectedAmount),
         eq(bankTransactions.currency, input.currency),
-        isNull(ledgerPostings.id),
       ),
     )
 
-  return rows
+  const candidates = rows
     .filter(row => row.id !== input.sourceBankTransactionId && isWithinTransferMatchDateWindow(input.sourceDate, row.bookingDate ?? row.valueDate))
-    .sort((left, right) => compareTransferCandidateDate(input.sourceDate, left.bookingDate ?? left.valueDate, right.bookingDate ?? right.valueDate) || left.id.localeCompare(right.id))[0] ?? null
+    .sort((left, right) => compareTransferCandidateDate(input.sourceDate, left.bookingDate ?? left.valueDate, right.bookingDate ?? right.valueDate) || left.id.localeCompare(right.id))
+
+  for (const candidate of candidates) {
+    const existing = await loadExistingInterpretationForBankTransaction(input.tx, input.teamId, candidate.id)
+    if (!existing || await isUncategorizedLedgerInterpretation(input.tx, existing.ledgerTransaction.id)) return candidate
+  }
+  return null
 }
 
 function isWithinTransferMatchDateWindow(sourceDate: string | null, candidateDate: string | null) {
@@ -851,12 +1164,12 @@ async function insertBankImportLedgerInterpretation(
   input: {
     ledgerTransactionId: string
     teamId: string
-    userId: string
+    userId: string | null
     date: string | null
     description: string | null
     postings: BuiltLedgerPosting[]
     status?: LedgerTransactionFinalStatus
-    categorizedBy?: LedgerTransactionCategorizedBy
+    categorizedBy?: LedgerTransactionCategorizedBy | null
     now: Date
   },
 ) {
@@ -865,9 +1178,9 @@ async function insertBankImportLedgerInterpretation(
     teamId: input.teamId,
     source: 'bank_import',
     status: input.status ?? 'confirmed',
-    categorizedBy: input.categorizedBy ?? 'user',
-    userConfirmedAt: input.categorizedBy === 'ai' ? null : input.now,
-    userConfirmedBy: input.categorizedBy === 'ai' ? null : input.userId,
+    categorizedBy: input.categorizedBy ?? null,
+    userConfirmedAt: input.categorizedBy === 'user' ? input.now : null,
+    userConfirmedBy: input.categorizedBy === 'user' ? input.userId : null,
     date: input.date,
     description: input.description,
     createdAt: input.now,

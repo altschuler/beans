@@ -4,7 +4,7 @@
 
 The Transactions page shows bank transactions that need review or have already been interpreted. Rows are bank-transaction-first: the row id and all row actions use `bankTransactionId`.
 
-Rows can come from provider sync or manual entry. A row may have no ledger interpretation yet; newly entered manual transactions intentionally start that way. In that case it still appears as `Choose category` and needs review.
+Rows can come from provider sync or manual entry. A row may briefly appear locally before the import-time interpretation syncs down, but durable server state creates a balanced Uncategorized interpretation. It still appears as `Choose category` and needs review until the user or AI categorizes it.
 
 ## Category selector
 
@@ -23,10 +23,11 @@ Choosing a category creates or replaces the internal ledger interpretation for t
 
 1. load and authorize the bank transaction through team membership
 2. load the bank-linked ledger account for the source bank account
-3. reuse any existing interpretation's ledger transaction in place (same id), or create a new one if none exists
-4. rebuild the postings into a balanced ledger transaction with one reconciled bank posting and one category posting
-5. mark the interpretation confirmed by the user
-6. clear stale AI metadata for that bank transaction
+3. load the existing import-time Uncategorized interpretation
+4. keep the reconciled bank posting row in place
+5. replace the Uncategorized posting with one category posting or multiple split postings
+6. mark the interpretation confirmed by the user
+7. clear stale AI metadata for that bank transaction
 
 The imported bank transaction row itself is not edited.
 
@@ -70,6 +71,6 @@ Clicking a confirmable AI-result dot confirms the current interpretation by `ban
 
 The Transactions page has a destructive `Clear categorizations` action behind a confirmation dialog.
 
-Current behavior deletes bank-import ledger interpretations for accessible teams and leaves imported bank transactions intact. The result is that imported rows return to a needs-category state; users or AI can categorize them again.
+Current behavior resets bank-import ledger interpretations for accessible teams to balanced Uncategorized interpretations and leaves imported bank transactions intact. The result is that imported rows return to a needs-category state; users or AI can categorize them again.
 
 This action is mainly a product reset/review tool. It must not delete or mutate bank transaction evidence.

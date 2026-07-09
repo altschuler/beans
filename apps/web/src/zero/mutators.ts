@@ -1,8 +1,8 @@
 import {defineMutator, defineMutators, type Transaction} from '@rocicorp/zero'
-import {groupBy, uniq} from 'lodash-es'
+import {uniq} from 'lodash-es'
 import {z} from 'zod'
 import {absoluteMoneyAmount, parseDecimalMoneyToAmount} from '@penge/domain/money'
-import {bankPostingIdFor, isCategorizationAccount, validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@penge/domain/categorization'
+import {isCategorizationAccount, validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@penge/domain/categorization'
 import {teamChatPageKeys} from '@penge/domain/team-chat-ui-context'
 import {requireUserID} from './context'
 import {zql, type BankAccount, type BankTransaction, type LedgerAccount, type LedgerAccountGroup, type LedgerPosting, type LedgerTransaction, type Schema as ZeroSchema} from './schema'
@@ -202,7 +202,7 @@ async function loadOptimisticCategorizationBase(tx: ClientTx, bankTransactionId:
   if (!sourceLedgerAccount || sourceLedgerAccount.linkedBankAccountId !== bankTransaction.bankAccountId) return null
 
   const bankPosting = await tx.run(zql.ledgerPostings.where('bankTransactionId', bankTransactionId).one())
-  if (!bankPosting) return {bankTransaction, sourceLedgerAccount, existing: null}
+  if (!bankPosting) return null
 
   const transaction = await tx.run(zql.ledgerTransactions.where('id', bankPosting.ledgerTransactionId).one())
   if (!transaction || transaction.source !== 'bank_import') return null
@@ -216,15 +216,19 @@ async function rewriteOptimisticInterpretation(input: {
   userId: string
   bankTransaction: BankTransaction
   sourceLedgerAccount: LedgerAccount
-  existing: ExistingInterpretation | null
+  existing: ExistingInterpretation
   lines: OptimisticLine[]
 }) {
+  if (input.existing.postings.some(posting => posting.bankTransactionId && posting.bankTransactionId !== input.bankTransaction.id)) {
+    // Breaking an existing transfer restores the counter bank posting to its own Uncategorized
+    // interpretation on the server. Keep that multi-transaction rewrite server-authoritative.
+    return
+  }
+
   const now = Date.now()
-  // On re-categorization we keep the existing ledger transaction id (update in place) and preserve the
-  // source bank posting; on first categorization we mint ids deterministically. bankPostingIdFor is
-  // shared with the server, so the source posting reconciles as an in-place edit rather than a
-  // delete+insert pair that would break the singular bankTransactions.posting relationship mid-sync.
-  const ledgerTransactionId = input.existing?.transaction.id ?? optimisticLedgerTransactionId(input.bankTransaction.id)
+  // The server creates an import-time Uncategorized interpretation. Optimism only rewrites that
+  // existing interpretation so the source bank posting row is preserved.
+  const ledgerTransactionId = input.existing.transaction.id
   const transactionFields = {
     id: ledgerTransactionId,
     teamId: input.sourceLedgerAccount.teamId,
@@ -238,27 +242,12 @@ async function rewriteOptimisticInterpretation(input: {
     updatedAt: now,
   }
 
-  if (input.existing) {
-    await input.tx.mutate.ledgerTransactions.update(transactionFields)
-    // Delete only the category/counter postings; leave the source bank posting untouched so the row
-    // behind the singular relationship is never recreated under a new key.
-    for (const posting of input.existing.postings) {
-      if (posting.bankTransactionId === input.bankTransaction.id) continue
-      await input.tx.mutate.ledgerPostings.delete({id: posting.id})
-    }
-  } else {
-    await input.tx.mutate.ledgerTransactions.insert({...transactionFields, createdAt: now})
-    await input.tx.mutate.ledgerPostings.insert({
-      id: bankPostingIdFor(input.bankTransaction.id),
-      ledgerTransactionId,
-      accountId: input.sourceLedgerAccount.id,
-      amount: input.bankTransaction.amount,
-      currency: input.bankTransaction.currency,
-      bankTransactionId: input.bankTransaction.id,
-      sortOrder: 0,
-      createdAt: now,
-      updatedAt: now,
-    })
+  await input.tx.mutate.ledgerTransactions.update(transactionFields)
+  // Delete only the category/counter postings; leave the source bank posting untouched so the row
+  // behind the singular relationship is never recreated under a new key.
+  for (const posting of input.existing.postings) {
+    if (posting.bankTransactionId === input.bankTransaction.id) continue
+    await input.tx.mutate.ledgerPostings.delete({id: posting.id})
   }
 
   const explanatorySign = input.bankTransaction.amount > 0 ? -1 : 1
@@ -280,7 +269,7 @@ async function rewriteOptimisticInterpretation(input: {
 
   const affectedBankTransactionIds = uniq([
     input.bankTransaction.id,
-    ...(input.existing?.postings.flatMap(posting => (posting.bankTransactionId ? [posting.bankTransactionId] : [])) ?? []),
+    ...input.existing.postings.flatMap(posting => (posting.bankTransactionId ? [posting.bankTransactionId] : [])),
   ])
   for (const bankTransactionId of affectedBankTransactionIds) {
     const bankTransaction = bankTransactionId === input.bankTransaction.id ? input.bankTransaction : await input.tx.run(zql.bankTransactions.where('id', bankTransactionId).one())
@@ -324,31 +313,9 @@ async function optimisticallyConfirmTransaction(input: {tx: ClientTx; userId: st
   }
 }
 
-async function optimisticallyClearCategorizations(tx: ClientTx) {
-  const ledgerTransactions = await tx.run(zql.ledgerTransactions.where('source', 'bank_import'))
-  const postings = await tx.run(zql.ledgerPostings)
-  const postingsByTransactionId = groupBy(postings, posting => posting.ledgerTransactionId)
-
-  for (const transaction of ledgerTransactions) {
-    const transactionPostings = postingsByTransactionId[transaction.id] ?? []
-    const bankTransactionIds = uniq(transactionPostings.flatMap(posting => (posting.bankTransactionId ? [posting.bankTransactionId] : [])))
-    if (bankTransactionIds.length === 0) continue
-    const now = Date.now()
-    for (const bankTransactionId of bankTransactionIds) {
-      const bankTransaction = await tx.run(zql.bankTransactions.where('id', bankTransactionId).one())
-      if (bankTransaction) {
-        await tx.mutate.bankTransactions.update({
-          id: bankTransaction.id,
-          categorizationRevision: (bankTransaction.categorizationRevision ?? 0) + 1,
-          updatedAt: now,
-        })
-      }
-    }
-    for (const posting of transactionPostings) {
-      await tx.mutate.ledgerPostings.delete({id: posting.id})
-    }
-    await tx.mutate.ledgerTransactions.delete({id: transaction.id})
-  }
+async function optimisticallyClearCategorizations(_tx: ClientTx) {
+  // Server-authoritative: reset rewrites can split matched transfers into multiple balanced
+  // Uncategorized interpretations while preserving bank posting rows.
 }
 
 async function optimisticallyCreateTeamDataAssistantChat(input: {tx: ClientTx} & z.infer<typeof createTeamDataAssistantChatInput>) {
@@ -560,14 +527,6 @@ async function nextGroupSortOrder(tx: ClientTx, teamId: string) {
 async function nextAccountSortOrder(tx: ClientTx, groupId: string) {
   const accounts = await tx.run(zql.ledgerAccounts.where('groupId', groupId))
   return Math.max(-1, ...accounts.map(account => account.sortOrder ?? 0)) + 1
-}
-
-// Client-only ids for rows the server replaces on reconcile. They only need to be deterministic across
-// optimistic replays (not to match the server): the ledger transaction and category postings aren't
-// behind the singular bankTransactions.posting relationship, so they reconcile as plain delete+insert.
-// The source bank posting is the exception and uses the shared bankPostingIdFor.
-function optimisticLedgerTransactionId(bankTransactionId: string) {
-  return `ledger-transaction:${bankTransactionId}`
 }
 
 function optimisticCategoryPostingId(bankTransactionId: string, index: number) {

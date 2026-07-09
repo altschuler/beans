@@ -213,8 +213,11 @@ describe('Flue categorization write tools', () => {
     expect(counter?.categorizationRevision).toBe(1)
   })
 
-  it('records unable without creating or replacing an interpretation', async () => {
+  it('records unable without replacing the import-time Uncategorized interpretation', async () => {
+    const {ensureUncategorizedBankImportInterpretation} = await import('@penge/domain/categorization-service')
     const tools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'app-run-1', writeExecutor: db})
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transaction-1', now}))
+    const before = await currentInterpretationForBankTransaction('bank-transaction-1')
 
     await expect(tools.applyCategorizationSuggestion.run({
       input: {
@@ -229,12 +232,19 @@ describe('Flue categorization write tools', () => {
     const interpretation = await currentInterpretationForBankTransaction('bank-transaction-1')
     const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
 
-    expect(interpretation).toBeNull()
+    expect(interpretation?.ledgerTransaction?.id).toBe(before?.ledgerTransaction?.id)
+    expect(interpretation?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId}))).toEqual([
+      {accountId: 'bank-ledger-account-1', amount: -1_000_000, bankTransactionId: 'bank-transaction-1'},
+      {accountId: 'uncategorized', amount: 1_000_000, bankTransactionId: null},
+    ])
     expect(bankTransaction).toMatchObject({aiConfidence: 0, aiReasoning: 'Merchant is too ambiguous.', categorizationRevision: 1})
   })
 
   it('returns a structured conflict for stale revisions without mutating', async () => {
+    const {ensureUncategorizedBankImportInterpretation} = await import('@penge/domain/categorization-service')
     const tools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'app-run-1', writeExecutor: db})
+    await db.transaction(tx => ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: 'bank-transaction-1', now}))
+    const before = await currentInterpretationForBankTransaction('bank-transaction-1')
 
     const result = await tools.applyCategorizationSuggestion.run({
       input: {
@@ -247,6 +257,7 @@ describe('Flue categorization write tools', () => {
     }) as Record<string, unknown>
 
     const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
+    const after = await currentInterpretationForBankTransaction('bank-transaction-1')
     expect(result).toMatchObject({
       ok: false,
       status: 'conflict',
@@ -256,7 +267,8 @@ describe('Flue categorization write tools', () => {
     })
     expect(String(result.instruction)).toContain('Re-read')
     expect(bankTransaction?.categorizationRevision).toBe(0)
-    expect(await currentInterpretationForBankTransaction('bank-transaction-1')).toBeNull()
+    expect(after?.ledgerTransaction).toEqual(before?.ledgerTransaction)
+    expect(after?.postings).toEqual(before?.postings)
   })
 
   it('lets the chat agent recategorize a user-confirmed row after explicit user confirmation', async () => {
@@ -453,10 +465,12 @@ async function seedWriteToolFixture() {
   await db.insert(ledgerAccounts).values([
     ledgerAccount('bank-ledger-account-1', 'team-1', 'bank', 'Checking', {linkedBankAccountId: 'bank-account-1'}),
     ledgerAccount('bank-ledger-account-2', 'team-1', 'bank', 'Savings', {linkedBankAccountId: 'bank-account-2'}),
+    ledgerAccount('uncategorized', 'team-1', 'adjustment', 'Uncategorized', {systemKey: 'uncategorized'}),
     ledgerAccount('groceries', 'team-1', 'expense', 'Groceries'),
     ledgerAccount('household', 'team-1', 'expense', 'Household'),
     ledgerAccount('inactive-category', 'team-1', 'expense', 'Inactive', {status: 'archived'}),
     ledgerAccount('other-groceries', 'team-2', 'expense', 'Other Groceries', {groupId: 'group-2'}),
+    ledgerAccount('uncategorized-team-2', 'team-2', 'adjustment', 'Uncategorized', {systemKey: 'uncategorized', groupId: 'group-2'}),
     ledgerAccount('bank-ledger-account-3', 'team-2', 'bank', 'Other Checking', {linkedBankAccountId: 'bank-account-3', groupId: 'group-2'}),
   ])
   await db.insert(bankTransactions).values([
@@ -494,14 +508,14 @@ function ledgerAccount(
   teamId: string,
   type: string,
   name: string,
-  options: {linkedBankAccountId?: string | null; groupId?: string; status?: string} = {},
+  options: {linkedBankAccountId?: string | null; groupId?: string; status?: string; systemKey?: string | null} = {},
 ) {
   return {
     id,
     teamId,
     groupId: options.groupId ?? 'group-1',
     linkedBankAccountId: options.linkedBankAccountId ?? null,
-    systemKey: null,
+    systemKey: options.systemKey ?? null,
     type,
     normalBalance: type === 'bank' ? 'debit' : 'credit',
     name,

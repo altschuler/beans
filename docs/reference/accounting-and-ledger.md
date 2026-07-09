@@ -6,16 +6,15 @@
 
 A bank transaction is imported from a bank provider and represents external evidence. Users do not edit bank transactions directly.
 
-A bank transaction can be unreconciled or reconciled:
+A bank transaction normally has exactly one reconciled posting immediately after import. Before categorization, that posting belongs to a balanced ledger transaction whose opposite posting uses the system Uncategorized account.
 
-- **Unreconciled** means no `ledger_postings.bank_transaction_id` points to it yet. The Transactions page still shows the row and asks the user to choose a category.
-- **Reconciled** means exactly one ledger posting points to that bank transaction.
+`ledger_postings.bank_transaction_id` enforces that at most one posting reconciles a given bank transaction.
 
 ### Ledger transaction
 
 A ledger transaction is one internal accounting event. It is the wrapper around postings and carries event-level metadata such as source, status, date, description, `categorizedBy`, and user confirmation fields.
 
-For imported bank transactions, ledger transactions are interpretations. They can be deleted and recreated when the user changes a category, split, or transfer.
+For imported bank transactions, ledger transactions are interpretations. Categorization rewrites preserve bank-linked postings and replace or reset the explanatory side so each imported bank transaction remains reconciled to a balanced interpretation.
 
 ### Ledger posting
 

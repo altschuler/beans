@@ -38,13 +38,13 @@ Provider sync and manual entry both create `bank_transactions` rows. These rows 
 
 Provider amount strings are parsed at import into canonical scale-4 integer money amounts and stored with their currency code. Invalid amount syntax fails at the import boundary and surfaces through the existing sync error path.
 
-Manual transactions are entered from a manual bank account page. The user provides date, description, and a signed decimal amount; the account and currency come from the manual account. Penge stores them as booked `bank_transactions` with app-generated `providerTransactionId` values and a small manual `raw` marker. Manual transaction entry does not create `ledger_transactions` or `ledger_postings`.
+Manual transactions are entered from a manual bank account page. The user provides date, description, and a signed decimal amount; the account and currency come from the manual account. Penge stores them as booked `bank_transactions` with app-generated `providerTransactionId` values and a small manual `raw` marker, then creates the same balanced Uncategorized ledger interpretation used for provider imports.
 
-Because no ledger interpretation is created during manual entry, manual transactions appear in the existing transaction review flow as uncategorized / needing review. Users categorize them later through the same Transactions page, chat, or AI paths used for synced bank transactions.
+Manual transactions appear in the existing transaction review flow as uncategorized / needing review. Users categorize them later through the same Transactions page, chat, or AI paths used for synced bank transactions.
 
 ## Starting balances
 
-A user can set a bank account starting balance from the individual bank account transaction page. The page shows the account's current balance as the opening-balance posting plus all imported bank transaction movements for that account, so uncategorized imported transactions are included before they have ledger interpretations. The entered balance is the bank balance after the latest imported transaction shown for that account. For provider-linked accounts, the dialog warns when the account has not synced recently, but the warning does not block saving; manual accounts use the same action without sync-age warnings.
+A user can set a bank account starting balance from the individual bank account transaction page. The page shows the account's current balance as the opening-balance posting plus all imported bank transaction movements for that account, so Uncategorized imported transactions are included before they are categorized. The entered balance is the bank balance after the latest imported transaction shown for that account. For provider-linked accounts, the dialog warns when the account has not synced recently, but the warning does not block saving; manual accounts use the same action without sync-age warnings.
 
 Penge calculates the opening balance from imported transaction evidence, not categorized ledger postings:
 

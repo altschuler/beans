@@ -57,21 +57,13 @@ export type BankTransactionInterpretationInput = {
   now?: Date
 }
 
-export type BankTransactionTransferInput = {
+export type BankTransactionUncategorizedInterpretationInput = {
   ledgerTransactionId: string
   source: BankTransactionPostingSource
-  targetLedgerAccountId: string
-  counterBankTransactionId: string
+  uncategorizedAccountId: string
+  bankPostingId?: string
+  uncategorizedPostingId?: string
   now?: Date
-}
-
-// The reconciled bank posting is 1:1 with its bank transaction (enforced by the unique index on
-// ledger_postings.bank_transaction_id), so its primary key is derived deterministically from that id.
-// Client optimistic mutators and the server both compute the same key, which lets Zero reconcile the
-// two writes as one row rather than a delete+insert pair — the latter transiently exposes two postings
-// for one bank transaction mid-sync and breaks the singular bankTransactions.posting relationship.
-export function bankPostingIdFor(bankTransactionId: string) {
-  return `bank-posting:${bankTransactionId}`
 }
 
 export type BalanceAccount = {
@@ -160,6 +152,43 @@ export function buildBankLinkedCategorizationPostings(input: {
   return postings
 }
 
+export function buildBankTransactionUncategorizedPostings(input: BankTransactionUncategorizedInterpretationInput): BuiltLedgerPosting[] {
+  const sourceAmountUnits = input.source.amount
+  assertSafeMoneyAmount(sourceAmountUnits)
+  if (sourceAmountUnits === 0) {
+    throw new Error('Bank transaction amount must be non-zero')
+  }
+
+  const now = input.now ?? new Date()
+  const postings: BuiltLedgerPosting[] = [
+    {
+      id: input.bankPostingId ?? crypto.randomUUID(),
+      ledgerTransactionId: input.ledgerTransactionId,
+      accountId: input.source.bankLedgerAccountId,
+      amount: sourceAmountUnits,
+      currency: input.source.currency,
+      bankTransactionId: input.source.bankTransactionId,
+      sortOrder: 0,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: input.uncategorizedPostingId ?? crypto.randomUUID(),
+      ledgerTransactionId: input.ledgerTransactionId,
+      accountId: input.uncategorizedAccountId,
+      amount: -sourceAmountUnits,
+      currency: input.source.currency,
+      bankTransactionId: null,
+      sortOrder: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ]
+
+  validateLedgerPostingsBalance(postings)
+  return postings
+}
+
 export function buildBankTransactionCategorizationPostings(input: BankTransactionInterpretationInput): BuiltLedgerPosting[] {
   const sourceAmountUnits = input.source.amount
   assertSafeMoneyAmount(sourceAmountUnits)
@@ -175,7 +204,7 @@ export function buildBankTransactionCategorizationPostings(input: BankTransactio
   const explanatorySign = sourceAmountUnits > 0 ? -1 : 1
   const postings: BuiltLedgerPosting[] = [
     {
-      id: bankPostingIdFor(input.source.bankTransactionId),
+      id: crypto.randomUUID(),
       ledgerTransactionId: input.ledgerTransactionId,
       accountId: input.source.bankLedgerAccountId,
       amount: sourceAmountUnits,
@@ -196,43 +225,6 @@ export function buildBankTransactionCategorizationPostings(input: BankTransactio
       createdAt: now,
       updatedAt: now,
     })),
-  ]
-
-  validateLedgerPostingsBalance(postings)
-  return postings
-}
-
-export function buildBankTransactionTransferPostings(input: BankTransactionTransferInput): BuiltLedgerPosting[] {
-  const sourceAmountUnits = input.source.amount
-  assertSafeMoneyAmount(sourceAmountUnits)
-  if (sourceAmountUnits === 0) {
-    throw new Error('Bank transaction amount must be non-zero')
-  }
-
-  const now = input.now ?? new Date()
-  const postings: BuiltLedgerPosting[] = [
-    {
-      id: bankPostingIdFor(input.source.bankTransactionId),
-      ledgerTransactionId: input.ledgerTransactionId,
-      accountId: input.source.bankLedgerAccountId,
-      amount: sourceAmountUnits,
-      currency: input.source.currency,
-      bankTransactionId: input.source.bankTransactionId,
-      sortOrder: 0,
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: bankPostingIdFor(input.counterBankTransactionId),
-      ledgerTransactionId: input.ledgerTransactionId,
-      accountId: input.targetLedgerAccountId,
-      amount: -sourceAmountUnits,
-      currency: input.source.currency,
-      bankTransactionId: input.counterBankTransactionId,
-      sortOrder: 1,
-      createdAt: now,
-      updatedAt: now,
-    },
   ]
 
   validateLedgerPostingsBalance(postings)
