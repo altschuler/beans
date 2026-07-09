@@ -2,10 +2,12 @@ import {defineMutator, defineMutators, type Transaction} from '@rocicorp/zero'
 import {groupBy, uniq} from 'lodash-es'
 import {z} from 'zod'
 import {absoluteMoneyAmount, parseDecimalMoneyToAmount} from '@penge/domain/money'
-import {isCategorizationAccount, validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@penge/domain/categorization'
+import {bankPostingIdFor, isCategorizationAccount, validateBankLinkedCategorizationLines, type CategorizationLineInput} from '@penge/domain/categorization'
 import {teamChatPageKeys} from '@penge/domain/team-chat-ui-context'
 import {requireUserID} from './context'
 import {zql, type BankAccount, type BankTransaction, type LedgerAccount, type LedgerAccountGroup, type LedgerPosting, type LedgerTransaction, type Schema as ZeroSchema} from './schema'
+
+const trimmedNonEmptyString = z.string().trim().min(1)
 
 export const categorySelectionInput = z.discriminatedUnion('kind', [
   z.object({kind: z.literal('category'), accountId: z.string().min(1)}),
@@ -38,7 +40,6 @@ export const clearCategorizationsInput = z.object({})
 export const managedCategoryTypeInput = z.enum(['expense', 'income', 'savings'])
 export const manualBankAccountTypeInput = z.enum(['checking', 'savings', 'credit-card', 'loan', 'cash'])
 
-const trimmedNonEmptyString = z.string().trim().min(1)
 const teamChatPageInput = z.enum(teamChatPageKeys)
 
 export const createTeamDataAssistantChatInput = z.object({
@@ -219,7 +220,11 @@ async function rewriteOptimisticInterpretation(input: {
   lines: OptimisticLine[]
 }) {
   const now = Date.now()
-  const ledgerTransactionId = input.existing?.transaction.id ?? optimisticId(input.tx, `ledger-transaction:${input.bankTransaction.id}`)
+  // On re-categorization we keep the existing ledger transaction id (update in place) and preserve the
+  // source bank posting; on first categorization we mint ids deterministically. bankPostingIdFor is
+  // shared with the server, so the source posting reconciles as an in-place edit rather than a
+  // delete+insert pair that would break the singular bankTransactions.posting relationship mid-sync.
+  const ledgerTransactionId = input.existing?.transaction.id ?? optimisticLedgerTransactionId(input.bankTransaction.id)
   const transactionFields = {
     id: ledgerTransactionId,
     teamId: input.sourceLedgerAccount.teamId,
@@ -235,17 +240,16 @@ async function rewriteOptimisticInterpretation(input: {
 
   if (input.existing) {
     await input.tx.mutate.ledgerTransactions.update(transactionFields)
+    // Delete only the category/counter postings; leave the source bank posting untouched so the row
+    // behind the singular relationship is never recreated under a new key.
     for (const posting of input.existing.postings) {
+      if (posting.bankTransactionId === input.bankTransaction.id) continue
       await input.tx.mutate.ledgerPostings.delete({id: posting.id})
     }
   } else {
     await input.tx.mutate.ledgerTransactions.insert({...transactionFields, createdAt: now})
-  }
-
-  const explanatorySign = input.bankTransaction.amount > 0 ? -1 : 1
-  const postings = [
-    {
-      id: optimisticId(input.tx, 'posting:0'),
+    await input.tx.mutate.ledgerPostings.insert({
+      id: bankPostingIdFor(input.bankTransaction.id),
       ledgerTransactionId,
       accountId: input.sourceLedgerAccount.id,
       amount: input.bankTransaction.amount,
@@ -254,21 +258,23 @@ async function rewriteOptimisticInterpretation(input: {
       sortOrder: 0,
       createdAt: now,
       updatedAt: now,
-    },
-    ...input.lines.map((line, index) => ({
-      id: optimisticId(input.tx, `posting:${index + 1}`),
-      ledgerTransactionId,
-      accountId: line.accountId,
-      amount: line.amountUnits * explanatorySign,
-      currency: input.bankTransaction.currency,
-      bankTransactionId: null,
-      sortOrder: index + 1,
-      createdAt: now,
-      updatedAt: now,
-    })),
-  ]
+    })
+  }
 
-  for (const posting of postings) {
+  const explanatorySign = input.bankTransaction.amount > 0 ? -1 : 1
+  const categoryPostings = input.lines.map((line, index) => ({
+    id: optimisticCategoryPostingId(input.bankTransaction.id, index),
+    ledgerTransactionId,
+    accountId: line.accountId,
+    amount: line.amountUnits * explanatorySign,
+    currency: input.bankTransaction.currency,
+    bankTransactionId: null,
+    sortOrder: index + 1,
+    createdAt: now,
+    updatedAt: now,
+  }))
+
+  for (const posting of categoryPostings) {
     await input.tx.mutate.ledgerPostings.insert(posting)
   }
 
@@ -556,8 +562,16 @@ async function nextAccountSortOrder(tx: ClientTx, groupId: string) {
   return Math.max(-1, ...accounts.map(account => account.sortOrder ?? 0)) + 1
 }
 
-function optimisticId(tx: ClientTx, suffix: string) {
-  return `optimistic:${tx.clientID}:${tx.mutationID}:${suffix}`
+// Client-only ids for rows the server replaces on reconcile. They only need to be deterministic across
+// optimistic replays (not to match the server): the ledger transaction and category postings aren't
+// behind the singular bankTransactions.posting relationship, so they reconcile as plain delete+insert.
+// The source bank posting is the exception and uses the shared bankPostingIdFor.
+function optimisticLedgerTransactionId(bankTransactionId: string) {
+  return `ledger-transaction:${bankTransactionId}`
+}
+
+function optimisticCategoryPostingId(bankTransactionId: string, index: number) {
+  return `category-posting:${bankTransactionId}:${index}`
 }
 
 export const mutators = defineMutators({

@@ -43,9 +43,13 @@ db-up:
 db-down:
   docker compose down
 
+_zero-cache-clean:
+  rm -rf apps/web/.zero-cache apps/web/zero.db apps/web/zero.db-shm apps/web/zero.db-wal apps/web/zero.db-wal2
+
 nuke:
   docker compose down -v --remove-orphans
-  rm -rf apps/web/.zero-cache apps/web/zero.db apps/web/zero.db-shm apps/web/zero.db-wal apps/web/zero.db-wal2 apps/flue/.flue-vite
+  just _zero-cache-clean
+  rm -rf apps/flue/.flue-vite
 
 nuke-and-reset:
   just db-reset
@@ -96,6 +100,7 @@ seed-restore:
 
 db-reset:
   docker compose down -v --remove-orphans
+  just _zero-cache-clean
   just wait-db
   pnpm db:migrate
   just seed-restore
@@ -115,7 +120,7 @@ zero-generate:
 zero-reset:
   just db-up
   pnpm --dir apps/web exec dotenv -e .env -- zero-out
-  rm -rf apps/web/.zero-cache apps/web/zero.db apps/web/zero.db-shm apps/web/zero.db-wal apps/web/zero.db-wal2
+  just _zero-cache-clean
 
 test:
   pnpm test

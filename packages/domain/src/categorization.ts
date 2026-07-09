@@ -65,6 +65,15 @@ export type BankTransactionTransferInput = {
   now?: Date
 }
 
+// The reconciled bank posting is 1:1 with its bank transaction (enforced by the unique index on
+// ledger_postings.bank_transaction_id), so its primary key is derived deterministically from that id.
+// Client optimistic mutators and the server both compute the same key, which lets Zero reconcile the
+// two writes as one row rather than a delete+insert pair — the latter transiently exposes two postings
+// for one bank transaction mid-sync and breaks the singular bankTransactions.posting relationship.
+export function bankPostingIdFor(bankTransactionId: string) {
+  return `bank-posting:${bankTransactionId}`
+}
+
 export type BalanceAccount = {
   id: string
   normalBalance: string
@@ -166,7 +175,7 @@ export function buildBankTransactionCategorizationPostings(input: BankTransactio
   const explanatorySign = sourceAmountUnits > 0 ? -1 : 1
   const postings: BuiltLedgerPosting[] = [
     {
-      id: crypto.randomUUID(),
+      id: bankPostingIdFor(input.source.bankTransactionId),
       ledgerTransactionId: input.ledgerTransactionId,
       accountId: input.source.bankLedgerAccountId,
       amount: sourceAmountUnits,
@@ -203,7 +212,7 @@ export function buildBankTransactionTransferPostings(input: BankTransactionTrans
   const now = input.now ?? new Date()
   const postings: BuiltLedgerPosting[] = [
     {
-      id: crypto.randomUUID(),
+      id: bankPostingIdFor(input.source.bankTransactionId),
       ledgerTransactionId: input.ledgerTransactionId,
       accountId: input.source.bankLedgerAccountId,
       amount: sourceAmountUnits,
@@ -214,7 +223,7 @@ export function buildBankTransactionTransferPostings(input: BankTransactionTrans
       updatedAt: now,
     },
     {
-      id: crypto.randomUUID(),
+      id: bankPostingIdFor(input.counterBankTransactionId),
       ledgerTransactionId: input.ledgerTransactionId,
       accountId: input.targetLedgerAccountId,
       amount: -sourceAmountUnits,

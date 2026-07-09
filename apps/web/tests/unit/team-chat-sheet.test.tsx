@@ -239,7 +239,7 @@ describe('TeamChatSheet', () => {
     expect(zeroMocks.mutate.flue.touchTeamDataAssistantChat).toHaveBeenCalledWith(expect.objectContaining({chatId: 'older-chat'}))
   })
 
-  it('renders the composer as a one-row autosizing input beside the send button', async () => {
+  it('renders the composer as an autosizing input group with an icon send button', async () => {
     const user = userEvent.setup()
     render(<TeamChatSheet teamId="team-1" userId="user-1" />)
 
@@ -248,12 +248,10 @@ describe('TeamChatSheet', () => {
     const input = screen.getByLabelText('Message Ask Penge') as HTMLTextAreaElement
     const sendButton = screen.getByRole('button', {name: 'Send message'})
     expect(sendButton).not.toHaveTextContent('Send')
-    const form = input.closest('form')
-    expect(form).toHaveClass('flex')
+    expect(input.closest('[data-slot="input-group"]')).toContainElement(sendButton)
     expect(input.compareDocumentPosition(sendButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(input).toHaveAttribute('rows', '1')
-    expect(input).toHaveAttribute('placeholder', 'Ask...')
-    expect(input).toHaveClass('min-h-9')
+    expect(input).toHaveAttribute('placeholder', 'Ask about transactions, categories, or what needs review…')
 
     Object.defineProperty(input, 'scrollHeight', {configurable: true, value: 84})
     const getComputedStyle = vi.spyOn(window, 'getComputedStyle').mockReturnValue({borderTopWidth: '1px', borderBottomWidth: '1px'} as CSSStyleDeclaration)

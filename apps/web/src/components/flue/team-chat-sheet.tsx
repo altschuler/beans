@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode} from 'react'
-import {History, MessageCircle, Send, Square, X} from 'lucide-react'
+import {ArrowUp, History, MessageCircle, Sparkles, Square, X} from 'lucide-react'
 import ReactMarkdown, {type Components} from 'react-markdown'
 import {useRouterState} from '@tanstack/react-router'
 import {useFlueAgent, useFlueClient, type FlueConversationMessage, type FlueConversationPart} from '@flue/react'
@@ -8,8 +8,10 @@ import {encodeTeamDataAssistantId} from '@penge/domain/team-data-assistant-id'
 import {type TeamChatPageKey} from '@penge/domain/team-chat-ui-context'
 import {Bubble, BubbleContent} from '@/components/ui/bubble'
 import {Button} from '@/components/ui/button'
-import {Marker, MarkerContent} from '@/components/ui/marker'
-import {Message, MessageContent, MessageHeader} from '@/components/ui/message'
+import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@/components/ui/empty'
+import {InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea} from '@/components/ui/input-group'
+import {Marker, MarkerContent, MarkerIcon} from '@/components/ui/marker'
+import {Message, MessageContent} from '@/components/ui/message'
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -18,7 +20,7 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from '@/components/ui/message-scroller'
-import {Textarea} from '@/components/ui/textarea'
+import {Spinner} from '@/components/ui/spinner'
 import {runZeroMutation} from '@/lib/run-mutation'
 import {cn} from '@/lib/utils'
 import {mutators} from '@/zero/mutators'
@@ -288,61 +290,71 @@ export function TeamChatPanel({teamId, userId, isOpen, onClose, className}: Team
         </div>
       ) : null}
 
-      <MessageScrollerProvider key={conversationId ?? 'pending'} autoScroll defaultScrollPosition="last-anchor">
-        <MessageScroller className="min-h-0 flex-1 bg-muted/30">
-          <MessageScrollerViewport className="p-4">
-            <MessageScrollerContent className="gap-3" aria-label="Ask Penge chat transcript">
-              {messages.length === 0 && !activity ? (
-                <MessageScrollerItem messageId="empty-state">
-                  <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
-                    Ask about transactions, categories, or what needs review.
-                  </div>
-                </MessageScrollerItem>
-              ) : null}
-              {messages.map((message) => {
-                const text = getMessageText(message)
-                if (!text) return null
+      {messages.length === 0 && !activity ? (
+        <Empty className="min-h-0 flex-1">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Sparkles aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>Ask Penge</EmptyTitle>
+            <EmptyDescription>Ask about transactions, categories, or what needs review.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <MessageScrollerProvider key={conversationId ?? 'pending'} autoScroll defaultScrollPosition="end">
+          <MessageScroller className="min-h-0 flex-1">
+            <MessageScrollerViewport className="p-4">
+              <MessageScrollerContent className="gap-6" aria-label="Ask Penge chat transcript">
+                {messages.map((message) => {
+                  const text = getMessageText(message)
+                  if (!text) return null
 
-                return (
-                  <MessageScrollerItem key={message.id} messageId={message.id} scrollAnchor={message.role === 'user'}>
-                    <ChatMessage role={message.role}>{text}</ChatMessage>
+                  return (
+                    <MessageScrollerItem key={message.id} messageId={message.id}>
+                      <ChatMessage role={message.role}>{text}</ChatMessage>
+                    </MessageScrollerItem>
+                  )
+                })}
+                {activity ? (
+                  <MessageScrollerItem messageId="activity">
+                    <ChatActivityMarker activity={activity} />
                   </MessageScrollerItem>
-                )
-              })}
-              {activity ? (
-                <MessageScrollerItem messageId="activity">
-                  <ChatActivityMarker activity={activity} />
-                </MessageScrollerItem>
-              ) : null}
-            </MessageScrollerContent>
-          </MessageScrollerViewport>
-          <MessageScrollerButton />
-        </MessageScroller>
-      </MessageScrollerProvider>
+                ) : null}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton />
+          </MessageScroller>
+        </MessageScrollerProvider>
+      )}
 
       <div className="border-t bg-background p-3">
-        <form className="flex items-end gap-2" onSubmit={submit}>
+        <form onSubmit={submit}>
           <label className="sr-only" htmlFor="team-chat-message">Message Ask Penge</label>
-          <Textarea
-            ref={inputRef}
-            id="team-chat-message"
-            rows={1}
-            value={input}
-            onChange={(event) => updateInput(event.currentTarget)}
-            onKeyDown={submitOnEnter}
-            placeholder="Ask..."
-            className="max-h-32 min-h-9 flex-1 resize-none overflow-y-auto py-2"
-          />
-          <Button
-            type={isAgentWorking ? 'button' : 'submit'}
-            size="sm"
-            disabled={isAgentWorking ? !canStop : !canSend}
-            aria-label={isAgentWorking ? 'Stop response' : 'Send message'}
-            className="shrink-0"
-            onClick={isAgentWorking ? stopResponse : undefined}
-          >
-            {isAgentWorking ? <Square className="h-4 w-4" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
-          </Button>
+          <InputGroup>
+            <InputGroupTextarea
+              ref={inputRef}
+              id="team-chat-message"
+              rows={1}
+              value={input}
+              onChange={(event) => updateInput(event.currentTarget)}
+              onKeyDown={submitOnEnter}
+              placeholder="Ask about transactions, categories, or what needs review…"
+              className="max-h-40 min-h-16 overflow-y-auto"
+            />
+            <InputGroupAddon align="block-end">
+              <InputGroupButton
+                type={isAgentWorking ? 'button' : 'submit'}
+                variant={isAgentWorking ? 'outline' : 'default'}
+                size="icon-sm"
+                disabled={isAgentWorking ? !canStop : !canSend}
+                aria-label={isAgentWorking ? 'Stop response' : 'Send message'}
+                className="ml-auto rounded-full"
+                onClick={isAgentWorking ? stopResponse : undefined}
+              >
+                {isAgentWorking ? <Square aria-hidden="true" /> : <ArrowUp aria-hidden="true" />}
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
         </form>
       </div>
     </aside>
@@ -384,8 +396,7 @@ function ChatMessage({role, children}: {role: FlueConversationMessage['role']; c
   return (
     <Message align={isUser ? 'end' : 'start'}>
       <MessageContent>
-        <MessageHeader>{isUser ? 'You' : 'Penge'}</MessageHeader>
-        <Bubble variant={isUser ? 'default' : 'outline'}>
+        <Bubble variant={isUser ? 'muted' : 'outline'}>
           <BubbleContent>
             <ChatMarkdown>{children}</ChatMarkdown>
           </BubbleContent>
@@ -446,9 +457,16 @@ type ChatActivity = {
 }
 
 function ChatActivityMarker({activity}: {activity: ChatActivity}) {
+  const isError = activity.tone === 'error'
+
   return (
     <Marker role="status">
-      <MarkerContent className={activity.tone === 'error' ? 'text-destructive' : 'shimmer'}>{activity.text}</MarkerContent>
+      {isError ? null : (
+        <MarkerIcon>
+          <Spinner />
+        </MarkerIcon>
+      )}
+      <MarkerContent className={isError ? 'text-destructive' : 'shimmer'}>{activity.text}</MarkerContent>
     </Marker>
   )
 }

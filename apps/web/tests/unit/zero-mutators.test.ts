@@ -313,7 +313,7 @@ describe('ledger Zero mutators', () => {
     })
   })
 
-  it('optimistically categorizes an unreconciled bank transaction with deterministic ledger rows', async () => {
+  it('optimistically categorizes an unreconciled bank transaction with a deterministic source posting id', async () => {
     const {mutators} = await import('@/zero/mutators')
     const tx = createClientTransaction({
       bankTransactions: [bankTransaction()],
@@ -331,7 +331,7 @@ describe('ledger Zero mutators', () => {
         table: 'ledgerTransactions',
         kind: 'insert',
         value: expect.objectContaining({
-          id: 'optimistic:client-1:7:ledger-transaction:bank-transaction-1',
+          id: 'ledger-transaction:bank-transaction-1',
           teamId: 'team-1',
           source: 'bank_import',
           status: 'confirmed',
@@ -345,8 +345,10 @@ describe('ledger Zero mutators', () => {
         table: 'ledgerPostings',
         kind: 'insert',
         value: expect.objectContaining({
-          id: 'optimistic:client-1:7:posting:0',
-          ledgerTransactionId: 'optimistic:client-1:7:ledger-transaction:bank-transaction-1',
+          // Deterministic id shared with the server (bankPostingIdFor) — this is what lets the optimistic
+          // row and the authoritative row reconcile as one edit under the singular posting relationship.
+          id: 'bank-posting:bank-transaction-1',
+          ledgerTransactionId: 'ledger-transaction:bank-transaction-1',
           accountId: 'checking',
           amount: -1_000_000,
           currency: 'DKK',
@@ -358,8 +360,8 @@ describe('ledger Zero mutators', () => {
         table: 'ledgerPostings',
         kind: 'insert',
         value: expect.objectContaining({
-          id: 'optimistic:client-1:7:posting:1',
-          ledgerTransactionId: 'optimistic:client-1:7:ledger-transaction:bank-transaction-1',
+          id: 'category-posting:bank-transaction-1:0',
+          ledgerTransactionId: 'ledger-transaction:bank-transaction-1',
           accountId: 'groceries',
           amount: 1_000_000,
           currency: 'DKK',
@@ -393,7 +395,7 @@ describe('ledger Zero mutators', () => {
     expect(categorizeBankTransaction).not.toHaveBeenCalled()
   })
 
-  it('optimistically replaces an existing interpretation with split postings', async () => {
+  it('optimistically replaces an existing interpretation, keeping the source posting and detaching the counter', async () => {
     const {mutators} = await import('@/zero/mutators')
     const tx = createClientTransaction({
       bankTransactions: [bankTransaction(), bankTransaction({id: 'counter-bank-transaction', bankAccountId: 'bank-account-2', amount: 1_000_000, categorizationRevision: 3})],
@@ -416,11 +418,12 @@ describe('ledger Zero mutators', () => {
 
     expect(tx.operations).toEqual([
       {table: 'ledgerTransactions', kind: 'update', value: expect.objectContaining({id: 'ledger-transaction-1', status: 'confirmed', categorizedBy: 'user', userConfirmedBy: 'user-1'})},
-      {table: 'ledgerPostings', kind: 'delete', value: {id: 'old-bank-posting'}},
+      // The source bank posting (bank-transaction-1) is left untouched — never deleted, never recreated —
+      // so the singular bankTransactions.posting relationship stays an in-place row throughout the sync.
+      // Only the counter posting (a different bank transaction) is detached.
       {table: 'ledgerPostings', kind: 'delete', value: {id: 'old-counter-bank-posting'}},
-      {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0})},
-      {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries', amount: 700_000, bankTransactionId: null, sortOrder: 1})},
-      {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({ledgerTransactionId: 'ledger-transaction-1', accountId: 'household', amount: 300_000, bankTransactionId: null, sortOrder: 2})},
+      {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({id: 'category-posting:bank-transaction-1:0', ledgerTransactionId: 'ledger-transaction-1', accountId: 'groceries', amount: 700_000, bankTransactionId: null, sortOrder: 1})},
+      {table: 'ledgerPostings', kind: 'insert', value: expect.objectContaining({id: 'category-posting:bank-transaction-1:1', ledgerTransactionId: 'ledger-transaction-1', accountId: 'household', amount: 300_000, bankTransactionId: null, sortOrder: 2})},
       {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'bank-transaction-1', aiConfidence: null, aiReasoning: null, categorizationRevision: 1})},
       {table: 'bankTransactions', kind: 'update', value: expect.objectContaining({id: 'counter-bank-transaction', categorizationRevision: 4})},
     ])

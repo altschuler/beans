@@ -275,11 +275,13 @@ describe('posting-based ledger categorization server functions', () => {
   afterAll(async () => closeDatabase())
 
 
-  // The categorization paths take no FOR UPDATE row lock; concurrency safety comes from the
-  // `ledger_postings.bankTransactionId` unique index. Two concurrent first-time categorizations of the
-  // same bank transaction therefore don't both succeed — one commits, the other rolls back on the unique
-  // violation (and in production Zero would retry it, applying it as a last-writer-wins re-categorization).
-  // The invariant that matters is that the loser corrupts nothing: exactly one balanced interpretation.
+  // The categorization paths take no FOR UPDATE row lock; concurrency safety comes from the uniqueness of
+  // the reconciled bank posting. Two concurrent first-time categorizations of the same bank transaction
+  // therefore don't both succeed — one commits, the other rolls back on a duplicate-key violation (and in
+  // production Zero would retry it, applying it as a last-writer-wins re-categorization). The bank posting
+  // id is derived deterministically from the bank transaction id, so the loser now collides on the primary
+  // key; the `ledger_postings.bankTransactionId` unique index guards the same invariant either way. What
+  // matters is that the loser corrupts nothing: exactly one balanced interpretation.
   it('keeps concurrent categorization of the same unreconciled bank transaction safe (one wins, one rolls back)', async () => {
     const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await insertUnreconciledBankTransaction({id: 'bank-concurrent-category', amount: -1_000_000, description: 'Concurrent card purchase'})
@@ -334,7 +336,7 @@ describe('posting-based ledger categorization server functions', () => {
     expect((fulfilled[0] as PromiseFulfilledResult<boolean>).value).toBe(true)
     expect(rejected).toHaveLength(1)
     const reason = (rejected[0] as PromiseRejectedResult).reason
-    expect(String((reason as {cause?: unknown})?.cause ?? reason)).toContain('ledger_postings_bank_transaction_unique')
+    expect(String((reason as {cause?: unknown})?.cause ?? reason)).toMatch(/ledger_postings_pkey|ledger_postings_bank_transaction_unique/)
 
     const bankPostings = await db.select().from(ledgerPostings).where(eq(ledgerPostings.bankTransactionId, 'bank-concurrent-category'))
     expect(bankPostings).toHaveLength(1)
@@ -789,6 +791,99 @@ describe('posting-based ledger categorization server functions', () => {
       {accountId: 'groceries', amount: 700_000},
       {accountId: 'household', amount: 300_000},
     ])
+  })
+
+  it('creates the reconciled bank posting under a deterministic id and keeps it stable across rewrites', async () => {
+    const {categorizeBankTransaction, splitBankTransaction} = await import('@penge/domain/categorization-service')
+    await insertUnreconciledBankTransaction({id: 'bank-transaction-det-id', amount: -1_000_000, description: 'Card purchase'})
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transaction-det-id',
+        selection: {kind: 'category', accountId: 'groceries'},
+      }),
+    )
+
+    // The source bank posting id is derived from the bank transaction id (bankPostingIdFor), shared with
+    // the client optimistic mutator so the two writes reconcile as one row.
+    const created = await currentInterpretationForBankTransaction('bank-transaction-det-id')
+    expect(created?.bankPosting.id).toBe('bank-posting:bank-transaction-det-id')
+
+    // A rewrite must keep the bank-linked posting id (Zero clients sync it as an in-place edit); recreating
+    // it under a new key would transiently break the singular bankTransactions.posting relationship.
+    // Category postings are rebuilt under fresh ids.
+    await db.transaction(tx =>
+      splitBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transaction-det-id',
+        lines: [
+          {accountId: 'groceries', amount: '70.00'},
+          {accountId: 'household', amount: '30.00'},
+        ],
+      }),
+    )
+
+    const rewritten = await currentInterpretationForBankTransaction('bank-transaction-det-id')
+    expect(rewritten?.bankPosting.id).toBe('bank-posting:bank-transaction-det-id')
+    expect(rewritten?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId, sortOrder: posting.sortOrder}))).toEqual([
+      {accountId: 'bank-ledger-account', amount: -1_000_000, bankTransactionId: 'bank-transaction-det-id', sortOrder: 0},
+      {accountId: 'groceries', amount: 700_000, bankTransactionId: null, sortOrder: 1},
+      {accountId: 'household', amount: 300_000, bankTransactionId: null, sortOrder: 2},
+    ])
+  })
+
+  it('keeps a legacy (non-deterministic) source bank posting id untouched across a rewrite', async () => {
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
+
+    // bank-transaction-1 is seeded with a legacy-style bank posting id (ledger-transaction-1-bank-posting).
+    // Re-categorizing must preserve that id rather than switch it to the deterministic scheme, otherwise
+    // already-categorized rows would break on their first re-categorization.
+    const before = await currentInterpretationForBankTransaction('bank-transaction-1')
+    expect(before?.bankPosting.id).toBe('ledger-transaction-1-bank-posting')
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transaction-1',
+        selection: {kind: 'category', accountId: 'groceries'},
+      }),
+    )
+
+    const after = await currentInterpretationForBankTransaction('bank-transaction-1')
+    expect(after?.bankPosting.id).toBe('ledger-transaction-1-bank-posting')
+    expect(after?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount}))).toEqual([
+      {accountId: 'bank-ledger-account', amount: -1_000_000},
+      {accountId: 'groceries', amount: 1_000_000},
+    ])
+  })
+
+  it('keeps the source bank posting id stable when a category interpretation is rewritten into a transfer', async () => {
+    const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-stable-source', bankAccountId: 'bank-account-1', amount: -3_000_000, bookingDate: '2026-06-20'})
+    await insertUnreconciledBankTransaction({id: 'bank-transfer-stable-counter', bankAccountId: 'bank-account-2', amount: 3_000_000, bookingDate: '2026-06-20'})
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transfer-stable-source',
+        selection: {kind: 'category', accountId: 'groceries'},
+      }),
+    )
+    const before = await currentInterpretationForBankTransaction('bank-transfer-stable-source')
+
+    await db.transaction(tx =>
+      categorizeBankTransaction(tx, {
+        userId: 'user-1',
+        bankTransactionId: 'bank-transfer-stable-source',
+        selection: {kind: 'transfer', accountId: 'bank-ledger-account-2'},
+      }),
+    )
+
+    const after = await currentInterpretationForBankTransaction('bank-transfer-stable-source')
+    expect(after?.transaction?.id).toBe(before?.transaction?.id)
+    expect(after?.bankPosting.id).toBe(before?.bankPosting.id)
+    expect(after?.postings.map(posting => posting.bankTransactionId)).toEqual(['bank-transfer-stable-source', 'bank-transfer-stable-counter'])
   })
 
   it('balances positive bank amounts with negative category postings by bank transaction id', async () => {

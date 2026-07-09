@@ -267,7 +267,10 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
   const existingBankTransactionIds = existing ? await loadBankTransactionIdsForLedgerTransaction(tx, existing.ledgerTransaction.id) : []
   // Re-categorization updates the existing ledger transaction in place (reusing its id) rather than
   // deleting and re-inserting, so Zero syncs an update instead of a delete+insert and id-keyed lookups
-  // stay stable. Postings are still fully rebuilt.
+  // stay stable. Category/counter postings are fully rebuilt, but the source bank posting is left
+  // untouched (see claimExistingInterpretationForRewrite): recreating the row behind the singular
+  // bankTransactions.posting relationship under a new key makes Zero clients transiently see two
+  // postings for one bank transaction mid-sync, which errors the sync connection.
   const ledgerTransactionId = existing ? existing.ledgerTransaction.id : crypto.randomUUID()
   const writeFields = {
     ledgerTransactionId,
@@ -302,10 +305,11 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
           sourceDate: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
         })
 
-    // Claim and clear the existing interpretation before counter matching: the guarded UPDATE is the
-    // optimistic-concurrency check and clearing its postings frees the previous counter for re-matching.
+    // Claim the existing interpretation before counter matching: the guarded UPDATE is the
+    // optimistic-concurrency check, and the non-source postings it clears free the previous counter
+    // for re-matching. The source bank posting is preserved (keeps its primary key stable).
     if (existing) {
-      const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, writeFields)
+      const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, loaded.bankTransaction.id, writeFields)
       if (!claimed) return false
     }
 
@@ -322,7 +326,7 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
       now,
     })
 
-    await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: Boolean(existing), postings})
+    await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: Boolean(existing), sourceBankTransactionId: loaded.bankTransaction.id, postings})
     if (isAiCategorization) {
       await recordBankTransactionAiResult(tx, loaded.bankTransaction.id, input.aiConfidence ?? null, normalizedAiReasoning, now)
     } else {
@@ -344,7 +348,7 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
 
   await validateCategorizationAccounts(tx, loaded.teamId, lines.map(line => line.accountId))
   if (existing) {
-    const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, writeFields)
+    const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, loaded.bankTransaction.id, writeFields)
     if (!claimed) return false
   }
 
@@ -360,7 +364,7 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
     now,
   })
 
-  await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: Boolean(existing), postings})
+  await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: Boolean(existing), sourceBankTransactionId: loaded.bankTransaction.id, postings})
   if (isAiCategorization) {
     await recordBankTransactionAiResult(tx, loaded.bankTransaction.id, input.aiConfidence ?? null, normalizedAiReasoning, now)
   } else {
@@ -602,7 +606,12 @@ type RewriteLedgerTransactionFields = {
 // a status mismatch). Ordering is critical: a bare `return false` does not roll back the surrounding
 // db.transaction, so we must run the guarded UPDATE before deleting any postings — otherwise a failed
 // guard would commit a transaction stripped of its postings. createdAt is preserved (only updatedAt moves).
-async function claimExistingInterpretationForRewrite(tx: DrizzleTransaction, existingLedgerTransactionId: string, fields: RewriteLedgerTransactionFields) {
+//
+// The source bank posting (the one linked to the bank transaction being categorized) is deliberately
+// left untouched: its account/amount/currency are invariant across re-categorization, and preserving
+// its primary key keeps the singular bankTransactions.posting relationship an in-place edit on Zero
+// clients instead of a delete+insert that briefly exposes two postings for one bank transaction.
+async function claimExistingInterpretationForRewrite(tx: DrizzleTransaction, existingLedgerTransactionId: string, sourceBankTransactionId: string, fields: RewriteLedgerTransactionFields) {
   const conditions = [eq(ledgerTransactions.id, existingLedgerTransactionId)]
   if (fields.requiredExistingStatus) {
     conditions.push(eq(ledgerTransactions.status, fields.requiredExistingStatus))
@@ -623,7 +632,12 @@ async function claimExistingInterpretationForRewrite(tx: DrizzleTransaction, exi
     .returning({id: ledgerTransactions.id})
 
   if (!updated) return false
-  await tx.delete(ledgerPostings).where(eq(ledgerPostings.ledgerTransactionId, existingLedgerTransactionId))
+  await tx.delete(ledgerPostings).where(
+    and(
+      eq(ledgerPostings.ledgerTransactionId, existingLedgerTransactionId),
+      sql`${ledgerPostings.bankTransactionId} is distinct from ${sourceBankTransactionId}`,
+    ),
+  )
   return true
 }
 
@@ -638,14 +652,18 @@ async function writeRebuiltInterpretation(
     description: string | null
     status: LedgerTransactionFinalStatus
     categorizedBy: LedgerTransactionCategorizedBy
+    sourceBankTransactionId: string
     now: Date
     postings: BuiltLedgerPosting[]
   },
 ) {
   if (input.hasExisting) {
-    // The transaction row was already updated in place by claimExistingInterpretationForRewrite; only
-    // the postings are rebuilt here.
-    await tx.insert(ledgerPostings).values(input.postings)
+    // The transaction row was already updated in place by claimExistingInterpretationForRewrite, which
+    // also preserved the source bank posting. Insert only the rebuilt category/counter postings; the
+    // source posting stays as-is, so skip it here (it was not deleted). Balance is validated against the
+    // full persisted set, which includes the preserved source.
+    const rebuiltPostings = input.postings.filter(posting => posting.bankTransactionId !== input.sourceBankTransactionId)
+    await tx.insert(ledgerPostings).values(rebuiltPostings)
     await validatePersistedTransactionBalance(tx, input.ledgerTransactionId)
     return
   }
