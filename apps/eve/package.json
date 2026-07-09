@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "dotenv -e .env -- sh -c 'eve dev --port ${EVE_PORT:-3101}'",
+    "dev": "dotenv -e .env -- sh -c 'eve dev --port ${EVE_PORT:-3300}'",
     "build": "eve build",
     "start": "eve start",
     "typecheck": "tsc --noEmit"
@@ -11,7 +11,8 @@
   "dependencies": {
     "@penge/domain": "workspace:*",
     "ai": "7.0.18",
-    "eve": "0.22.1"
+    "eve": "0.22.1",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "25.9.3",

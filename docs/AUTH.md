@@ -102,9 +102,11 @@ Current examples in `apps/web/src/zero/queries.ts` scope teams, team members, ba
 
 Zero mutators follow the same rule: authenticate at the endpoint, derive `userID` from the session, and authorize each write against team membership or a stricter permission check. Client-supplied team ids in Zero arguments are requests, not authority.
 
-### Flue sidecar calls
+### Runtime sidecar calls
 
-The Flue sidecar in `apps/flue` is an internal service. The first workflow version uses a shared `PENGE_FLUE_INTERNAL_TOKEN` for web-to-Flue calls; this is temporary and tracked in `docs/TODO.md`.
+The Flue sidecar in `apps/flue` is the current internal AI runtime. The first workflow version uses a shared `PENGE_FLUE_INTERNAL_TOKEN` for web-to-Flue calls; this is temporary and tracked in `docs/TODO.md`.
+
+The eve migration skeleton in `apps/eve` uses narrower short-lived service capabilities minted by `apps/web` after Better Auth and team/resource authorization. Capabilities include purpose and exact resource scope, such as `{teamId, userId, appRunId}` for categorization tasks, and eve channel auth must verify those claims before starting runtime work.
 
 For current Flue workflows:
 
@@ -118,6 +120,8 @@ For current Flue workflows:
 Domain read projections and trusted Flue write paths treat their runtime `{userId, teamId}` as already boundary-validated. They filter by `teamId` directly and keep `userId` for audit metadata, confirmation fields, tool instructions, and future role checks. Any new production caller of those trusted-scope APIs must validate team access before calling them.
 
 Long term, Flue should operate through a least-privilege authorization boundary, such as authenticated app/domain APIs or capability-scoped services, so broad database access is not available to the agent runtime.
+
+For eve task starts, `apps/web` reserves the app-owned run first, mints a categorization-task capability, calls the internal eve channel, and stores the returned `eveSessionId`/stream cursor on the app run. During the migration spike this path is enabled for AI categorization with `PENGE_AI_RUNTIME=eve`; the default remains `flue` until the eve categorizer has real tools and projections. Possession of an eve session id, continuation token, or stream index is never authorization by itself.
 
 ### Role-based authorization
 

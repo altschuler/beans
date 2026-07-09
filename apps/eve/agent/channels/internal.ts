@@ -17,8 +17,8 @@ type ChatRequestBody = {
   message?: unknown
 }
 
-type CategorizationTaskRequestBody = {
-  message?: unknown
+type CategorizationTaskAuthAttributes = {
+  targetBankTransactionIds?: readonly string[]
 }
 
 export default defineChannel({
@@ -53,17 +53,14 @@ export default defineChannel({
       const scopeError = requireCapabilityScope(auth, {purpose: 'categorization-task', appRunId: params.appRunId})
       if (scopeError) return scopeError
 
-      const body = await readJson<CategorizationTaskRequestBody>(request)
-      if (!isNonEmptyString(body.message)) return jsonError('message is required', 400)
-
-      const session = await send(body.message, {
+      const session = await send(categorizationTaskPrompt(auth.attributes), {
         auth,
         continuationToken: `categorization:${params.appRunId}`,
         mode: 'task',
         title: 'Categorize transactions',
       })
 
-      return Response.json({ok: true, sessionId: session.id, continuationToken: session.continuationToken})
+      return Response.json({ok: true, sessionId: session.id, continuationToken: session.continuationToken, nextStreamIndex: 0}, {status: 202})
     }),
   ],
 })
@@ -78,7 +75,7 @@ const serviceCapabilityAuth: AuthFn<Request> = request => {
   }
 
   try {
-    return sessionAuthFromClaims(verifyEveServiceCapability(token, {secret: getCapabilitySecret()}))
+    return sessionAuthFromClaims(verifyEveServiceCapability(token, {secret: getCapabilitySecret(), clockSkewSeconds: serviceCapabilityClockSkewSeconds}))
   } catch (error) {
     if (error instanceof EveServiceCapabilityError) throw new UnauthenticatedError({message: error.message})
     throw error
@@ -113,7 +110,13 @@ function sessionAuthFromClaims(claims: EveServiceCapabilityClaims): SessionAuthC
     attributes: {
       purpose: claims.purpose,
       teamId: claims.teamId,
-      ...(claims.purpose === 'chat-session' ? {chatId: claims.chatId} : {appRunId: claims.appRunId}),
+      userId: claims.userId,
+      ...(claims.purpose === 'chat-session'
+        ? {chatId: claims.chatId}
+        : {
+            appRunId: claims.appRunId,
+            ...(claims.targetBankTransactionIds ? {targetBankTransactionIds: claims.targetBankTransactionIds} : {}),
+          }),
     },
     authenticator: 'penge-web',
     principalId: claims.userId,
@@ -131,11 +134,26 @@ async function readJson<T>(request: Request): Promise<T> {
   }
 }
 
+function categorizationTaskPrompt(input: CategorizationTaskAuthAttributes) {
+  const targetIds = Array.isArray(input.targetBankTransactionIds) ? input.targetBankTransactionIds : []
+  const targetDescription = targetIds.length
+    ? `Only categorize these bank transactions: ${targetIds.join(', ')}.`
+    : 'Categorize eligible needs-review bank transactions for the trusted team.'
+
+  return [
+    'Run the Penge automated categorization task.',
+    targetDescription,
+    'Use only trusted runtime auth scope from ctx.session.auth. Do not ask the user questions or wait for approval.',
+  ].join('\n')
+}
+
 function getCapabilitySecret() {
   const secret = process.env.PENGE_EVE_SERVICE_CAPABILITY_SECRET
   if (!secret) throw new Error('PENGE_EVE_SERVICE_CAPABILITY_SECRET is required')
   return secret
 }
+
+const serviceCapabilityClockSkewSeconds = 30
 
 function jsonError(error: string, status: number) {
   return Response.json({ok: false, error}, {status})

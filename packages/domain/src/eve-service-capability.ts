@@ -4,7 +4,7 @@ export type EveServiceCapabilityPurpose = 'chat-session' | 'categorization-task'
 
 export type EveServiceCapabilityScope =
   | {purpose: 'chat-session'; teamId: string; userId: string; chatId: string}
-  | {purpose: 'categorization-task'; teamId: string; userId: string; appRunId: string}
+  | {purpose: 'categorization-task'; teamId: string; userId: string; appRunId: string; targetBankTransactionIds?: string[]}
 
 export type EveServiceCapabilityClaims = EveServiceCapabilityScope & {
   audience: string
@@ -57,6 +57,7 @@ type CapabilityPayload = {
   userId: string
   chatId?: string
   appRunId?: string
+  targetBankTransactionIds?: string[]
   iat: number
   exp: number
   jti: string
@@ -78,7 +79,12 @@ export function mintEveServiceCapability(scope: EveServiceCapabilityScope, optio
     pur: scope.purpose,
     teamId: scope.teamId,
     userId: scope.userId,
-    ...(scope.purpose === 'chat-session' ? {chatId: scope.chatId} : {appRunId: scope.appRunId}),
+    ...(scope.purpose === 'chat-session'
+      ? {chatId: scope.chatId}
+      : {
+          appRunId: scope.appRunId,
+          ...(scope.targetBankTransactionIds ? {targetBankTransactionIds: scope.targetBankTransactionIds} : {}),
+        }),
     iat: issuedAt,
     exp: issuedAt + ttlSeconds,
     jti: randomUUID(),
@@ -147,7 +153,15 @@ function claimsFromPayload(payload: Record<string, unknown>, options: VerifyEveS
     return {...common, purpose: 'chat-session', chatId: payload.chatId}
   }
   if (payload.pur === 'categorization-task' && isNonEmptyString(payload.appRunId) && payload.chatId === undefined) {
-    return {...common, purpose: 'categorization-task', appRunId: payload.appRunId}
+    if (payload.targetBankTransactionIds !== undefined && !isNonEmptyStringArray(payload.targetBankTransactionIds)) {
+      throw new EveServiceCapabilityError('EVE_CAPABILITY_INVALID_CLAIMS', 'Eve capability target scope is invalid')
+    }
+    return {
+      ...common,
+      purpose: 'categorization-task',
+      appRunId: payload.appRunId,
+      ...(payload.targetBankTransactionIds ? {targetBankTransactionIds: payload.targetBankTransactionIds} : {}),
+    }
   }
 
   throw new EveServiceCapabilityError('EVE_CAPABILITY_INVALID_CLAIMS', 'Eve capability purpose scope is invalid')
@@ -162,6 +176,9 @@ function assertScope(scope: EveServiceCapabilityScope) {
   }
   if (scope.purpose === 'categorization-task' && !isNonEmptyString(scope.appRunId)) {
     throw new EveServiceCapabilityError('EVE_CAPABILITY_INVALID_SCOPE', 'Categorization eve capability requires appRunId')
+  }
+  if (scope.purpose === 'categorization-task' && scope.targetBankTransactionIds !== undefined && !isNonEmptyStringArray(scope.targetBankTransactionIds)) {
+    throw new EveServiceCapabilityError('EVE_CAPABILITY_INVALID_SCOPE', 'Categorization eve capability target ids must be non-empty strings')
   }
 }
 
@@ -197,4 +214,8 @@ function safeEqual(actual: string, expected: string) {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function isNonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isNonEmptyString)
 }

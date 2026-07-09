@@ -27,7 +27,7 @@ worktree-list:
 dev:
   just db-up
   pnpm db:migrate
-  pnpm --parallel --stream --filter @penge/web --filter @penge/flue dev
+  pnpm --parallel --stream --filter @penge/web --filter @penge/flue --filter @penge/eve dev
 
 dev-web:
   just db-up
@@ -36,6 +36,9 @@ dev-web:
 
 dev-flue:
   pnpm dev:flue
+
+dev-eve:
+  pnpm dev:eve
 
 db-up:
   just wait-db

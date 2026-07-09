@@ -7,8 +7,9 @@ For product/system-design explanations, use `docs/reference/` alongside this arc
 Penge is a pnpm monorepo:
 
 - `apps/web/` is the TanStack Start application. It owns the browser UI, Better Auth, Zero, Drizzle schema/migrations, and web-facing server functions.
-- `apps/flue/` is the Flue sidecar service. It owns Flue agents, workflows, tools, model calls, and Flue runtime persistence.
-- `packages/domain/` contains shared domain/database code used by both the web app and Flue, including schema exports, categorization services, read projections, money helpers, and workflow-run repository helpers.
+- `apps/flue/` is the existing Flue sidecar service. It owns current Flue agents, workflows, tools, model calls, and Flue runtime persistence during the migration.
+- `apps/eve/` is the new eve runtime skeleton. It owns eve-authored agent files and internal channels for the Flue-to-eve migration spike; browser traffic must still enter through `apps/web` authorization boundaries.
+- `packages/domain/` contains shared domain/database code used by the web app and runtime sidecars, including schema exports, categorization services, read projections, money helpers, runtime service capabilities, and workflow-run repository helpers.
 
 Run commands from the workspace root by default. Package-local source paths in docs generally refer to `apps/web/src/...` for web code and `apps/flue/src/...` for Flue code.
 
@@ -22,11 +23,11 @@ This is temporary tech debt tracked in `docs/TODO.md`; the long-term goal is a l
 
 For local development, run the web app and Flue sidecar as separate processes. The web app needs `PENGE_FLUE_BASE_URL` pointing at the Flue server and `PENGE_FLUE_INTERNAL_TOKEN`; the Flue app needs the same token and should use a non-web port.
 
-Local env files are generated per checkout by `scripts/dev.mjs` from `dev.config.mjs`. The generated root `.env` supplies `COMPOSE_PROJECT_NAME` plus isolated web, Flue, Postgres, Zero, and Zero change-streamer ports. Generated `apps/web/.env` and `apps/flue/.env` sync the shared database URL, Flue URL/token, and package-specific port settings while preserving unmanaged local secrets.
+Local env files are generated per checkout by `scripts/dev.mjs` from `dev.config.mjs`. The generated root `.env` supplies `COMPOSE_PROJECT_NAME` plus isolated web, Flue, eve, Postgres, Zero, and Zero change-streamer ports. Generated `apps/web/.env`, `apps/flue/.env`, and `apps/eve/.env` sync the shared database URL, runtime URLs/tokens, and package-specific port settings while preserving unmanaged local secrets.
 
 Use `just init` to generate or refresh env files for the current checkout. Use `just worktree-create <branch>` and `just worktree-remove <branch>` for project-local `.worktrees/<branch-slug>` checkouts so Docker containers, networks, volumes, ports, and generated env files stay isolated. Do not run `git worktree add` directly in this repository.
 
-Start the apps from the workspace root with `just dev`, `just dev-web`, or `just dev-flue` (or equivalent package-filtered commands). Package scripts still include fallback localhost ports for non-managed setups, but normal local work should use the generated env values.
+Start the apps from the workspace root with `just dev`, `just dev-web`, `just dev-flue`, or `just dev-eve` (or equivalent package-filtered commands). During the migration, `just dev` starts both Flue and eve so the eve spike can run without breaking current Flue-backed product paths. Package scripts still include fallback localhost ports for non-managed setups, but normal local work should use the generated env values.
 
 ## Client/server import boundaries
 

@@ -7,6 +7,7 @@ import {bankAccounts, bankTransactions, teamMembers} from '@penge/domain/schema'
 import {
   ActiveWorkflowRunExistsError,
   attachFlueRunId,
+  CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME,
   failStaleActiveAgentWorkflowRuns,
   listActiveAgentWorkflowRuns,
   markAgentWorkflowRunCompletedByFlueRunId,
@@ -15,8 +16,6 @@ import {
   reserveActiveAgentWorkflowRun,
   type AgentWorkflowRun,
 } from '@penge/domain/workflow-runs'
-
-export const CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME = 'categorize-transactions'
 
 export type StartFlueCategorizeTransactionWorkflowInput = {
   userId: string

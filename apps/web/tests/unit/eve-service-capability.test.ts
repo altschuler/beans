@@ -28,6 +28,24 @@ describe('eve service capabilities', () => {
 
   it('round-trips a categorization task capability without exposing chat scope', () => {
     const token = mintEveServiceCapability(
+      {purpose: 'categorization-task', teamId: 'team-1', userId: 'user-1', appRunId: 'run-1', targetBankTransactionIds: ['txn-1', 'txn-2']},
+      {secret, now, ttlSeconds: 60},
+    )
+
+    const claims = verifyEveServiceCapability(token, {secret, now})
+
+    expect(claims).toMatchObject({
+      purpose: 'categorization-task',
+      teamId: 'team-1',
+      userId: 'user-1',
+      appRunId: 'run-1',
+      targetBankTransactionIds: ['txn-1', 'txn-2'],
+    })
+    expect(claims).not.toHaveProperty('chatId')
+  })
+
+  it('round-trips a target-less categorization task capability without target or chat scope', () => {
+    const token = mintEveServiceCapability(
       {purpose: 'categorization-task', teamId: 'team-1', userId: 'user-1', appRunId: 'run-1'},
       {secret, now, ttlSeconds: 60},
     )
@@ -40,7 +58,23 @@ describe('eve service capabilities', () => {
       userId: 'user-1',
       appRunId: 'run-1',
     })
+    expect(claims).not.toHaveProperty('targetBankTransactionIds')
     expect(claims).not.toHaveProperty('chatId')
+  })
+
+  it('allows not-yet-valid capabilities inside the configured clock skew only', () => {
+    const token = mintEveServiceCapability(
+      {purpose: 'chat-session', teamId: 'team-1', userId: 'user-1', chatId: 'chat-1'},
+      {secret, now: new Date('2026-07-09T12:00:30.000Z'), ttlSeconds: 60},
+    )
+
+    expect(verifyEveServiceCapability(token, {secret, now, clockSkewSeconds: 30})).toMatchObject({
+      purpose: 'chat-session',
+      chatId: 'chat-1',
+    })
+    expect(() => verifyEveServiceCapability(token, {secret, now, clockSkewSeconds: 29})).toThrowError(
+      expect.objectContaining({code: 'EVE_CAPABILITY_NOT_YET_VALID'}),
+    )
   })
 
   it('rejects tampered capabilities before trusting scope claims', () => {

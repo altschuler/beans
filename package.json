@@ -6,6 +6,7 @@
     "dev": "pnpm --filter @penge/web dev",
     "dev:web": "pnpm --filter @penge/web dev",
     "dev:flue": "pnpm --filter @penge/flue dev",
+    "dev:eve": "pnpm --filter @penge/eve dev",
     "build": "pnpm --filter @penge/web build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm --filter @penge/web lint",

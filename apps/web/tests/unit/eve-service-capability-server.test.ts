@@ -28,7 +28,7 @@ describe('web eve service capability facade', () => {
     const {mintEveCategorizationTaskCapability} = await import('@/eve/service-capability.server')
 
     const token = mintEveCategorizationTaskCapability(
-      {teamId: 'team-1', userId: 'user-1', appRunId: 'run-1'},
+      {teamId: 'team-1', userId: 'user-1', appRunId: 'run-1', targetBankTransactionIds: ['txn-1']},
       {now: new Date('2026-07-09T12:00:00.000Z')},
     )
 
@@ -37,6 +37,7 @@ describe('web eve service capability facade', () => {
       teamId: 'team-1',
       userId: 'user-1',
       appRunId: 'run-1',
+      targetBankTransactionIds: ['txn-1'],
     })
   })
 

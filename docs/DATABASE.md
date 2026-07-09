@@ -2,7 +2,7 @@
 
 Postgres is the durable database. The web app's Drizzle schema lives in `apps/web/src/db/schema.ts`, and web app migrations live in `apps/web/drizzle/`.
 
-Flue runtime persistence also uses Postgres through `@flue/postgres`, but it owns separate `flue_*` tables. Those tables store Flue canonical conversation streams, accepted submissions, workflow runs, attachments, events, and run indexes; they are not Penge domain tables and must not be exposed through Zero. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
+Flue runtime persistence also uses Postgres through `@flue/postgres`, but it owns separate `flue_*` tables. Those tables store Flue canonical conversation streams, accepted submissions, workflow runs, attachments, events, and run indexes; they are not Penge domain tables and must not be exposed through Zero. The eve migration skeleton has separate runtime-internal persistence; only app-owned authorization/status/cursor fields such as `eve_session_id`, `eve_continuation_token`, and `eve_next_stream_index` belong in Penge tables. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
 
 Flue `1.0.0-beta.9` uses runtime schema v4. This pre-1.0 schema is reset-only: if Flue reports a persisted schema mismatch in local or staging environments, stop Flue and clear only Flue-owned `flue_*` tables before restarting the sidecar. Do not clear Penge domain tables or Better Auth tables.
 
@@ -54,7 +54,7 @@ These columns are Postgres `bigint` values exposed by Drizzle and Zero as `numbe
 
 When adding a new app/domain table, it is not complete until it is represented in both Drizzle and Zero generation config, and the generated Zero schema has been updated.
 
-`agent_workflow_runs` is the app-owned workflow visibility projection. It is Zero-synced so clients can observe active team workflows, while the separate `flue_*` runtime tables remain internal to Flue.
+`agent_workflow_runs` is the app-owned workflow visibility projection. It is Zero-synced so clients can observe active team workflows, while separate runtime tables remain internal to Flue/eve. Runtime cursor columns on app-owned tables are server-only and intentionally excluded from Zero unless a future UI projection requires a safe allowlisted field.
 
 ## Client mutations
 

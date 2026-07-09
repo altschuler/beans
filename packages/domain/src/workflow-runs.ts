@@ -47,6 +47,8 @@ export class AgentWorkflowRunNotFoundError extends Error {
   }
 }
 
+export const CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME = 'categorize-transactions'
+
 const activeUniqueConstraint = 'agent_workflow_runs_active_unique'
 const shortErrorMaxLength = 500
 

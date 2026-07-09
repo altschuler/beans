@@ -16,6 +16,7 @@ type CategorizationTaskScope = {
   teamId: string
   userId: string
   appRunId: string
+  targetBankTransactionIds?: string[]
 }
 
 export function mintEveChatSessionCapability(scope: ChatSessionScope, options: ClockOptions = {}) {

@@ -11,7 +11,7 @@ Keep Zero mutators short. Do not perform long-running external calls inside a Ze
 - notification delivery
 - webhooks to third-party systems
 
-For external orchestration, use a server function, server-only service, or the Flue sidecar instead:
+For external orchestration, use a server function, server-only service, or an internal runtime sidecar such as the current Flue service or the eve migration skeleton instead:
 
 1. authenticate and authorize server-side
 2. make short committed database updates to record visible state, such as an `agent_workflow_runs` row or other processing marker
@@ -19,7 +19,7 @@ For external orchestration, use a server function, server-only service, or the F
 4. make short committed database updates with the result or admission failure
 5. clear transient processing state in a `finally` path when the orchestration owns transient state
 
-Flue workflows live in `apps/flue` and run as a sidecar service. The web app should reserve app-visible workflow state before invoking Flue, then pass trusted scope such as `appRunId`, `userId`, and `teamId`; Flue tools must not let the model choose authorization scope. Flue should update domain tables through trusted server/domain logic, not through Zero.
+Current Flue workflows live in `apps/flue` and run as a sidecar service. The eve migration skeleton lives in `apps/eve` and follows the same product boundary: the web app reserves app-visible workflow state before invoking the runtime, then passes trusted scope such as `appRunId`, `userId`, and `teamId` through a scoped service capability. Runtime tools must not let the model choose authorization scope. Runtime sidecars should update domain tables through trusted server/domain logic, not through Zero.
 
 If the work needs durable retry, use an outbox table or background worker rather than relying on an in-request async task.
 
