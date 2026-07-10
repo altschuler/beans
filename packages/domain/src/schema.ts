@@ -125,6 +125,29 @@ export const agentWorkflowRuns = pgTable(
   }),
 )
 
+export const agentToolExecutions = pgTable(
+  'agent_tool_executions',
+  {
+    id: text('id').primaryKey(),
+    eveSessionId: text('eve_session_id').notNull(),
+    callId: text('call_id').notNull(),
+    purpose: text('purpose').notNull(),
+    toolName: text('tool_name').notNull(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, {onDelete: 'cascade'}),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, {onDelete: 'cascade'}),
+    result: jsonb('result').notNull(),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    sessionCallIdx: uniqueIndex('agent_tool_executions_session_call_unique').on(table.eveSessionId, table.callId),
+    teamIdx: index('agent_tool_executions_team_idx').on(table.teamId),
+  }),
+)
+
 export const teamDataAssistantChats = pgTable(
   'team_data_assistant_chats',
   {

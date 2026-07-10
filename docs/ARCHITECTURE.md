@@ -11,6 +11,10 @@ Penge is a pnpm monorepo:
 - `apps/eve/` is the new eve runtime skeleton. It owns eve-authored agent files and internal channels for the Flue-to-eve migration spike; browser traffic must still enter through `apps/web` authorization boundaries.
 - `packages/domain/` contains shared domain/database code used by the web app and runtime sidecars, including schema exports, categorization services, read projections, money helpers, runtime service capabilities, and workflow-run repository helpers.
 
+The eve runtime uses one finance assistant with dynamic capabilities selected from authenticated session purpose. Chat sessions receive shared scoped finance reads, confirmed chat writes, and constrained workspace file tools. Categorization task sessions receive the same reads plus only the autonomous guarded categorization write. Model-callable schemas never accept authority fields; every tool re-reads trusted scope from eve session auth and delegates finance behavior to `@penge/domain`. Successful write results are committed to the server-only `agent_tool_executions` ledger in the same transaction as domain changes so durable eve replay is idempotent.
+
+Eve sandbox state is sensitive per-session working memory under `/workspace`, never app-owned state or Zero data. The runtime disables all default tools and dynamically restores only `read_file`, `write_file`, `glob`, and `grep` for chat. Sandbox egress is deny-all on Vercel, Docker, and microsandbox; just-bash has no real network. This policy does not constrain authored tools, which execute in the app runtime.
+
 Run commands from the workspace root by default. Package-local source paths in docs generally refer to `apps/web/src/...` for web code and `apps/flue/src/...` for Flue code.
 
 ## Flue sidecar boundary

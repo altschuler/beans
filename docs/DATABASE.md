@@ -56,6 +56,8 @@ When adding a new app/domain table, it is not complete until it is represented i
 
 `agent_workflow_runs` is the app-owned workflow visibility projection. It is Zero-synced so clients can observe active team workflows, while separate runtime tables remain internal to Flue/eve. Runtime cursor columns on app-owned tables are server-only and intentionally excluded from Zero unless a future UI projection requires a safe allowlisted field.
 
+`agent_tool_executions` is a server-only eve write-idempotency ledger keyed by eve session and tool call. It stores the structured result in the same database transaction as the guarded domain write so durable-step replay returns the original outcome. It must remain excluded from Zero and browser APIs.
+
 ## Client mutations
 
 Writes go through Zero custom mutators: Zod input schemas and optimistic client logic in `apps/web/src/zero/mutators.ts`, server logic in `apps/web/src/zero/mutators.server.ts` (and the `*.server.ts` command files it calls). Transaction categorization, splits, confirmation, and clearing apply deterministic optimistic updates in the client replica while the server remains authoritative. Transfer categorization intentionally stays server-authoritative because it depends on server-side counter-transaction matching.

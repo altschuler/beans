@@ -20,8 +20,8 @@ describe('zero schema', () => {
     )
   })
 
-  it('excludes Better Auth tables from the synced schema', () => {
-    for (const authTable of ['user', 'session', 'account', 'verification']) {
+  it('excludes Better Auth and eve tool execution tables from the synced schema', () => {
+    for (const authTable of ['user', 'session', 'account', 'verification', 'agentToolExecutions']) {
       expect(schema.tables).not.toHaveProperty(authTable)
     }
   })

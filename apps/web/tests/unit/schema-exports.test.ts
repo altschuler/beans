@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest'
 import {
+  agentToolExecutions,
   agentWorkflowRuns,
   bankAccounts,
   bankConnections,
@@ -18,6 +19,7 @@ describe('banking schema exports', () => {
     expect(teams).toBeDefined()
     expect(teamMembers).toBeDefined()
     expect(agentWorkflowRuns).toBeDefined()
+    expect(agentToolExecutions).toBeDefined()
     expect(bankConnections).toBeDefined()
     expect(bankAccounts).toBeDefined()
     expect(bankTransactions).toBeDefined()
@@ -32,6 +34,12 @@ describe('banking schema exports', () => {
     expect(bankAccounts.syncStatus).toBeDefined()
     expect(bankAccounts.syncError).toBeDefined()
     expect(bankAccounts.syncStartedAt).toBeDefined()
+  })
+
+  it('exports the server-only eve tool execution ledger', () => {
+    expect(agentToolExecutions.eveSessionId).toBeDefined()
+    expect(agentToolExecutions.callId).toBeDefined()
+    expect(agentToolExecutions.result).toBeDefined()
   })
 
   it('exports eve runtime cursor columns on app-owned AI tables', () => {

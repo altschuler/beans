@@ -7,15 +7,16 @@ import {
   type AuthFn,
 } from 'eve/channels/auth'
 import type {SessionAuthContext} from 'eve/context'
+import {z} from 'zod'
 import {
   EveServiceCapabilityError,
   verifyEveServiceCapability,
   type EveServiceCapabilityClaims,
 } from '@penge/domain/eve-service-capability'
 
-type ChatRequestBody = {
-  message?: unknown
-}
+const chatRequestBodySchema = z.object({
+  message: z.string().trim().min(1),
+}).strict()
 
 type CategorizationTaskAuthAttributes = {
   targetBankTransactionIds?: readonly string[]
@@ -34,10 +35,10 @@ export default defineChannel({
       const scopeError = requireCapabilityScope(auth, {purpose: 'chat-session', chatId: params.chatId})
       if (scopeError) return scopeError
 
-      const body = await readJson<ChatRequestBody>(request)
-      if (!isNonEmptyString(body.message)) return jsonError('message is required', 400)
+      const body = chatRequestBodySchema.safeParse(await readJson(request))
+      if (!body.success) return jsonError('invalid chat request', 400)
 
-      const session = await send(body.message, {
+      const session = await send(body.data.message, {
         auth,
         continuationToken: `chat:${params.chatId}`,
         mode: 'conversation',
@@ -125,12 +126,11 @@ function sessionAuthFromClaims(claims: EveServiceCapabilityClaims): SessionAuthC
   }
 }
 
-async function readJson<T>(request: Request): Promise<T> {
+async function readJson(request: Request): Promise<unknown> {
   try {
-    const body: unknown = await request.json()
-    return body && typeof body === 'object' ? body as T : {} as T
+    return await request.json()
   } catch {
-    return {} as T
+    return null
   }
 }
 
@@ -157,8 +157,4 @@ const serviceCapabilityClockSkewSeconds = 30
 
 function jsonError(error: string, status: number) {
   return Response.json({ok: false, error}, {status})
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0
 }
