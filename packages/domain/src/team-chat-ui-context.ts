@@ -1,7 +1,3 @@
-import {and, eq} from 'drizzle-orm'
-import type {Database} from './db'
-import {teamDataAssistantChats} from './schema'
-
 export const teamChatPageKeys = [
   'home',
   'transactions',
@@ -38,8 +34,6 @@ export type TeamChatUiContext = {
 }
 
 type PageDefinition = NormalizedTeamChatPage & {href?: string}
-
-type TeamChatUiContextReadExecutor = Pick<Database, 'select'>
 
 export const teamChatSitemap: TeamChatSitemapEntry[] = [
   {kind: 'home', title: 'Home', href: '/app', description: 'App landing page.'},
@@ -81,21 +75,6 @@ export function normalizeTeamChatClientContext(input: unknown): TeamChatUiContex
 
 export function parseTeamChatClientCurrentPage(input: unknown): TeamChatPageKey | null {
   return parseClientCurrentPage(input)
-}
-
-export async function getPersistedTeamChatUiContext(
-  executor: TeamChatUiContextReadExecutor,
-  input: {teamId: string; userId: string; chatId?: string},
-): Promise<TeamChatUiContext> {
-  if (!input.chatId) return normalizeTeamChatClientContext(null)
-
-  const [chat] = await executor
-    .select({currentPage: teamDataAssistantChats.currentPage})
-    .from(teamDataAssistantChats)
-    .where(and(eq(teamDataAssistantChats.id, input.chatId), eq(teamDataAssistantChats.teamId, input.teamId), eq(teamDataAssistantChats.userId, input.userId)))
-    .limit(1)
-
-  return normalizeTeamChatClientContext({currentPage: chat?.currentPage ?? undefined})
 }
 
 function parseClientCurrentPage(input: unknown): TeamChatPageKey | null {

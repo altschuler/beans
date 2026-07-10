@@ -2,86 +2,80 @@
 
 ## Purpose
 
-Ask Penge is an experimental chat assistant for questions about the current team's finance data. It is personal to the signed-in user and current team, and it can apply only the guarded writes exposed through Flue tools.
+Ask Penge is an experimental Eve-backed chat assistant for questions about the signed-in user's current team finance data. It is personal to that user and team. It can read compact finance projections and can apply only the guarded categorization and category-management operations exposed by the Eve agent.
 
-The assistant is useful for exploring transactions, categories, category groups, bank accounts, and prior categorizations in context. It is not an unrestricted database console, and the model never chooses authorization scope.
+Ask Penge is not an unrestricted database console. The model never chooses authorization scope, and app-owned data remains authoritative.
 
 ## Web shell and conversation scope
 
-The protected app wraps authenticated pages in an `AppFlueProvider`. Browser requests use `/api/flue`; server rendering uses an absolute app URL for the same proxy path.
+The authenticated shell owns one root Ask Penge surface under `apps/web/src/components/assistant/`. `PageLayout` adds the trigger to page actions; desktop uses a sibling sidebar and narrow viewports use a chat-focused panel.
 
-The app shell owns one root chat surface:
+`team_data_assistant_chats` stores the user/team-owned thread metadata. The panel resumes the latest recently submitted chat, supports history switching and clear/new-thread behavior, and excludes empty placeholder threads from history. Each send derives a small known `clientContext.currentPage` hint from the current route. The hint is ephemeral Eve client context, is never authority, and is not persisted as message text or chat state.
 
-- `Shell` provides `TeamChatSidebarProvider` around the routed app content.
-- `PageLayout` appends an icon-only `Ask Penge` trigger to the page-header actions.
-- On desktop-sized viewports, opening chat renders a right sidebar sibling beside the routed content, reducing the available workspace width instead of overlaying it.
-- On narrow viewports, opening chat hides the routed page content and shows a chat-focused panel with a close control to return to the page.
+Chat UI files use product naming (`assistant`), not runtime naming. There is no app-wide Flue provider; the remaining workflow-only Flue provider is mounted only by the automated-categorization trace.
 
-Conversation ids are encoded as `team-data:{...}` values containing trusted `teamId`, `userId`, and a per-chat `chatId`. Penge stores app-owned chat records in `team_data_assistant_chats` so each user/team pair has durable conversation history while Flue remains the message-history source. When the chat client loads, it resumes the latest submitted chat for the current user/team if it was used less than one hour ago; otherwise opening Ask Penge starts a new chat row. Clearing chat also creates a new persisted chat id, but only chats with a submitted message are shown in the timestamp-labelled history list so empty placeholder chat ids do not send users to missing Flue history.
+## Authorized Eve proxy
 
-The chat client also reports a small page-context hint for the selected chat. Route changes and message sends update the latest validated page key on the app-owned chat row. This context is not prepended to the user's message and should not appear in rendered user bubbles or persisted Flue message text.
+The browser configures Eve React with a same-origin host under `/api/eve/chat/:chatId`. The catch-all accepts only Eve's start, follow-up, and stream session routes. The browser never receives `PENGE_EVE_BASE_URL`, the service-capability secret, or a service bearer, and it cannot send a direct Eve host or authority headers.
 
-## Flue proxy boundary
+For every request the web proxy:
 
-The browser never receives `PENGE_FLUE_INTERNAL_TOKEN`. The web `/api/flue` proxy authenticates the web session, decodes the team-data assistant id, verifies that the id's `userId` matches the session user, verifies team membership, strips hop-by-hop headers, then forwards the request to Flue with:
+1. authenticates the Better Auth cookie;
+2. resolves the app-owned chat and verifies user ownership plus current team membership;
+3. requires an exact trusted `Origin` for POST requests;
+4. validates a bounded, strict body and exact route/method/query shape;
+5. serializes starts and follow-ups through server-owned compare-and-set chat state;
+6. substitutes stored session/continuation state rather than trusting browser handles;
+7. mints a fresh short-lived `chat-session` capability scoped to the exact user, team, and chat;
+8. forwards only to the configured Eve origin with redirects disabled.
 
-- the internal bearer token
-- `x-penge-user-id`
-- `x-penge-team-id`
+The Eve default channel independently verifies the capability and stamps trusted session auth. Tools derive `{userId, teamId, chatId}` from that auth; model input, request bodies, session ids, continuation tokens, call ids, and approval ids are never authority.
 
-The Flue agent route repeats the boundary check: the internal token must match, the agent id must decode, and the decoded scope must match the trusted forwarded headers.
+## Reads and per-turn context
 
-For team-data assistant prompt requests, the browser fetch wrapper may include a web-only `context` object in the `/api/flue` request body. The proxy validates and stores the recognized page key against the app-owned chat row, removes `context`, and forwards the normal Flue prompt body unchanged. Agent tools close over that trusted scope.
+Ask Penge can use scoped Eve tools to inspect:
 
-## Reads
+- bank transactions and current categorization state;
+- transaction detail and current `categorizationRevision`;
+- ledger transactions and prior categorization examples;
+- ledger accounts, editable categories, and bank-linked transfer accounts.
 
-The assistant uses scoped Flue read tools to inspect current data before answering or proposing changes:
+Results are team-scoped compact projections, not arbitrary database rows or provider payloads. A server-owned sitemap is part of chat instructions. The per-turn page key only helps answer page-relative or navigation questions.
 
-- `searchBankTransactions`
-- `getBankTransactionDetail`
-- `searchLedgerTransactions`
-- `searchLedgerAccounts`
-- `getCurrentUiContext`
+## Writes and durable approval
 
-Read results are scoped to the trusted user/team and expose compact domain projections rather than arbitrary raw database rows or provider payloads. `getCurrentUiContext` returns the latest normalized page context plus a server-owned sitemap for page-relative questions and navigation guidance; UI context is a hint, not authorization or finance data.
+Chat write tools are `applyCategorizations` and `manageCategory`. Both use Eve's durable `always()` approval, bound to one exact pending tool call and its input. A normal initial request to change data is not permission to write.
 
-## Live turn progress
+Penge sanitizes Eve's pending approval event and resolves all referenced records under trusted team scope into a bounded display-safe proposal. Proposal cards expose names, dates, amounts, descriptions, operation type, and counts—not internal ids or raw tool input. Approve is enabled only when this exact proposal projection is ready. Deny remains available when projection is blocked.
 
-During long turns, the chat transcript shows a small Penge activity bubble instead of only a generic working state. The bubble is derived from `useFlueAgent()` status and streamed message parts in the browser; it is not a separate trace panel.
+Before forwarding a response, the proxy requires the approval to be pending for the current chat, Eve session, and session ordinal. Structured controls send an exact request response. Text approval is intentionally limited to literal `approve` or `deny` when exactly one request is pending; aliases, numeric choices, multi-request resolution, stale/replayed responses, and cross-session responses are rejected. Eve executes an approved call at most once, and the server-only `agent_tool_executions` ledger makes durable write replay idempotent.
 
-Progress text is app-authored and allowlisted. Known tool activity maps to labels such as “Searching transactions…”, “Reading transaction details…”, “Checking categories…”, and “Reviewing prior categorizations…”. Streaming assistant text shows “Writing answer…”, submitted turns show “Starting…”, and unknown or unclassified activity falls back to “Thinking through the request…”. Raw tool names, tool arguments, tool outputs, internal ids, model reasoning, and provider details must not be shown in the progress bubble.
+Categorization writes still require the current `categorizationRevision`, use shared domain rules, and preserve imported bank evidence. Category update and delete approvals also carry the trusted current target name shown on the card; execution locks and re-reads that target and returns a safe conflict without mutation if the name changed after approval. Category management continues to reject system, bank-linked, cross-team, or ledger-history-unsafe operations.
 
-Progress labels remain visible for at least one second to avoid flicker. Errors bypass that delay and appear immediately, while final assistant text and idle states clear the activity bubble immediately.
+## Sanitized durable history
 
-While an assistant turn is active, the composer send control becomes an icon-only stop control. Stopping calls Flue's agent abort API for the current chat instance, which asks Flue to abort in-flight and queued work for that Ask Penge conversation. The control stays in stop mode while Flue reports an active turn, then returns to send mode once Flue settles the turn.
+Penge owns the user-facing transcript projection in `team_data_assistant_chat_events` and the safe approval projection in `team_data_assistant_chat_approvals`. Raw Eve events may contain tool input/output, reasoning, runtime ids, model/provider metadata, sandbox paths, or raw errors, so they are never persisted or forwarded.
+
+The web stream pipeline produces exactly one allowlisted event for each positional Eve event, persists it transactionally, advances the server cursor only across contiguous committed indexes, and only then emits it to the browser. Zero exposes the sanitized event/approval fields through chat ownership and current membership. Eve session ids, continuation tokens, admission ids, ingestion metadata, and runtime coordination state remain server-only.
+
+Fixed product errors replace raw provider/runtime failures. Unsupported or future non-boundary events become reducer-safe no-op envelopes rather than leaking raw data or changing positional stream indexes.
+
+## Stop, reload, and recovery
+
+A chat row records server-only session ordinal, state (`none`, `admitting`, `running`, `waiting`, `completed`, or `failed`), turn start, admission id, Eve handles, and the next committed stream index. A waiting follow-up CAS also captures the pre-turn cursor and reserves a rollback-ineligible `pending` dispatch marker before network delivery; a validated receipt is durably retried to `acknowledged` independently of browser abort. Explicit ambiguous network outcomes move the exact marker to `ambiguous` after the request ends. Approval claims are tagged with that exact admission. One concurrent start/follow-up wins; another tab receives `409` and reloads authoritative state.
+
+`useEveAgent.stop()` aborts only the local request/stream. It is not a server-side cancellation guarantee. After stop, reload during a turn, or an interrupted stream, the composer remains blocked while the client explicitly attaches to the stored Eve session from the committed cursor. Web reconciliation consumes the same durable Eve stream and uses the same sanitizer/persistence path until a waiting or terminal boundary is committed. A committed terminal boundary is authoritative and is not fetched again from Eve; unresolved catch-up returns a non-sendable reconnecting bootstrap state. An answer completed after the local stop can therefore appear during recovery.
+
+A terminal completed or failed boundary atomically expires unresolved approval projections for that exact session. Expired cards remain visible only for the current session ordinal as inert historical context and never offer approval controls.
+
+An unresolved admission initially remains leased because Eve may already be executing. For a stale running follow-up, reconciliation consumes Eve's durable stream from the captured pre-turn cursor for the full bounded deadline. Any cursor advancement proves admission and prevents rollback, even before a boundary. A validated POST receipt is acknowledged and is never rolled back just because the provider is slow. A pending dispatch remains locked until a centralized takeover cutoff strictly beyond the full upstream POST lifetime plus reconciliation grace. Bootstrap may then atomically promote only the exact stale pending marker to ambiguous before reconciliation. Only a clean durable EOF from the latest stream attempt, with zero advancement for the full deadline, may atomically restore that exact ambiguous lease to waiting and return only that admission's approval claims to pending. An earlier EOF is discarded as evidence when a newer attempt starts, so a later hanging, transient, or malformed attempt cannot authorize rollback; 404s, stale identities, delayed acknowledgements after restoration, and concurrent boundaries likewise never infer delivery or non-delivery without cursor evidence. Session handles and transcript remain intact. A start with no recoverable handle is reaped after the bounded stale-admission interval; it cannot execute a finance write because every chat mutation remains approval-gated. Switching or clearing a thread aborts only local work and never reuses the old thread's runtime handles.
 
 ## Interactive bulk categorization
 
-Ask Penge can handle initial or backlog categorization through an interactive bulk mode. The mode starts when the user explicitly asks for bulk, backlog, or initial categorization, and the assistant may also choose it after finding roughly 50 or more eligible uncategorized or needs-review transactions.
+Ask Penge retains an interactive bulk mode under `/workspace/bulk-categorization`. Workspace files are sensitive per-session working memory, not authority. Only `read_file`, `write_file`, `glob`, and `grep` are available; shell, web/network, question, todo, and delegation tools remain disabled. Every final write re-reads authoritative data as needed, requires current revisions, and uses the same exact per-call Eve approval.
 
-Bulk mode uses the default Flue virtual sandbox with a predictable workspace cwd. The assistant should work under `/work/bulk-categorization` and maintain working files such as `categories.json`, `eligible-transactions.jsonl`, `merchant-groups.jsonl`, `recurring-groups.jsonl`, `transfer-candidates.jsonl`, `category-decisions.jsonl`, and `progress.json`.
+Production Eve session/sandbox retention and app-owned deletion remain deployment work outside migration Section 4.
 
-The workspace files are working memory, not authority. The assistant should ingest scoped data into files near the start of the run and avoid repeated broad exploratory database reads over the same set. Targeted database reads remain appropriate for missing details, stale or conflicted rows, user questions outside the workspace, refreshes, and final guarded writes that need current `categorizationRevision` values.
+## Current migration boundary
 
-The assistant should group transactions by merchant, counterparty, recurrence, amount pattern, transfer candidates, and description similarity. It asks concise group-level confirmation questions that name the user-facing pattern, category, count, and representative examples. The initial bulk request is not permission to write. Confirmed groups are applied through the `applyCategorizations` tool with every transaction in the confirmed group, and progress is reported in chat. The assistant should verify remaining eligible transactions before saying a group or run is done.
-
-Confirmed group decisions are current-backlog/session decisions only. Ask Penge does not create durable merchant/category rules in the first implementation.
-
-## Writes and confirmation
-
-Before any write, the assistant must state a concrete proposal naming the transaction, category, or category group and the exact change, then ask for permission. An initial user request to create, update, delete, apply, categorize, or otherwise change data is a request for a proposal, not permission to write. The assistant may call a write tool only after a separate natural explicit confirmation of the latest proposal, such as “yes”, “sounds good”, or “go ahead”. A new unrelated request is not confirmation.
-
-Supported chat writes are:
-
-- transaction categorization changes through `applyCategorizations`: category, split, or transfer
-- category/group management through `manageCategory`: create group, update group, delete empty editable group, create category, update category, or delete unused editable category
-
-Chat categorization writes use manual user-confirmed semantics and still require the current `categorizationRevision`. Category-management writes run one operation per tool call. If a category-management operation fails, the assistant should report the failure, re-read relevant categories or groups before proposing a follow-up, and stop remaining operations from that failed proposal.
-
-## Shared domain rules
-
-Category-management chat writes use the same shared domain functions as the Categories page. The shared rules trim names, authorize team membership, validate category type, reject edits to system or bank-linked accounts, reject system groups, enforce group/account ownership, and protect ledger history by refusing non-empty group deletion and category deletion when ledger postings exist.
-
-Flue tools return structured results that the assistant can explain in chat, including `{ok: true, status: "applied"}` on success and `{ok: false, status: "rejected", error: "..."}` on validation, authorization, database constraint, or delete-eligibility failures.
-
-The assistant must not surface internal ids, UUIDs, run ids, database ids, account ids, category ids, group ids, transaction ids, or other tool-only identifiers in normal chat responses. It can use ids internally for tool calls, but user-facing proposals, confirmations, and summaries should use names, dates, amounts, descriptions, and concise natural-language context instead.
+Ask Penge chat is Eve-native. Flue is still the default automated categorization workflow/runtime and active-run trace; an Eve categorization spike can be selected with `PENGE_AI_RUNTIME=eve`, but migration Sections 5–6 are not complete. Keep the categorization-only Flue route/provider, runtime variables, dependencies, and `flue_run_id` until those sections replace the lifecycle and trace and perform broad removal.

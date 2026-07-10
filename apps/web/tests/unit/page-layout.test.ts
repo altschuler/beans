@@ -11,7 +11,7 @@ vi.mock('@/components/ui/sidebar', () => ({
     React.createElement('button', {'aria-label': props['aria-label'], 'data-slot': 'sidebar-trigger'}, 'Toggle sidebar'),
 }))
 
-vi.mock('@/components/flue/team-chat-sidebar', () => ({
+vi.mock('@/components/assistant/team-chat-sidebar', () => ({
   TeamChatSidebarTrigger: () => React.createElement('button', {type: 'button', 'aria-label': 'Ask Penge', 'data-testid': 'team-chat-sidebar-trigger'}),
 }))
 

@@ -2,7 +2,7 @@
 
 Postgres is the durable database. The web app's Drizzle schema lives in `apps/web/src/db/schema.ts`, and web app migrations live in `apps/web/drizzle/`.
 
-Flue runtime persistence also uses Postgres through `@flue/postgres`, but it owns separate `flue_*` tables. Those tables store Flue canonical conversation streams, accepted submissions, workflow runs, attachments, events, and run indexes; they are not Penge domain tables and must not be exposed through Zero. The eve migration skeleton has separate runtime-internal persistence; only app-owned authorization/status/cursor fields such as `eve_session_id`, `eve_continuation_token`, and `eve_next_stream_index` belong in Penge tables. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
+Flue runtime persistence also uses Postgres through `@flue/postgres`, but it owns separate `flue_*` tables for the remaining automated-categorization workflow and trace. Those runtime tables are not Penge domain tables and must not be exposed through Zero. Eve has separate runtime-internal persistence; only app-owned authorization/status/cursor fields such as `eve_session_id`, `eve_continuation_token`, and `eve_next_stream_index` belong in Penge tables. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
 
 Flue `1.0.0-beta.9` uses runtime schema v4. This pre-1.0 schema is reset-only: if Flue reports a persisted schema mismatch in local or staging environments, stop Flue and clear only Flue-owned `flue_*` tables before restarting the sidecar. Do not clear Penge domain tables or Better Auth tables.
 
@@ -31,6 +31,8 @@ Current Zero-synced app/domain tables, and the only tables included in the local
 - `team_members`
 - `agent_workflow_runs`
 - `team_data_assistant_chats`
+- `team_data_assistant_chat_events`
+- `team_data_assistant_chat_approvals`
 - `bank_connections`
 - `bank_accounts`
 - `bank_transactions`
@@ -56,7 +58,9 @@ When adding a new app/domain table, it is not complete until it is represented i
 
 `agent_workflow_runs` is the app-owned workflow visibility projection. It is Zero-synced so clients can observe active team workflows, while separate runtime tables remain internal to Flue/eve. Runtime cursor columns on app-owned tables are server-only and intentionally excluded from Zero unless a future UI projection requires a safe allowlisted field.
 
-`agent_tool_executions` is a server-only eve write-idempotency ledger keyed by eve session and tool call. It stores the structured result in the same database transaction as the guarded domain write so durable-step replay returns the original outcome. It must remain excluded from Zero and browser APIs.
+Ask Penge keeps authorization/navigation metadata in `team_data_assistant_chats`. Its Eve session ordinal/state, continuation token, admission id, turn timestamps, committed stream cursor, follow-up delivery state, and captured pre-turn cursor are server-only coordination fields excluded from Zero. Approval claim ownership by follow-up admission is likewise server-only; it supports exact rollback only when durable reconciliation proves no delivery. `team_data_assistant_chat_events` is the append-only canonical sanitized event projection ordered by `(chat_id, session_ordinal, stream_index)`; `team_data_assistant_chat_approvals` stores only the bounded safe proposal and approval lifecycle projection. Both child tables cascade with the chat, are written only by server ingestion, and expose an explicit Zero allowlist through chat ownership and current membership. Raw Eve events and runtime handles never belong in either projection.
+
+`agent_tool_executions` is a server-only Eve write-idempotency ledger keyed by Eve session and tool call. It stores the structured result in the same database transaction as the guarded domain write so durable-step replay returns the original outcome. It must remain excluded from Zero and browser APIs.
 
 ## Client mutations
 

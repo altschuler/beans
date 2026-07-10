@@ -5,6 +5,8 @@ import {
   splitBankTransaction,
 } from '@penge/domain/categorization-service'
 import {
+  CategoryNameConflictError,
+  assertExpectedCategoryName,
   createCategoryAccount,
   createCategoryGroup,
   deleteCategoryAccount,
@@ -126,13 +128,20 @@ export async function runManageCategory(input: ManageCategoryInput, scope: Runti
 
   try {
     return await db.transaction(tx => replayableWrite(tx, scope, identity, 'manageCategory', async () => {
-      const details = await applyCategoryManagementOperation(tx, {
-        userId: scope.userId,
-        teamId: scope.teamId,
-        resourceId: toolResourceId(identity.sessionId, identity.callId),
-        operation: input.operation,
-      })
-      return {ok: true, status: 'applied', ...details} as const
+      try {
+        const details = await applyCategoryManagementOperation(tx, {
+          userId: scope.userId,
+          teamId: scope.teamId,
+          resourceId: toolResourceId(identity.sessionId, identity.callId),
+          operation: input.operation,
+        })
+        return {ok: true, status: 'applied', ...details} as const
+      } catch (error) {
+        if (error instanceof CategoryNameConflictError) {
+          return {ok: false, status: 'conflict', error: error.message} as const
+        }
+        throw error
+      }
     }))
   } catch (error) {
     return {ok: false, status: 'rejected', error: safeDomainError(error, 'Category change was rejected')} as const
@@ -177,6 +186,22 @@ async function applyCategoryManagementOperation(
   tx: WriteTransaction,
   input: {userId: string; teamId: string; resourceId: string; operation: ManageCategoryInput['operation']},
 ) {
+  if (input.operation.kind === 'updateGroup' || input.operation.kind === 'deleteGroup') {
+    await assertExpectedCategoryName(tx, {
+      teamId: input.teamId,
+      target: 'group',
+      targetId: input.operation.groupId,
+      expectedName: input.operation.expectedName,
+    })
+  } else if (input.operation.kind === 'updateCategory' || input.operation.kind === 'deleteCategory') {
+    await assertExpectedCategoryName(tx, {
+      teamId: input.teamId,
+      target: 'category',
+      targetId: input.operation.accountId,
+      expectedName: input.operation.expectedName,
+    })
+  }
+
   if (input.operation.kind === 'createGroup') {
     const groupId = input.resourceId
     const existing = await tx.query.ledgerAccountGroups.findFirst({

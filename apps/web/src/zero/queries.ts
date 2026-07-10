@@ -6,6 +6,8 @@ import {
   visibleAgentWorkflowRun,
   visibleBankAccount,
   visibleTeamDataAssistantChat,
+  visibleTeamDataAssistantChatApproval,
+  visibleTeamDataAssistantChatEvent,
   visibleBankConnection,
   visibleBankTransaction,
   visibleLedgerAccount,
@@ -16,6 +18,7 @@ import {
 
 const activeAgentWorkflowRunsByTeamArgs = z.object({teamId: z.string().min(1)})
 const teamDataAssistantChatsByTeamUserArgs = z.object({teamId: z.string().min(1), userId: z.string().min(1)})
+const teamDataAssistantChatProjectionArgs = z.object({chatId: z.string().min(1)})
 const ledgerAccountDetailArgs = z.object({accountId: z.string().min(1)})
 const bankTransactionsForBankAccountArgs = z.object({bankAccountId: z.string().min(1)})
 
@@ -40,6 +43,18 @@ export const queries = defineQueries({
     teamDataAssistantChatsByTeamUser: defineQuery(teamDataAssistantChatsByTeamUserArgs, ({ctx, args}) => {
       const userID = requireZeroUserID(ctx)
       return visibleTeamDataAssistantChat(userID)(zql.teamDataAssistantChats.where('teamId', args.teamId).where('userId', args.userId)).orderBy('lastUsedAt', 'desc')
+    }),
+    teamDataAssistantChatEventsByChat: defineQuery(teamDataAssistantChatProjectionArgs, ({ctx, args}) => {
+      const userID = requireZeroUserID(ctx)
+      return visibleTeamDataAssistantChatEvent(userID)(zql.teamDataAssistantChatEvents.where('chatId', args.chatId))
+        .orderBy('sessionOrdinal', 'asc')
+        .orderBy('streamIndex', 'asc')
+    }),
+    teamDataAssistantChatApprovalsByChat: defineQuery(teamDataAssistantChatProjectionArgs, ({ctx, args}) => {
+      const userID = requireZeroUserID(ctx)
+      return visibleTeamDataAssistantChatApproval(userID)(zql.teamDataAssistantChatApprovals.where('chatId', args.chatId))
+        .orderBy('sessionOrdinal', 'asc')
+        .orderBy('requestId', 'asc')
     }),
     bankAccounts: defineQuery(({ctx}) => {
       const userID = requireZeroUserID(ctx)

@@ -24,18 +24,19 @@ vi.mock('@/db/client', () => ({
   sql: vi.fn(),
 }))
 
-vi.mock('@penge/domain/workflow-runs', () => ({
-  ActiveWorkflowRunExistsError: class ActiveWorkflowRunExistsError extends Error {
-    readonly code = 'ACTIVE_WORKFLOW_RUN_EXISTS'
-  },
-  reserveActiveAgentWorkflowRun,
-  attachFlueRunId,
-  failStaleActiveAgentWorkflowRuns,
-  listActiveAgentWorkflowRuns,
-  markAgentWorkflowRunCompletedByFlueRunId,
-  markAgentWorkflowRunFailed,
-  markAgentWorkflowRunFailedByFlueRunId,
-}))
+vi.mock('@penge/domain/workflow-runs', async importOriginal => {
+  const original = await importOriginal<typeof import('@penge/domain/workflow-runs')>()
+  return {
+    ...original,
+    reserveActiveAgentWorkflowRun,
+    attachFlueRunId,
+    failStaleActiveAgentWorkflowRuns,
+    listActiveAgentWorkflowRuns,
+    markAgentWorkflowRunCompletedByFlueRunId,
+    markAgentWorkflowRunFailed,
+    markAgentWorkflowRunFailedByFlueRunId,
+  }
+})
 
 describe('Flue categorization HTTP invocation', () => {
   beforeEach(() => {

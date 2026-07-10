@@ -1,0 +1,2 @@
+ALTER TABLE "team_data_assistant_chat_approvals" DROP CONSTRAINT "team_data_assistant_chat_approvals_resolution_status_check";--> statement-breakpoint
+ALTER TABLE "team_data_assistant_chat_approvals" ADD CONSTRAINT "team_data_assistant_chat_approvals_resolution_status_check" CHECK ("team_data_assistant_chat_approvals"."resolution_status" in ('pending', 'approved', 'denied', 'completed', 'expired'));

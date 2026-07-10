@@ -1,4 +1,5 @@
 import {defineDynamic, defineTool} from 'eve/tools'
+import {always} from 'eve/tools/approval'
 import {glob, grep, readFile, writeFile} from 'eve/tools/defaults'
 import {
   applyCategorizationSuggestionInputSchema,
@@ -74,8 +75,9 @@ export default defineDynamic({
       return {
         ...sharedTools,
         applyCategorizations: defineTool({
-          description: 'Atomically apply one or more manual, user-confirmed categorization changes only after a concrete proposal received a separate natural confirmation. Every row requires its current categorization revision; one rejection or conflict rolls back the whole batch.',
+          description: 'Atomically apply one or more manual categorization changes after Eve approves this exact tool call. Every row requires its current categorization revision; one rejection or conflict rolls back the whole batch.',
           inputSchema: applyCategorizationsInputSchema,
+          approval: always(),
           async execute(input, toolCtx) {
             return runApplyCategorizations(input, requireChatRuntimeScope(toolCtx), {
               sessionId: toolCtx.session.id,
@@ -84,8 +86,9 @@ export default defineDynamic({
           },
         }),
         manageCategory: defineTool({
-          description: 'Create, update, move, or delete exactly one editable category or category group only after a concrete proposal received a separate natural confirmation.',
+          description: 'Create, update, move, or delete exactly one editable category or category group after Eve approves this exact tool call. Update and delete operations must copy the target current name into expectedName from a fresh read.',
           inputSchema: manageCategoryInputSchema,
+          approval: always(),
           async execute(input, toolCtx) {
             return runManageCategory(input, requireChatRuntimeScope(toolCtx), {
               sessionId: toolCtx.session.id,

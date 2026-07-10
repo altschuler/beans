@@ -146,11 +146,52 @@ describe('eve finance tools', () => {
     expect(replay).toEqual(first)
     await expect(db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.name, 'Bills'))).resolves.toHaveLength(1)
 
-    const deletion = {operation: {kind: 'deleteGroup', groupId: first.groupId}}
+    const deletion = {operation: {kind: 'deleteGroup', groupId: first.groupId, expectedName: 'Bills'}}
     const firstDelete = await execute(chat.manageCategory, deletion, chatScope, 'category-delete-call-1')
     const replayedDelete = await execute(chat.manageCategory, deletion, chatScope, 'category-delete-call-1')
     expect(firstDelete).toEqual({ok: true, status: 'applied'})
     expect(replayedDelete).toEqual(firstDelete)
+  })
+
+  it('rejects category updates and deletes when the approved target name has changed', async () => {
+    const chatScope = {purpose: 'chat-session', userId: 'user-1', teamId: 'team-1', chatId: 'chat-1'} as const
+    const chat = await resolveTools(chatScope)
+
+    await db.update(ledgerAccountGroups).set({name: 'Renamed group'}).where(eq(ledgerAccountGroups.id, 'group-1'))
+    await expect(execute(chat.manageCategory, {
+      operation: {kind: 'updateGroup', groupId: 'group-1', expectedName: 'Categories', name: 'Final group'},
+    }, chatScope)).resolves.toEqual({
+      ok: false,
+      status: 'conflict',
+      error: 'Category group changed after approval. Review the latest category group and try again.',
+    })
+    expect((await db.select({name: ledgerAccountGroups.name}).from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, 'group-1')))[0]?.name).toBe('Renamed group')
+
+    await db.insert(ledgerAccountGroups).values({
+      id: 'empty-group', teamId: 'team-1', systemKey: null, name: 'Renamed empty group', sortOrder: 2, createdAt: now, updatedAt: now,
+    })
+    await expect(execute(chat.manageCategory, {
+      operation: {kind: 'deleteGroup', groupId: 'empty-group', expectedName: 'Empty group'},
+    }, chatScope)).resolves.toMatchObject({ok: false, status: 'conflict'})
+    expect(await db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, 'empty-group'))).toHaveLength(1)
+
+    await db.update(ledgerAccounts).set({name: 'Food'}).where(eq(ledgerAccounts.id, 'groceries'))
+    await expect(execute(chat.manageCategory, {
+      operation: {
+        kind: 'updateCategory', accountId: 'groceries', expectedName: 'Groceries', groupId: 'group-1',
+        name: 'Dining', description: '', type: 'expense',
+      },
+    }, chatScope)).resolves.toEqual({
+      ok: false,
+      status: 'conflict',
+      error: 'Category changed after approval. Review the latest category and try again.',
+    })
+    expect((await db.select({name: ledgerAccounts.name}).from(ledgerAccounts).where(eq(ledgerAccounts.id, 'groceries')))[0]?.name).toBe('Food')
+
+    await expect(execute(chat.manageCategory, {
+      operation: {kind: 'deleteCategory', accountId: 'groceries', expectedName: 'Groceries'},
+    }, chatScope)).resolves.toMatchObject({ok: false, status: 'conflict'})
+    expect(await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, 'groceries'))).toHaveLength(1)
   })
 
   it('executes task and chat capabilities through trusted scoped domain services', async () => {

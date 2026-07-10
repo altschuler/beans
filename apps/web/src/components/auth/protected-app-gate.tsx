@@ -2,7 +2,6 @@ import {useEffect, useState, type ReactNode} from 'react'
 import {useRouter, useRouterState} from '@tanstack/react-router'
 import {authClient} from '@/auth/client'
 import {Shell} from '@/components/layout/shell'
-import {AppFlueProvider} from '@/components/flue/app-flue-provider'
 import {AppZeroProvider} from '@/components/zero/app-zero-provider'
 import {ensureCurrentUserPersonalTeam} from '@/teams/personal-team-fns'
 import {resolveAuthRedirectTarget} from './redirect'
@@ -48,9 +47,9 @@ export function ProtectedAppGate({children}: {children: ReactNode}) {
       .then(() => {
         if (!cancelled) setTeamState({status: 'ready', userId})
       })
-      .catch(error => {
+      .catch(() => {
         if (!cancelled) {
-          setTeamState({status: 'error', userId, message: error instanceof Error ? error.message : 'Unable to prepare workspace'})
+          setTeamState({status: 'error', userId, message: 'Unable to prepare workspace'})
         }
       })
 
@@ -92,16 +91,14 @@ export function ProtectedAppView({children, state}: ProtectedAppViewProps) {
   }
 
   if (state.status === 'error') {
-    return <FullPageStatus>{state.message}</FullPageStatus>
+    return <FullPageStatus>Unable to prepare workspace</FullPageStatus>
   }
 
   return (
     <AppZeroProvider userID={state.user.id}>
-      <AppFlueProvider>
-        <Shell userEmail={state.user.email} userName={state.user.name} userId={state.user.id}>
-          {children}
-        </Shell>
-      </AppFlueProvider>
+      <Shell userEmail={state.user.email} userName={state.user.name} userId={state.user.id}>
+        {children}
+      </Shell>
     </AppZeroProvider>
   )
 }

@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useRef, type UIEvent} from 'react'
 import {useFlueWorkflow, type FlueEvent} from '@flue/react'
+import {WorkflowFlueProvider} from './workflow-flue-provider'
 
 export type WorkflowTraceProps = {
   flueRunId?: string | null
@@ -25,7 +26,11 @@ const workflowProgressMessages = new Set([
   'Finishing workflow…',
 ])
 
-export function WorkflowTrace({
+export function WorkflowTrace(props: WorkflowTraceProps) {
+  return <WorkflowFlueProvider><WorkflowTraceContent {...props} /></WorkflowFlueProvider>
+}
+
+function WorkflowTraceContent({
   flueRunId,
   title = 'Workflow trace',
   description = 'Live trace for the active workflow.',
@@ -155,16 +160,9 @@ function progressEventKey(event: WorkflowProgressEvent) {
   return `${event.name}:${event.id ?? event.eventIndex}`
 }
 
-function getStatusDetail(status: ReturnType<typeof useFlueWorkflow>['status'], error: unknown) {
+function getStatusDetail(status: ReturnType<typeof useFlueWorkflow>['status'], _error: unknown) {
   if (status === 'connecting') return 'Connecting to workflow trace…'
   if (status === 'disconnected') return 'Could not connect to workflow trace.'
-  if (status === 'errored') return errorToText(error) ?? 'Workflow failed.'
-  return null
-}
-
-function errorToText(error: unknown) {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string' && error.trim()) return error.trim()
-  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') return error.message
+  if (status === 'errored') return 'Workflow failed.'
   return null
 }

@@ -44,6 +44,34 @@ export type DeleteCategoryAccountInput = z.infer<typeof deleteCategoryAccountInp
 type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 export type CategoryManagementTransaction = Pick<DatabaseTransaction, 'select' | 'insert' | 'update' | 'delete'>
 
+export class CategoryNameConflictError extends Error {
+  constructor(isGroup: boolean) {
+    super(isGroup
+      ? 'Category group changed after approval. Review the latest category group and try again.'
+      : 'Category changed after approval. Review the latest category and try again.')
+  }
+}
+
+export async function assertExpectedCategoryName(
+  tx: CategoryManagementTransaction,
+  input: {teamId: string; target: 'group' | 'category'; targetId: string; expectedName: string},
+) {
+  const [target] = input.target === 'group'
+    ? await tx
+        .select({name: ledgerAccountGroups.name})
+        .from(ledgerAccountGroups)
+        .where(and(eq(ledgerAccountGroups.id, input.targetId), eq(ledgerAccountGroups.teamId, input.teamId)))
+        .for('update')
+        .limit(1)
+    : await tx
+        .select({name: ledgerAccounts.name})
+        .from(ledgerAccounts)
+        .where(and(eq(ledgerAccounts.id, input.targetId), eq(ledgerAccounts.teamId, input.teamId)))
+        .for('update')
+        .limit(1)
+  if (target && target.name !== input.expectedName) throw new CategoryNameConflictError(input.target === 'group')
+}
+
 export async function createCategoryGroup(tx: CategoryManagementTransaction, input: CreateCategoryGroupInput) {
   if (!input.trustedScope) await requireTeamAccess(tx, input.teamId, input.userId)
   const now = new Date()

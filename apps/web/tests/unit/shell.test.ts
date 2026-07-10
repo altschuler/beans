@@ -59,7 +59,7 @@ vi.mock('@/components/theme/theme', () => ({
   useTheme: () => ({theme: 'system', setTheme: vi.fn()}),
 }))
 
-vi.mock('@/components/flue/team-chat-sidebar', () => ({
+vi.mock('@/components/assistant/team-chat-sidebar', () => ({
   TeamChatSidebarProvider: ({children, userId}: {children: React.ReactNode; userId?: string | null}) =>
     React.createElement('div', {'data-testid': 'team-chat-sidebar-provider', 'data-user-id': userId ?? ''}, children),
   TeamChatSidebarHost: ({children}: {children: React.ReactNode}) => React.createElement('div', {'data-testid': 'team-chat-sidebar-host'}, children),

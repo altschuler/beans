@@ -35,6 +35,20 @@ export function visibleTeamDataAssistantChat(userID: string) {
     chat.where('userId', userID).whereExists('team', visibleTeam(userID))
 }
 
+export function visibleTeamDataAssistantChatEvent(userID: string) {
+  return <TReturn>(
+    event: Query<'teamDataAssistantChatEvents', Schema, TReturn>,
+  ): Query<'teamDataAssistantChatEvents', Schema, TReturn> =>
+    event.whereExists('chat', visibleTeamDataAssistantChat(userID))
+}
+
+export function visibleTeamDataAssistantChatApproval(userID: string) {
+  return <TReturn>(
+    approval: Query<'teamDataAssistantChatApprovals', Schema, TReturn>,
+  ): Query<'teamDataAssistantChatApprovals', Schema, TReturn> =>
+    approval.whereExists('chat', visibleTeamDataAssistantChat(userID))
+}
+
 export function visibleBankAccount(userID: string) {
   return <TReturn>(
     account: Query<'bankAccounts', Schema, TReturn>,

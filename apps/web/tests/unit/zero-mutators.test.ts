@@ -594,6 +594,26 @@ describe('ledger Zero mutators', () => {
     expect(deleteCategoryAccount).not.toHaveBeenCalled()
   })
 
+  it('keeps chat metadata writes in the assistant namespace and exposes no projection mutators', async () => {
+    const {createTeamDataAssistantChatInput, touchTeamDataAssistantChatInput, mutators} = await import('@/zero/mutators')
+    const {serverMutators} = await import('@/zero/mutators.server')
+
+    expect(mutators).toHaveProperty('assistant.createTeamDataAssistantChat')
+    expect(mutators).toHaveProperty('assistant.touchTeamDataAssistantChat')
+    expect(serverMutators).toHaveProperty('assistant.createTeamDataAssistantChat')
+    expect(serverMutators).toHaveProperty('assistant.touchTeamDataAssistantChat')
+    expect(mutators).not.toHaveProperty('flue.createTeamDataAssistantChat')
+    expect(serverMutators).not.toHaveProperty('flue.createTeamDataAssistantChat')
+    expect(mutators.assistant).not.toHaveProperty('createTeamDataAssistantChatEvent')
+    expect(mutators.assistant).not.toHaveProperty('updateTeamDataAssistantChatApproval')
+    expect(serverMutators.assistant).not.toHaveProperty('createTeamDataAssistantChatEvent')
+    expect(serverMutators.assistant).not.toHaveProperty('updateTeamDataAssistantChatApproval')
+    expect(createTeamDataAssistantChatInput.safeParse({
+      id: 'chat-1', teamId: 'team-1', userId: 'user-1', createdAt: 1, updatedAt: 1, lastUsedAt: 1, firstSubmittedAt: null, currentPage: 'transactions',
+    }).success).toBe(false)
+    expect(touchTeamDataAssistantChatInput.safeParse({chatId: 'chat-1', lastUsedAt: 1, currentPage: 'transactions'}).success).toBe(false)
+  })
+
   it('does not expose AI orchestration as Zero mutators', async () => {
     const {mutators} = await import('@/zero/mutators')
     const {serverMutators} = await import('@/zero/mutators.server')

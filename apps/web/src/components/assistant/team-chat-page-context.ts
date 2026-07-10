@@ -1,18 +1,8 @@
 import {type TeamChatClientContext, type TeamChatPageKey} from '@penge/domain/team-chat-ui-context'
 
-let latestTeamChatClientContext: TeamChatClientContext = {}
-
 export function getTeamChatClientContextForPathname(pathname: string): TeamChatClientContext {
   const currentPage = getTeamChatPageKeyForPathname(pathname)
   return currentPage ? {currentPage} : {}
-}
-
-export function setLatestTeamChatClientContext(context: TeamChatClientContext) {
-  latestTeamChatClientContext = context
-}
-
-export function getLatestTeamChatClientContext() {
-  return latestTeamChatClientContext
 }
 
 export function getTeamChatPageKeyForPathname(pathname: string): TeamChatPageKey | null {

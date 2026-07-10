@@ -15,6 +15,7 @@ const flueMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@flue/react', () => ({
+  FlueProvider: ({children}: {children: React.ReactNode}) => children,
   useFlueWorkflow: flueMocks.useFlueWorkflow,
 }))
 

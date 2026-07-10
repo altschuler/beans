@@ -32,7 +32,7 @@ describe('Zero SPA protected auth', () => {
     expect(Route.options).not.toHaveProperty('beforeLoad')
   })
 
-  it('renders the authenticated app through Zero without route context', async () => {
+  it('renders the authenticated app through Zero and the product shell', async () => {
     const {ProtectedAppView} = await import('@/components/auth/protected-app-gate')
 
     const markup = renderToStaticMarkup(
@@ -54,6 +54,13 @@ describe('Zero SPA protected auth', () => {
     expect(markup).toContain('data-email="test@example.com"')
     expect(markup).toContain('data-user-id="user-1"')
     expect(markup).toContain('Dashboard')
+  })
+
+  it('maps workspace bootstrap failures to fixed safe copy', async () => {
+    const {ProtectedAppView} = await import('@/components/auth/protected-app-gate')
+    const markup = renderToStaticMarkup(React.createElement(ProtectedAppView, {state: {status: 'error', message: 'SQL raw secret failure'}}))
+    expect(markup).toContain('Unable to prepare workspace')
+    expect(markup).not.toContain('SQL raw secret failure')
   })
 
   it('shows a redirecting state instead of rendering protected app UI when there is no session', async () => {

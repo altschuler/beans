@@ -22,10 +22,10 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ProtectedAppTransactionsRouteImport } from './routes/_protected/app/transactions'
 import { Route as ProtectedAppCategoriesRouteImport } from './routes/_protected/app/categories'
 import { Route as ProtectedAppBankAccountsRouteImport } from './routes/_protected/app/bank-accounts'
-import { Route as ApiEveChatChatIdRouteImport } from './routes/api/eve/chat/$chatId'
 import { Route as ProtectedAppBankAccountsConnectRouteImport } from './routes/_protected/app/bank-accounts.connect'
 import { Route as ProtectedAppBankAccountsBankAccountIdRouteImport } from './routes/_protected/app/bank-accounts/$bankAccountId'
 import { Route as ProtectedAppAccountsAccountIdRouteImport } from './routes/_protected/app/accounts/$accountId'
+import { Route as ApiEveChatChatIdSplatRouteImport } from './routes/api/eve/chat/$chatId/$'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -93,11 +93,6 @@ const ProtectedAppBankAccountsRoute =
     path: '/bank-accounts',
     getParentRoute: () => ProtectedAppRoute,
   } as any)
-const ApiEveChatChatIdRoute = ApiEveChatChatIdRouteImport.update({
-  id: '/api/eve/chat/$chatId',
-  path: '/api/eve/chat/$chatId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ProtectedAppBankAccountsConnectRoute =
   ProtectedAppBankAccountsConnectRouteImport.update({
     id: '/connect',
@@ -116,6 +111,11 @@ const ProtectedAppAccountsAccountIdRoute =
     path: '/accounts/$accountId',
     getParentRoute: () => ProtectedAppRoute,
   } as any)
+const ApiEveChatChatIdSplatRoute = ApiEveChatChatIdSplatRouteImport.update({
+  id: '/api/eve/chat/$chatId/$',
+  path: '/api/eve/chat/$chatId/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -133,7 +133,7 @@ export interface FileRoutesByFullPath {
   '/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
   '/app/bank-accounts/$bankAccountId': typeof ProtectedAppBankAccountsBankAccountIdRoute
   '/app/bank-accounts/connect': typeof ProtectedAppBankAccountsConnectRoute
-  '/api/eve/chat/$chatId': typeof ApiEveChatChatIdRoute
+  '/api/eve/chat/$chatId/$': typeof ApiEveChatChatIdSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -151,7 +151,7 @@ export interface FileRoutesByTo {
   '/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
   '/app/bank-accounts/$bankAccountId': typeof ProtectedAppBankAccountsBankAccountIdRoute
   '/app/bank-accounts/connect': typeof ProtectedAppBankAccountsConnectRoute
-  '/api/eve/chat/$chatId': typeof ApiEveChatChatIdRoute
+  '/api/eve/chat/$chatId/$': typeof ApiEveChatChatIdSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -171,7 +171,7 @@ export interface FileRoutesById {
   '/_protected/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
   '/_protected/app/bank-accounts/$bankAccountId': typeof ProtectedAppBankAccountsBankAccountIdRoute
   '/_protected/app/bank-accounts/connect': typeof ProtectedAppBankAccountsConnectRoute
-  '/api/eve/chat/$chatId': typeof ApiEveChatChatIdRoute
+  '/api/eve/chat/$chatId/$': typeof ApiEveChatChatIdSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -191,7 +191,7 @@ export interface FileRouteTypes {
     | '/app/accounts/$accountId'
     | '/app/bank-accounts/$bankAccountId'
     | '/app/bank-accounts/connect'
-    | '/api/eve/chat/$chatId'
+    | '/api/eve/chat/$chatId/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -209,7 +209,7 @@ export interface FileRouteTypes {
     | '/app/accounts/$accountId'
     | '/app/bank-accounts/$bankAccountId'
     | '/app/bank-accounts/connect'
-    | '/api/eve/chat/$chatId'
+    | '/api/eve/chat/$chatId/$'
   id:
     | '__root__'
     | '/'
@@ -228,7 +228,7 @@ export interface FileRouteTypes {
     | '/_protected/app/accounts/$accountId'
     | '/_protected/app/bank-accounts/$bankAccountId'
     | '/_protected/app/bank-accounts/connect'
-    | '/api/eve/chat/$chatId'
+    | '/api/eve/chat/$chatId/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -240,7 +240,7 @@ export interface RootRouteChildren {
   ApiGocardlessCallbackRoute: typeof ApiGocardlessCallbackRoute
   ApiZeroMutateRoute: typeof ApiZeroMutateRoute
   ApiZeroQueryRoute: typeof ApiZeroQueryRoute
-  ApiEveChatChatIdRoute: typeof ApiEveChatChatIdRoute
+  ApiEveChatChatIdSplatRoute: typeof ApiEveChatChatIdSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -336,13 +336,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedAppBankAccountsRouteImport
       parentRoute: typeof ProtectedAppRoute
     }
-    '/api/eve/chat/$chatId': {
-      id: '/api/eve/chat/$chatId'
-      path: '/api/eve/chat/$chatId'
-      fullPath: '/api/eve/chat/$chatId'
-      preLoaderRoute: typeof ApiEveChatChatIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_protected/app/bank-accounts/connect': {
       id: '/_protected/app/bank-accounts/connect'
       path: '/connect'
@@ -363,6 +356,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/accounts/$accountId'
       preLoaderRoute: typeof ProtectedAppAccountsAccountIdRouteImport
       parentRoute: typeof ProtectedAppRoute
+    }
+    '/api/eve/chat/$chatId/$': {
+      id: '/api/eve/chat/$chatId/$'
+      path: '/api/eve/chat/$chatId/$'
+      fullPath: '/api/eve/chat/$chatId/$'
+      preLoaderRoute: typeof ApiEveChatChatIdSplatRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -425,7 +425,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGocardlessCallbackRoute: ApiGocardlessCallbackRoute,
   ApiZeroMutateRoute: ApiZeroMutateRoute,
   ApiZeroQueryRoute: ApiZeroQueryRoute,
-  ApiEveChatChatIdRoute: ApiEveChatChatIdRoute,
+  ApiEveChatChatIdSplatRoute: ApiEveChatChatIdSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

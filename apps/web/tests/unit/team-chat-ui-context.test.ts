@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest'
 import {normalizeTeamChatClientContext, teamChatSitemap} from '@penge/domain/team-chat-ui-context'
+import {getTeamChatClientContextForPathname, getTeamChatPageKeyForPathname} from '@/components/assistant/team-chat-page-context'
 
 describe('team chat UI context', () => {
   it('normalizes known page keys into assistant-safe page context and sitemap entries', () => {
@@ -19,6 +20,12 @@ describe('team chat UI context', () => {
     expect(normalizeTeamChatClientContext({currentPage: 'admin'}).currentPage).toBeNull()
     expect(normalizeTeamChatClientContext({currentPage: 123}).currentPage).toBeNull()
     expect(normalizeTeamChatClientContext(null).currentPage).toBeNull()
+  })
+
+  it('derives only known per-turn page hints from the current pathname', () => {
+    expect(getTeamChatClientContextForPathname('/app/transactions')).toEqual({currentPage: 'transactions'})
+    expect(getTeamChatPageKeyForPathname('/app/bank-accounts/account-1')).toBe('bankAccountTransactions')
+    expect(getTeamChatClientContextForPathname('/admin')).toEqual({})
   })
 
   it('does not invent concrete dynamic hrefs from a page kind alone', () => {

@@ -1,6 +1,6 @@
 import {type ReactNode} from 'react'
 import {Link} from '@tanstack/react-router'
-import {TeamChatSidebarTrigger} from '@/components/flue/team-chat-sidebar'
+import {TeamChatSidebarTrigger} from '@/components/assistant/team-chat-sidebar'
 import {Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator} from '@/components/ui/breadcrumb'
 import {Separator} from '@/components/ui/separator'
 import {SidebarTrigger} from '@/components/ui/sidebar'

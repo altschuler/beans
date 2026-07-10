@@ -1,4 +1,13 @@
 import {z} from 'zod'
+import {
+  applyCategorizationsInputSchema,
+  manageCategoryInputSchema,
+  type ApplyCategorizationsInput,
+  type ManageCategoryInput,
+} from '@penge/domain/eve-chat-approval'
+
+export {applyCategorizationsInputSchema, manageCategoryInputSchema}
+export type {ApplyCategorizationsInput, ManageCategoryInput}
 
 export const nonEmptyStringSchema = z.string().trim().min(1)
 const optionalStringArraySchema = z.array(nonEmptyStringSchema).optional()
@@ -98,50 +107,6 @@ export const applyCategorizationSuggestionInputSchema = z.object({
   }
 })
 
-const chatInterpretationSchema = z.discriminatedUnion('kind', [
-  z.object({kind: z.literal('category'), categoryAccountId: nonEmptyStringSchema}).strict(),
-  z.object({
-    kind: z.literal('split'),
-    lines: z.array(z.object({categoryAccountId: nonEmptyStringSchema, amount: nonEmptyStringSchema}).strict()).min(1),
-  }).strict(),
-  z.object({kind: z.literal('transfer'), transferLedgerAccountId: nonEmptyStringSchema}).strict(),
-])
-
-const chatCategorizationSchema = z.object({
-  bankTransactionId: nonEmptyStringSchema,
-  expectedCategorizationRevision: expectedCategorizationRevisionSchema,
-  interpretation: chatInterpretationSchema,
-}).strict()
-
-export const applyCategorizationsInputSchema = z.object({
-  categorizations: z.array(chatCategorizationSchema).min(1),
-}).strict()
-
-const managedCategoryTypeSchema = z.enum(['expense', 'income', 'savings'])
-const categoryManagementOperationSchema = z.discriminatedUnion('kind', [
-  z.object({kind: z.literal('createGroup'), name: nonEmptyStringSchema}).strict(),
-  z.object({kind: z.literal('updateGroup'), groupId: nonEmptyStringSchema, name: nonEmptyStringSchema}).strict(),
-  z.object({kind: z.literal('deleteGroup'), groupId: nonEmptyStringSchema}).strict(),
-  z.object({
-    kind: z.literal('createCategory'),
-    groupId: nonEmptyStringSchema,
-    name: nonEmptyStringSchema,
-    description: z.string(),
-    type: managedCategoryTypeSchema,
-  }).strict(),
-  z.object({
-    kind: z.literal('updateCategory'),
-    accountId: nonEmptyStringSchema,
-    groupId: nonEmptyStringSchema,
-    name: nonEmptyStringSchema,
-    description: z.string(),
-    type: managedCategoryTypeSchema,
-  }).strict(),
-  z.object({kind: z.literal('deleteCategory'), accountId: nonEmptyStringSchema}).strict(),
-])
-
-export const manageCategoryInputSchema = z.object({operation: categoryManagementOperationSchema}).strict()
-
 export const categorizationTaskOutputSchema = z.object({
   summary: nonEmptyStringSchema.max(1_000),
   processedCount: z.number().int().nonnegative(),
@@ -156,5 +121,3 @@ export type GetBankTransactionDetailInput = z.infer<typeof getBankTransactionDet
 export type SearchLedgerTransactionsInput = z.infer<typeof searchLedgerTransactionsInputSchema>
 export type SearchLedgerAccountsInput = z.infer<typeof searchLedgerAccountsInputSchema>
 export type ApplyCategorizationSuggestionInput = z.infer<typeof applyCategorizationSuggestionInputSchema>
-export type ApplyCategorizationsInput = z.infer<typeof applyCategorizationsInputSchema>
-export type ManageCategoryInput = z.infer<typeof manageCategoryInputSchema>

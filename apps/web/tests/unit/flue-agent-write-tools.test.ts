@@ -3,7 +3,7 @@ import {eq} from 'drizzle-orm'
 import {db} from '@/db/client'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers, teams, user} from '@penge/domain/schema'
-import {createCategorizationWriteTools, createChatCategorizationWriteTools, createChatCategoryManagementWriteTools} from '../../../flue/src/agent-tools/write-tools'
+import {createCategorizationWriteTools} from '../../../flue/src/agent-tools/write-tools'
 
 const now = new Date('2026-06-25T10:00:00.000Z')
 
@@ -18,73 +18,6 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await closeDatabase()
-})
-
-describe('Flue category management write tools', () => {
-  it('manages category groups and categories through trusted scope', async () => {
-    const tools = categoryManagementToolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
-
-    const createGroupResult = await tools.manageCategory.run({input: {operation: {kind: 'createGroup', name: '  Bills  '}}}) as Record<string, unknown>
-    expect(createGroupResult).toMatchObject({ok: true, status: 'applied', groupId: expect.any(String)})
-    const [group] = await db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, createGroupResult.groupId as string))
-    expect(group).toMatchObject({teamId: 'team-1', systemKey: null})
-
-    await expect(tools.manageCategory.run({input: {operation: {kind: 'updateGroup', groupId: group.id, name: 'Monthly bills'}}})).resolves.toEqual({ok: true, status: 'applied'})
-    await expect(db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, group.id))).resolves.toMatchObject([{name: 'Monthly bills'}])
-
-    const createCategoryResult = await tools.manageCategory.run({
-      input: {operation: {kind: 'createCategory', groupId: group.id, name: '  Utilities  ', description: '  Power and heat  ', type: 'expense'}},
-    }) as Record<string, unknown>
-    expect(createCategoryResult).toMatchObject({ok: true, status: 'applied', accountId: expect.any(String)})
-    const [category] = await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, createCategoryResult.accountId as string))
-    expect(category).toMatchObject({teamId: 'team-1', groupId: group.id, description: 'Power and heat', type: 'expense', systemKey: null, linkedBankAccountId: null})
-
-    await expect(tools.manageCategory.run({
-      input: {operation: {kind: 'updateCategory', accountId: category.id, groupId: 'group-1', name: 'Utilities and rent', description: '', type: 'savings'}},
-    })).resolves.toEqual({ok: true, status: 'applied'})
-    await expect(db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, category.id))).resolves.toMatchObject([
-      {groupId: 'group-1', name: 'Utilities and rent', description: '', type: 'savings'},
-    ])
-
-    await expect(tools.manageCategory.run({input: {operation: {kind: 'deleteCategory', accountId: category.id}}})).resolves.toEqual({ok: true, status: 'applied'})
-    await expect(tools.manageCategory.run({input: {operation: {kind: 'deleteGroup', groupId: group.id}}})).resolves.toEqual({ok: true, status: 'applied'})
-    await expect(db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, category.id))).resolves.toHaveLength(0)
-    await expect(db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, group.id))).resolves.toHaveLength(0)
-  })
-
-  it('accepts trusted runtime team scope even when the audit user is not a team member', async () => {
-    const tools = categoryManagementToolsByName({userId: 'user-2', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
-
-    const createGroupResult = await tools.manageCategory.run({input: {operation: {kind: 'createGroup', name: 'Trusted scope group'}}}) as Record<string, unknown>
-
-    expect(createGroupResult).toMatchObject({ok: true, status: 'applied', groupId: expect.any(String)})
-    await expect(db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, createGroupResult.groupId as string))).resolves.toMatchObject([
-      {teamId: 'team-1', name: 'Trusted scope group'},
-    ])
-  })
-
-  it('rejects inaccessible groups and categories with ledger history without exposing team scope in input', async () => {
-    const tools = categoryManagementToolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
-
-    await expect(tools.manageCategory.run({
-      input: {operation: {kind: 'createCategory', groupId: 'group-2', name: 'Wrong team', description: '', type: 'expense'}},
-    })).resolves.toEqual({ok: false, status: 'rejected', error: 'Category group not found'})
-
-    await db.insert(teamMembers).values({id: 'member-cross-team', teamId: 'team-2', userId: 'user-1', role: 'member', createdAt: now, updatedAt: now})
-    await expect(tools.manageCategory.run({input: {operation: {kind: 'updateGroup', groupId: 'group-2', name: 'Wrong scope'}}})).resolves.toEqual({
-      ok: false,
-      status: 'rejected',
-      error: 'Category group not found',
-    })
-    await expect(db.select().from(ledgerAccountGroups).where(eq(ledgerAccountGroups.id, 'group-2'))).resolves.toMatchObject([{name: 'Accounts'}])
-
-    await seedPostingForCategory('groceries')
-    await expect(tools.manageCategory.run({input: {operation: {kind: 'deleteCategory', accountId: 'groceries'}}})).resolves.toEqual({
-      ok: false,
-      status: 'rejected',
-      error: 'Categories with ledger history cannot be deleted',
-    })
-  })
 })
 
 describe('Flue categorization write tools', () => {
@@ -271,77 +204,6 @@ describe('Flue categorization write tools', () => {
     expect(after?.postings).toEqual(before?.postings)
   })
 
-  it('lets the chat agent recategorize a user-confirmed row after explicit user confirmation', async () => {
-    await seedConfirmedInterpretation('bank-transaction-2')
-    const before = await currentInterpretationForBankTransaction('bank-transaction-2')
-    const tools = chatToolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
-
-    await expect(tools.applyCategorizations.run({
-      input: {
-        categorizations: [
-          {
-            bankTransactionId: 'bank-transaction-2',
-            expectedCategorizationRevision: 0,
-            interpretation: {kind: 'category', categoryAccountId: 'groceries'},
-          },
-        ],
-      },
-    })).resolves.toMatchObject({ok: true, status: 'completed', appliedCount: 1, rejectedCount: 0, conflictCount: 0})
-
-    const [bankTransaction] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-2'))
-    const after = await currentInterpretationForBankTransaction('bank-transaction-2')
-    expect(after?.ledgerTransaction?.id).toBe(before?.ledgerTransaction?.id)
-    expect(after?.ledgerTransaction).toMatchObject({status: 'confirmed', categorizedBy: 'user', userConfirmedBy: 'user-1'})
-    expect(after?.postings.map(posting => ({accountId: posting.accountId, amount: posting.amount, bankTransactionId: posting.bankTransactionId}))).toEqual([
-      {accountId: 'bank-ledger-account-1', amount: -1_000_000, bankTransactionId: 'bank-transaction-2'},
-      {accountId: 'groceries', amount: 1_000_000, bankTransactionId: null},
-    ])
-    expect(bankTransaction).toMatchObject({aiConfidence: null, aiReasoning: null, categorizationRevision: 1})
-  })
-
-  it('applies multiple confirmed chat categorizations independently and reports conflicts', async () => {
-    const tools = chatToolsByName({userId: 'user-1', teamId: 'team-1', appRunId: 'team-data:chat-1', writeExecutor: db})
-
-    const result = await tools.applyCategorizations.run({
-      input: {
-        categorizations: [
-          {
-            bankTransactionId: 'bank-transaction-1',
-            expectedCategorizationRevision: 0,
-            interpretation: {kind: 'category', categoryAccountId: 'groceries'},
-          },
-          {
-            bankTransactionId: 'bank-transaction-2',
-            expectedCategorizationRevision: 99,
-            interpretation: {kind: 'category', categoryAccountId: 'household'},
-          },
-          {
-            bankTransactionId: 'bank-transfer-counter',
-            expectedCategorizationRevision: 0,
-            interpretation: {kind: 'category', categoryAccountId: 'household'},
-          },
-        ],
-      },
-    }) as Record<string, unknown> & {results: Array<Record<string, unknown>>}
-
-    expect(result).toMatchObject({ok: true, status: 'completed', appliedCount: 2, rejectedCount: 0, conflictCount: 1})
-    expect(result.results).toEqual([
-      {ok: true, status: 'applied', bankTransactionId: 'bank-transaction-1'},
-      expect.objectContaining({
-        ok: false,
-        status: 'conflict',
-        bankTransactionId: 'bank-transaction-2',
-        expectedCategorizationRevision: 99,
-        actualCategorizationRevision: 0,
-      }),
-      {ok: true, status: 'applied', bankTransactionId: 'bank-transfer-counter'},
-    ])
-
-    expect(await currentInterpretationForBankTransaction('bank-transaction-1')).toMatchObject({ledgerTransaction: {status: 'confirmed', categorizedBy: 'user'}})
-    expect(await currentInterpretationForBankTransaction('bank-transaction-2')).toBeNull()
-    expect(await currentInterpretationForBankTransaction('bank-transfer-counter')).toMatchObject({ledgerTransaction: {status: 'confirmed', categorizedBy: 'user'}})
-  })
-
   it('rejects user-confirmed needs-review rows without bumping the revision', async () => {
     await seedUserConfirmedNeedsReviewInterpretation('bank-transaction-2')
     const before = await currentInterpretationForBankTransaction('bank-transaction-2')
@@ -403,41 +265,6 @@ type WriteToolScope = Parameters<typeof createCategorizationWriteTools>[0]
 
 function toolsByName(scope: WriteToolScope) {
   return Object.fromEntries(createCategorizationWriteTools(scope).map(tool => [tool.name, tool])) as Record<string, ReturnType<typeof createCategorizationWriteTools>[number]>
-}
-
-function chatToolsByName(scope: WriteToolScope) {
-  return Object.fromEntries(createChatCategorizationWriteTools(scope).map(tool => [tool.name, tool])) as Record<string, ReturnType<typeof createChatCategorizationWriteTools>[number]>
-}
-
-function categoryManagementToolsByName(scope: WriteToolScope) {
-  return Object.fromEntries(createChatCategoryManagementWriteTools(scope).map(tool => [tool.name, tool])) as Record<string, ReturnType<typeof createChatCategoryManagementWriteTools>[number]>
-}
-
-async function seedPostingForCategory(accountId: string) {
-  await db.insert(ledgerTransactions).values({
-    id: `ledger-history-${accountId}`,
-    teamId: 'team-1',
-    source: 'manual',
-    status: 'confirmed',
-    categorizedBy: 'user',
-    userConfirmedAt: now,
-    userConfirmedBy: 'user-1',
-    date: '2026-06-25',
-    description: 'Existing history',
-    createdAt: now,
-    updatedAt: now,
-  })
-  await db.insert(ledgerPostings).values({
-    id: `posting-history-${accountId}`,
-    ledgerTransactionId: `ledger-history-${accountId}`,
-    accountId,
-    amount: 1_000,
-    currency: 'DKK',
-    bankTransactionId: null,
-    sortOrder: 0,
-    createdAt: now,
-    updatedAt: now,
-  })
 }
 
 async function seedWriteToolFixture() {

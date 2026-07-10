@@ -1,0 +1,1 @@
+CREATE INDEX "team_data_assistant_chats_session_state_turn_started_idx" ON "team_data_assistant_chats" USING btree ("eve_session_state","eve_turn_started_at");

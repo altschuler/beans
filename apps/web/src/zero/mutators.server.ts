@@ -54,7 +54,7 @@ function dateFromEpoch(value: number) {
 }
 
 export const serverMutators = defineMutators(mutators, {
-  flue: {
+  assistant: {
     createTeamDataAssistantChat: defineMutator(createTeamDataAssistantChatInput, async ({args, ctx, tx}) => {
       if (tx.location !== 'server') return
       const userId = requireUserID(ctx)
@@ -75,7 +75,6 @@ export const serverMutators = defineMutators(mutators, {
             updatedAt: dateFromEpoch(args.updatedAt),
             lastUsedAt: dateFromEpoch(args.lastUsedAt),
             ...(args.firstSubmittedAt && !existing.firstSubmittedAt ? {firstSubmittedAt: dateFromEpoch(args.firstSubmittedAt)} : {}),
-            ...(Object.hasOwn(args, 'currentPage') ? {currentPage: args.currentPage ?? null} : {}),
           })
           .where(eq(teamDataAssistantChats.id, args.id))
         return
@@ -89,7 +88,6 @@ export const serverMutators = defineMutators(mutators, {
         updatedAt: dateFromEpoch(args.updatedAt),
         lastUsedAt: dateFromEpoch(args.lastUsedAt),
         firstSubmittedAt: args.firstSubmittedAt ? dateFromEpoch(args.firstSubmittedAt) : null,
-        currentPage: args.currentPage ?? null,
       })
     }),
     touchTeamDataAssistantChat: defineMutator(touchTeamDataAssistantChatInput, async ({args, ctx, tx}) => {
@@ -110,7 +108,6 @@ export const serverMutators = defineMutators(mutators, {
           updatedAt: dateFromEpoch(args.lastUsedAt),
           lastUsedAt: dateFromEpoch(args.lastUsedAt),
           ...(args.firstSubmittedAt && !chat.firstSubmittedAt ? {firstSubmittedAt: dateFromEpoch(args.firstSubmittedAt)} : {}),
-          ...(Object.hasOwn(args, 'currentPage') ? {currentPage: args.currentPage ?? null} : {}),
         })
         .where(eq(teamDataAssistantChats.id, args.chatId))
     }),

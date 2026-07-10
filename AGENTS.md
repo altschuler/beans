@@ -34,7 +34,7 @@ How can agents verify their own work? How to run tests (unit/integration/e2e), d
 
 ## Git
 
-Never change branches, create worktrees, stash or commit anything unless explicitly told to do so. If the worktree is dirty, just ask for confirmation before implementing something.
+Never change branches, create worktrees, stash or commit anything unless explicitly told to do so. If the worktree is dirty, just do implementation on top.
 
 The user might stage or unstage files while implementation is running, do not change it.
 

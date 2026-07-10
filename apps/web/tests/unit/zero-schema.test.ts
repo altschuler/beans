@@ -16,6 +16,8 @@ describe('zero schema', () => {
         'ledgerPostings',
         'agentWorkflowRuns',
         'teamDataAssistantChats',
+        'teamDataAssistantChatEvents',
+        'teamDataAssistantChatApprovals',
       ]),
     )
   })
@@ -70,7 +72,41 @@ describe('zero schema', () => {
     expect(columns.firstSubmittedAt).toMatchObject({type: 'number', optional: true, serverName: 'first_submitted_at'})
     expect(columns).not.toHaveProperty('eveSessionId')
     expect(columns).not.toHaveProperty('eveContinuationToken')
+    expect(columns).not.toHaveProperty('eveSessionOrdinal')
     expect(columns).not.toHaveProperty('eveNextStreamIndex')
+    expect(columns).not.toHaveProperty('eveSessionState')
+    expect(columns).not.toHaveProperty('eveTurnStartedAt')
+    expect(columns).not.toHaveProperty('eveAdmissionId')
+    expect(columns).not.toHaveProperty('eveFollowUpDeliveryState')
+    expect(columns).not.toHaveProperty('eveFollowUpPreTurnCursor')
+    expect(columns).not.toHaveProperty('currentPage')
+  })
+
+  it('exposes exact safe event and approval projections', () => {
+    expect(Object.keys(schema.tables.teamDataAssistantChatEvents.columns)).toEqual([
+      'id',
+      'chatId',
+      'sessionOrdinal',
+      'streamIndex',
+      'type',
+      'event',
+      'occurredAt',
+    ])
+    expect(Object.keys(schema.tables.teamDataAssistantChatApprovals.columns)).toEqual([
+      'id',
+      'chatId',
+      'sessionOrdinal',
+      'requestId',
+      'callId',
+      'toolName',
+      'safeProposal',
+      'projectionStatus',
+      'resolutionStatus',
+    ])
+    expect(schema.tables.teamDataAssistantChatEvents.columns).not.toHaveProperty('eveSessionId')
+    expect(schema.tables.teamDataAssistantChatEvents.columns).not.toHaveProperty('createdAt')
+    expect(schema.tables.teamDataAssistantChatApprovals.columns).not.toHaveProperty('eveSessionId')
+    expect(schema.tables.teamDataAssistantChatApprovals.columns).not.toHaveProperty('eveClaimedByAdmissionId')
   })
 
   it('exposes ledger fields with server column names', () => {

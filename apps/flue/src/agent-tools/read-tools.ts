@@ -1,7 +1,6 @@
 import {defineTool, type JsonValue, type ToolDefinition} from '@flue/runtime'
 import * as v from 'valibot'
-import {decodeTeamDataAssistantId} from '@penge/domain/team-data-assistant-id'
-import {db, getBankTransactionDetail, getPersistedTeamChatUiContext, searchBankTransactions, searchLedgerAccounts, searchLedgerTransactions} from './domain-services'
+import {db, getBankTransactionDetail, searchBankTransactions, searchLedgerAccounts, searchLedgerTransactions} from './domain-services'
 import type {DomainReadExecutor, TrustedToolScope} from '@penge/domain/read-projections'
 
 export type CategorizationReadToolScope = TrustedToolScope & {
@@ -57,20 +56,10 @@ const searchLedgerAccountsInput = v.object({
 })
 
 export function createCategorizationReadTools(input: CategorizationReadToolScope): ToolDefinition[] {
-  const {readExecutor = db, userId, teamId, appRunId, targetBankTransactionIds} = input
+  const {readExecutor = db, userId, teamId, targetBankTransactionIds} = input
   const scope = {userId, teamId, targetBankTransactionIds}
-  const chatId = decodeTeamDataAssistantId(appRunId)?.chatId
 
   return [
-    defineTool({
-      name: 'getCurrentUiContext',
-      description:
-        'Read the latest validated Ask Penge UI context for this chat, including the current page when known and a server-owned sitemap for safe navigation guidance. Page context is a hint, not authorization. Do not invent dynamic ids or show internal ids to the user.',
-      input: v.object({}),
-      async run() {
-        return toJsonValue(await getPersistedTeamChatUiContext(readExecutor, {userId, teamId, chatId}))
-      },
-    }),
     defineTool({
       name: 'searchBankTransactions',
       description:

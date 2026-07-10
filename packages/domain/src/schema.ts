@@ -1,5 +1,6 @@
 import {relations, sql} from 'drizzle-orm'
 import {bigint, boolean, check, foreignKey, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex} from 'drizzle-orm/pg-core'
+import type {SafeChatProposal} from './eve-chat-approval'
 
 export const user = pgTable(
   'user',
@@ -162,15 +163,119 @@ export const teamDataAssistantChats = pgTable(
     updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
     lastUsedAt: timestamp('last_used_at', {mode: 'date'}).notNull(),
     firstSubmittedAt: timestamp('first_submitted_at', {mode: 'date'}),
-    currentPage: text('current_page'),
     eveSessionId: text('eve_session_id'),
     eveContinuationToken: text('eve_continuation_token'),
+    eveSessionOrdinal: integer('eve_session_ordinal').notNull().default(0),
     eveNextStreamIndex: integer('eve_next_stream_index').notNull().default(0),
+    eveSessionState: text('eve_session_state').notNull().default('none'),
+    eveTurnStartedAt: timestamp('eve_turn_started_at', {mode: 'date'}),
+    eveAdmissionId: text('eve_admission_id'),
+    eveFollowUpDeliveryState: text('eve_follow_up_delivery_state').notNull().default('none'),
+    eveFollowUpPreTurnCursor: integer('eve_follow_up_pre_turn_cursor'),
   },
   table => ({
     teamUserLastUsedIdx: index('team_data_assistant_chats_team_user_last_used_idx').on(table.teamId, table.userId, table.lastUsedAt),
     userIdx: index('team_data_assistant_chats_user_idx').on(table.userId),
+    sessionStateTurnStartedIdx: index('team_data_assistant_chats_session_state_turn_started_idx').on(
+      table.eveSessionState,
+      table.eveTurnStartedAt,
+    ),
+    eveSessionOrdinalCheck: check('team_data_assistant_chats_eve_session_ordinal_check', sql`${table.eveSessionOrdinal} >= 0`),
     eveNextStreamIndexCheck: check('team_data_assistant_chats_eve_next_stream_index_check', sql`${table.eveNextStreamIndex} >= 0`),
+    eveSessionStateCheck: check(
+      'team_data_assistant_chats_eve_session_state_check',
+      sql`${table.eveSessionState} in ('none', 'admitting', 'running', 'waiting', 'completed', 'failed')`,
+    ),
+    eveFollowUpDeliveryStateCheck: check(
+      'team_data_assistant_chats_eve_follow_up_delivery_state_check',
+      sql`${table.eveFollowUpDeliveryState} in ('none', 'pending', 'ambiguous', 'acknowledged')`,
+    ),
+    eveFollowUpPreTurnCursorCheck: check(
+      'team_data_assistant_chats_eve_follow_up_pre_turn_cursor_check',
+      sql`${table.eveFollowUpPreTurnCursor} is null or ${table.eveFollowUpPreTurnCursor} >= 0`,
+    ),
+    eveFollowUpDeliveryMarkerCheck: check(
+      'team_data_assistant_chats_eve_follow_up_delivery_marker_check',
+      sql`(${table.eveFollowUpDeliveryState} = 'none' and ${table.eveFollowUpPreTurnCursor} is null)
+        or (${table.eveFollowUpDeliveryState} in ('pending', 'ambiguous', 'acknowledged')
+          and ${table.eveSessionState} = 'running'
+          and ${table.eveAdmissionId} is not null
+          and ${table.eveFollowUpPreTurnCursor} is not null)`,
+    ),
+  }),
+)
+
+export const teamDataAssistantChatEvents = pgTable(
+  'team_data_assistant_chat_events',
+  {
+    id: text('id').primaryKey(),
+    chatId: text('chat_id')
+      .notNull()
+      .references(() => teamDataAssistantChats.id, {onDelete: 'cascade'}),
+    eveSessionId: text('eve_session_id').notNull(),
+    sessionOrdinal: integer('session_ordinal').notNull(),
+    streamIndex: integer('stream_index').notNull(),
+    type: text('type').notNull(),
+    event: jsonb('event').$type<Record<string, unknown>>().notNull(),
+    occurredAt: timestamp('occurred_at', {mode: 'date'}).notNull(),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    chatSessionStreamIdx: uniqueIndex('team_data_assistant_chat_events_chat_session_stream_unique').on(
+      table.chatId,
+      table.eveSessionId,
+      table.streamIndex,
+    ),
+    chatOrdinalStreamIdx: uniqueIndex('team_data_assistant_chat_events_chat_ordinal_stream_unique').on(
+      table.chatId,
+      table.sessionOrdinal,
+      table.streamIndex,
+    ),
+    orderedIdx: index('team_data_assistant_chat_events_ordered_idx').on(table.chatId, table.sessionOrdinal, table.streamIndex),
+    sessionOrdinalCheck: check('team_data_assistant_chat_events_session_ordinal_check', sql`${table.sessionOrdinal} >= 0`),
+    streamIndexCheck: check('team_data_assistant_chat_events_stream_index_check', sql`${table.streamIndex} >= 0`),
+  }),
+)
+
+export const teamDataAssistantChatApprovals = pgTable(
+  'team_data_assistant_chat_approvals',
+  {
+    id: text('id').primaryKey(),
+    chatId: text('chat_id')
+      .notNull()
+      .references(() => teamDataAssistantChats.id, {onDelete: 'cascade'}),
+    eveSessionId: text('eve_session_id').notNull(),
+    sessionOrdinal: integer('session_ordinal').notNull(),
+    requestId: text('request_id').notNull(),
+    callId: text('call_id').notNull(),
+    toolName: text('tool_name').notNull(),
+    safeProposal: jsonb('safe_proposal').$type<SafeChatProposal>(),
+    projectionStatus: text('projection_status').notNull(),
+    resolutionStatus: text('resolution_status').notNull(),
+    eveClaimedByAdmissionId: text('eve_claimed_by_admission_id'),
+    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
+    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
+  },
+  table => ({
+    chatSessionRequestIdx: uniqueIndex('team_data_assistant_chat_approvals_chat_session_request_unique').on(
+      table.chatId,
+      table.eveSessionId,
+      table.requestId,
+    ),
+    orderedIdx: index('team_data_assistant_chat_approvals_ordered_idx').on(table.chatId, table.sessionOrdinal, table.requestId),
+    sessionOrdinalCheck: check('team_data_assistant_chat_approvals_session_ordinal_check', sql`${table.sessionOrdinal} >= 0`),
+    projectionStatusCheck: check(
+      'team_data_assistant_chat_approvals_projection_status_check',
+      sql`${table.projectionStatus} in ('ready', 'blocked')`,
+    ),
+    resolutionStatusCheck: check(
+      'team_data_assistant_chat_approvals_resolution_status_check',
+      sql`${table.resolutionStatus} in ('pending', 'approved', 'denied', 'completed', 'expired')`,
+    ),
+    pendingClaimOwnerCheck: check(
+      'team_data_assistant_chat_approvals_pending_claim_owner_check',
+      sql`${table.resolutionStatus} <> 'pending' or ${table.eveClaimedByAdmissionId} is null`,
+    ),
   }),
 )
 
@@ -450,7 +555,7 @@ export const agentWorkflowRunsRelations = relations(agentWorkflowRuns, ({one}) =
   }),
 }))
 
-export const teamDataAssistantChatsRelations = relations(teamDataAssistantChats, ({one}) => ({
+export const teamDataAssistantChatsRelations = relations(teamDataAssistantChats, ({one, many}) => ({
   team: one(teams, {
     fields: [teamDataAssistantChats.teamId],
     references: [teams.id],
@@ -458,6 +563,22 @@ export const teamDataAssistantChatsRelations = relations(teamDataAssistantChats,
   user: one(user, {
     fields: [teamDataAssistantChats.userId],
     references: [user.id],
+  }),
+  events: many(teamDataAssistantChatEvents),
+  approvals: many(teamDataAssistantChatApprovals),
+}))
+
+export const teamDataAssistantChatEventsRelations = relations(teamDataAssistantChatEvents, ({one}) => ({
+  chat: one(teamDataAssistantChats, {
+    fields: [teamDataAssistantChatEvents.chatId],
+    references: [teamDataAssistantChats.id],
+  }),
+}))
+
+export const teamDataAssistantChatApprovalsRelations = relations(teamDataAssistantChatApprovals, ({one}) => ({
+  chat: one(teamDataAssistantChats, {
+    fields: [teamDataAssistantChatApprovals.chatId],
+    references: [teamDataAssistantChats.id],
   }),
 }))
 

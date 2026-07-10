@@ -15,6 +15,7 @@ const flueMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@flue/react', () => ({
+  FlueProvider: ({children}: {children: React.ReactNode}) => children,
   useFlueWorkflow: flueMocks.useFlueWorkflow,
 }))
 
@@ -55,6 +56,14 @@ describe('WorkflowTrace', () => {
     expect(markup).toContain('Waiting for run id')
     expect(markup).toContain('aria-label="Custom workflow trace"')
     expect(flueMocks.useFlueWorkflow).toHaveBeenCalledWith({runId: undefined})
+  })
+
+  it('maps raw workflow errors to fixed product copy', async () => {
+    flueMocks.workflow = {events: [], logs: [], status: 'errored', result: null, error: new Error('provider secret failure')}
+    const {WorkflowTrace} = await import('@/components/flue/workflow-trace')
+    const markup = renderToStaticMarkup(React.createElement(WorkflowTrace, {flueRunId: 'flue-run-1'}))
+    expect(markup).toContain('Workflow failed.')
+    expect(markup).not.toContain('provider secret failure')
   })
 
   it('renders safe app-authored progress data events and hides raw trace internals', async () => {

@@ -197,6 +197,48 @@
       "when": 1783668559934,
       "tag": "0027_normal_jack_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1783676703057,
+      "tag": "0028_ancient_zzzax",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1783676711050,
+      "tag": "0029_publish_assistant_chat_projections",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1783677486953,
+      "tag": "0030_reset_assistant_chat_runtime_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1783686103003,
+      "tag": "0031_robust_old_lace",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1783695468466,
+      "tag": "0032_petite_dagger",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1783707866376,
+      "tag": "0033_bumpy_quentin_quire",
+      "breakpoints": true
     }
   ]
 }

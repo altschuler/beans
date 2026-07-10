@@ -51,6 +51,14 @@ function taskToken(scope: {appRunId: string; targetBankTransactionIds?: string[]
 }
 
 describe('eve internal channel', () => {
+  it('exposes categorization only and removes the spike chat route', async () => {
+    vi.resetModules()
+    process.env.PENGE_EVE_SERVICE_CAPABILITY_SECRET = secret
+    const channel = (await import('../../../eve/agent/channels/internal')).default as unknown as {routes: readonly MockRoute[]}
+
+    expect(channel.routes.map(route => route.path)).toEqual(['/categorization/:appRunId'])
+  })
+
   it('derives categorization prompts from verified capability claims instead of request body echoes', async () => {
     const route = await categorizationRoute()
     const send = vi.fn(async () => ({id: 'eve-session-1', continuationToken: 'categorization:app-run-1'}))
@@ -80,6 +88,24 @@ describe('eve internal channel', () => {
     }), {send, params: {appRunId: 'other-run'}})
 
     expect(response.status).toBe(403)
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('rejects chat-purpose, expired, and malformed capabilities', async () => {
+    const route = await categorizationRoute()
+    const send = vi.fn(async () => ({id: 'eve-session-1', continuationToken: 'categorization:app-run-1'}))
+    const chatToken = mintEveServiceCapability(
+      {purpose: 'chat-session', teamId: 'team-1', userId: 'user-1', chatId: 'chat-1'},
+      {secret, ttlSeconds: 60},
+    )
+    const expired = taskToken({appRunId: 'app-run-1'}, new Date(Date.now() - 120_000))
+
+    for (const token of [chatToken, expired, 'malformed']) {
+      const response = await route.handler(new Request('https://eve.test/eve/v1/internal/categorization/app-run-1', {
+        method: 'POST', headers: {authorization: `Bearer ${token}`},
+      }), {send, params: {appRunId: 'app-run-1'}})
+      expect([401, 403]).toContain(response.status)
+    }
     expect(send).not.toHaveBeenCalled()
   })
 

@@ -1,30 +1,11 @@
 export {db} from '@penge/domain/db'
-export {
-  CategorizationRevisionConflictError,
-  applyAgentBankTransactionInterpretation,
-  categorizeBankTransaction,
-  clearLedgerCategorizations,
-  confirmBankTransactionInterpretation,
-  normalizeAiReasoning,
-  splitBankTransaction,
-} from '@penge/domain/categorization-service'
-export {
-  MANAGED_CATEGORY_TYPES,
-  createCategoryAccount,
-  createCategoryGroup,
-  deleteCategoryAccount,
-  deleteCategoryGroup,
-  updateCategoryAccount,
-  updateCategoryGroup,
-  type ManagedCategoryType,
-} from '@penge/domain/category-management'
+export {CategorizationRevisionConflictError, applyAgentBankTransactionInterpretation} from '@penge/domain/categorization-service'
 export {
   getBankTransactionDetail,
   searchBankTransactions,
   searchLedgerAccounts,
   searchLedgerTransactions,
 } from '@penge/domain/read-projections'
-export {getPersistedTeamChatUiContext} from '@penge/domain/team-chat-ui-context'
 export type {
   BankTransactionDetail,
   BankTransactionSearchResult,

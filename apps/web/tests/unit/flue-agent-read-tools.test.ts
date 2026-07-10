@@ -1,9 +1,8 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest'
 import {db} from '@/db/client'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
-import {encodeTeamDataAssistantId} from '@penge/domain/team-data-assistant-id'
 import {createCategorizationReadTools} from '../../../flue/src/agent-tools/read-tools'
-import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamDataAssistantChats, teamMembers, teams, user} from '@penge/domain/schema'
+import {bankAccounts, bankTransactions, ledgerAccountGroups, ledgerAccounts, ledgerPostings, ledgerTransactions, teamMembers, teams, user} from '@penge/domain/schema'
 
 const now = new Date('2026-06-25T10:00:00.000Z')
 
@@ -57,30 +56,6 @@ describe('Flue categorization read tools', () => {
       input: {limit: 10, userId: 'user-2', teamId: 'team-2'} as never,
     }) as Array<Record<string, unknown>>
     expect(accounts.map(account => account.id)).toEqual(['bank-ledger-account-1', 'groceries'])
-  })
-
-  it('returns the latest validated UI context and sitemap for the trusted chat scope', async () => {
-    await db.insert(teamDataAssistantChats).values({
-      id: 'chat-1',
-      teamId: 'team-1',
-      userId: 'user-1',
-      currentPage: 'transactions',
-      createdAt: now,
-      updatedAt: now,
-      lastUsedAt: now,
-      firstSubmittedAt: now,
-    })
-    const appRunId = encodeTeamDataAssistantId({teamId: 'team-1', userId: 'user-1', chatId: 'chat-1'})
-    const tools = toolsByName({userId: 'user-1', teamId: 'team-1', appRunId})
-
-    const context = await tools.getCurrentUiContext.run({input: {}}) as Record<string, unknown>
-
-    expect(context.currentPage).toMatchObject({
-      kind: 'transactions',
-      title: 'Transactions',
-      href: '/app/transactions',
-    })
-    expect(context.sitemap).toEqual(expect.arrayContaining([expect.objectContaining({kind: 'ledger', href: '/ledger'})]))
   })
 
   it('exposes compact detail, ledger transaction, and ledger account projections', async () => {

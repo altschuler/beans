@@ -1,4 +1,13 @@
-import {describe, expect, it} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
+import {z} from 'zod'
+import {teamChatPageKeys, teamChatSitemap} from '@penge/domain/team-chat-ui-context'
+import {
+  createEve0221MockModel,
+  createEve0221ToolLoop,
+  eve0221Version,
+  resolveEve0221OutputSchema,
+  runInEve0221Context,
+} from '../helpers/eve-0221'
 
 type DynamicResolver<T> = {
   events: {
@@ -112,6 +121,27 @@ describe('eve finance capabilities', () => {
     const wrongPrincipal = resolverContext({purpose: 'categorization-task', userId: 'user-1', teamId: 'team-1', appRunId: 'run-1'})
     if (wrongPrincipal.session.auth.current) wrongPrincipal.session.auth.current.principalType = 'user'
     expect(() => resolver.events['session.started']({}, wrongPrincipal)).toThrow('Invalid trusted eve runtime scope')
+
+    const mismatchedPrincipalId = resolverContext({purpose: 'chat-session', userId: 'user-1', teamId: 'team-1', chatId: 'chat-1'})
+    if (mismatchedPrincipalId.session.auth.current) mismatchedPrincipalId.session.auth.current.principalId = 'user-2'
+    expect(() => resolver.events['session.started']({}, mismatchedPrincipalId)).toThrow('Invalid trusted eve runtime scope')
+  })
+
+  it('requires the approved current name for every category update and delete', async () => {
+    const tools = await financeTools({purpose: 'chat-session', userId: 'user-1', teamId: 'team-1', chatId: 'chat-1'})
+    const schema = tools.manageCategory.inputSchema
+    const operations = [
+      {kind: 'updateGroup', groupId: 'group-1', name: 'Renamed'},
+      {kind: 'deleteGroup', groupId: 'group-1'},
+      {kind: 'updateCategory', accountId: 'category-1', groupId: 'group-1', name: 'Renamed', description: '', type: 'expense'},
+      {kind: 'deleteCategory', accountId: 'category-1'},
+    ]
+
+    for (const operation of operations) {
+      expect(schema.safeParse({operation}).success).toBe(false)
+      expect(schema.safeParse({operation: {...operation, expectedName: 'Current name'}}).success).toBe(true)
+      expect(schema.safeParse({operation: {...operation, expectedName: '  '}}).success).toBe(false)
+    }
   })
 
   it('uses Zod to enforce categorization result invariants before a write executes', async () => {
@@ -166,12 +196,69 @@ describe('eve finance capabilities', () => {
     expect(agent.outputSchema.safeParse({summary: '', processedCount: -1}).success).toBe(false)
   })
 
+  it('applies the shared output schema in task mode while ordinary conversation remains conversational', async () => {
+    const agent = (await import('../../../eve/agent/agent')).default as unknown as {
+      outputSchema: Parameters<typeof z.toJSONSchema>[0]
+    }
+    const schema = z.toJSONSchema(agent.outputSchema) as Record<string, unknown>
+    expect(eve0221Version).toBe('0.22.1')
+    const summary = {
+      summary: 'Categorized one transaction.',
+      processedCount: 1,
+      appliedCount: 1,
+      unableCount: 0,
+      skippedCount: 0,
+      conflictCount: 0,
+    }
+    const model = await createEve0221MockModel({
+      respond: (request: {tools: Array<{name: string}>}) => request.tools.some(tool => tool.name === 'final_output')
+        ? {toolCalls: [{name: 'final_output', input: summary}]}
+        : 'Ordinary conversational answer.',
+    })
+    const baseSession = {
+      agent: {modelReference: {id: 'mock'}, system: '', tools: []},
+      compaction: {recentWindowSize: 10, threshold: 100_000},
+      continuationToken: 'continuation-1',
+      history: [],
+      sessionId: 'session-1',
+    }
+    const taskSession = await resolveEve0221OutputSchema({agentOutputSchema: schema, input: {}, mode: 'task', session: baseSession})
+    const conversationSession = await resolveEve0221OutputSchema({agentOutputSchema: schema, input: {}, mode: 'conversation', session: baseSession})
+    const harness = async (mode: 'task' | 'conversation') => createEve0221ToolLoop({
+      mode,
+      resolveModel: async () => model,
+      tools: new Map(),
+    })
+
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const taskHarness = await harness('task')
+    const conversationHarness = await harness('conversation')
+    const task = await runInEve0221Context('task-session', () => taskHarness(taskSession, {message: 'Run categorization.'}))
+    const conversation = await runInEve0221Context('conversation-session', () => conversationHarness(conversationSession, {message: 'How am I doing?'}))
+    warning.mockRestore()
+
+    expect(task.next).toEqual({done: true, output: summary})
+    expect(task.session.outputSchema).toBeUndefined()
+    expect(conversation.next).toBeNull()
+    expect(conversation.session.outputSchema).toBeUndefined()
+    expect(JSON.stringify(conversation.session.history)).toContain('Ordinary conversational answer.')
+  })
+
   it('layers surface-specific instructions from authenticated purpose', async () => {
     const chat = await surfaceInstructions({purpose: 'chat-session', userId: 'user-1', teamId: 'team-1', chatId: 'chat-1'})
     const task = await surfaceInstructions({purpose: 'categorization-task', userId: 'user-1', teamId: 'team-1', appRunId: 'run-1'})
 
-    expect(chat.markdown).toContain('separate natural confirmation')
+    expect(chat.markdown).toContain('pending Eve approval card')
+    expect(chat.markdown).toContain('per tool call')
+    expect(chat.markdown).toContain('server-owned sitemap')
+    for (const page of teamChatSitemap) expect(chat.markdown).toContain(`${page.title} (${page.href})`)
+    for (const pageKey of teamChatPageKeys) expect(chat.markdown).toContain(pageKey)
+    expect(chat.markdown).toContain('structured inputResponse')
+    expect(chat.markdown).toContain('literal approve or deny')
+    expect(chat.markdown).toContain('exact pending call')
+    expect(chat.markdown).toContain('current name')
     expect(chat.markdown).toContain('/workspace/bulk-categorization')
+    expect(chat.markdown).not.toContain('separate natural confirmation')
     expect(task.markdown).toContain('Do not ask questions')
     expect(task.markdown).toContain('applyCategorizationSuggestion')
     expect(task.markdown).toContain('100 transactions')
