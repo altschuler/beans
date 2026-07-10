@@ -92,9 +92,7 @@ export function createChatReconciler(deps: ReconcilerDependencies) {
           state: mappedBoundaryState,
         })) {
           boundary = `session.${mappedBoundaryState}`
-          if (mappedBoundaryState !== 'waiting') {
-            return {status: 'boundary', boundary, nextStreamIndex}
-          }
+          return {status: 'boundary', boundary, nextStreamIndex}
         }
       } catch {
         return {status: 'interrupted', nextStreamIndex}

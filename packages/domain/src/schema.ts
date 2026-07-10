@@ -120,8 +120,8 @@ export const agentWorkflowRuns = pgTable(
     teamIdx: index('agent_workflow_runs_team_idx').on(table.teamId),
     activeIdx: uniqueIndex('agent_workflow_runs_active_unique')
       .on(table.teamId, table.workflowName)
-      .where(sql`${table.status} = 'active'`),
-    statusCheck: check('agent_workflow_runs_status_check', sql`${table.status} in ('active', 'completed', 'failed')`),
+      .where(sql`${table.status} in ('pending', 'running')`),
+    statusCheck: check('agent_workflow_runs_status_check', sql`${table.status} in ('pending', 'running', 'completed', 'failed')`),
     eveNextStreamIndexCheck: check('agent_workflow_runs_eve_next_stream_index_check', sql`${table.eveNextStreamIndex} >= 0`),
   }),
 )

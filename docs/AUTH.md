@@ -120,7 +120,7 @@ Flue remains only for the default automated-categorization workflow and active-r
 
 There is no browser Flue agent/chat proxy and no app-wide Flue provider. Keep the temporary Flue base URL/token only while this categorization path remains.
 
-For the Eve categorization spike, `apps/web` reserves the app-owned run first, mints a `categorization-task` capability, calls the internal Eve channel, and stores the returned Eve session/cursor on the app run. This alternate path is selected with `PENGE_AI_RUNTIME=eve`; its lifecycle and trace migration are Section 5 work, so Flue remains the default. Domain trusted-scope APIs may be called only after one of these server boundaries has validated the user/team/resource scope.
+For Eve categorization, `apps/web` reserves the app-owned run first, mints a `categorization-task` capability, calls the internal Eve channel, and stores the returned Eve session/cursor on the app run. Authorized trace reads use a separate `categorization-trace` capability bound to the exact app run and stored Eve session; trace credentials cannot start tasks and task credentials cannot read streams. This path remains selected with `PENGE_AI_RUNTIME=eve` until Section 6 removes the Flue fallback. Domain trusted-scope APIs may be called only after one of these server boundaries has validated the user/team/resource scope.
 
 ### Role-based authorization
 

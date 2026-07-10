@@ -15,8 +15,9 @@ function mapping(cursor = 0) {
   }
 }
 
-function streamRequest(startIndex: string) {
-  return new Request(`${host}/eve/v1/session/${sessionId}/stream?startIndex=${startIndex}`)
+function streamRequest(startIndex?: string) {
+  const query = startIndex === undefined ? '' : `?startIndex=${startIndex}`
+  return new Request(`${host}/eve/v1/session/${sessionId}/stream${query}`)
 }
 
 function deps(cursor = 0) {
@@ -64,10 +65,17 @@ describe('Eve chat stream proxy', () => {
       expect(input.fetch).not.toHaveBeenCalled()
     }
 
-    for (const startIndex of [0, 4]) {
+    for (const startIndex of [undefined, '0', '4']) {
       const input = deps(4)
-      expect((await createEveChatProxyHandler(input)(streamRequest(String(startIndex)), {chatId: 'chat-1'})).status).toBe(200)
+      expect((await createEveChatProxyHandler(input)(streamRequest(startIndex), {chatId: 'chat-1'})).status).toBe(200)
     }
+
+    const initial = deps()
+    await createEveChatProxyHandler(initial)(streamRequest(), {chatId: 'chat-1'})
+    expect(initial.fetch).toHaveBeenCalledWith(
+      'http://eve.test/eve/v1/session/session-1/stream?startIndex=0',
+      expect.anything(),
+    )
 
     const ahead = deps(4)
     const response = await createEveChatProxyHandler(ahead)(streamRequest('5'), {chatId: 'chat-1'})

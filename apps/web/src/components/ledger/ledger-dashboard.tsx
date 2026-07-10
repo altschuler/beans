@@ -24,8 +24,8 @@ import {saveDashboardSplitTransaction} from './save-dashboard-split-transaction'
 
 const CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME = 'categorize-transactions'
 const PENDING_TEAM_ID_SENTINEL = '__pending_team__'
-const stalePreparingWorkflowMs = 5 * 60 * 1000
 const staleBankAccountSyncWarningMs = 4 * 60 * 60 * 1000
+const activeWorkflowReconciliationIntervalMs = 30_000
 
 type LedgerDashboardView = 'transactions' | 'bankAccountTransactions'
 
@@ -63,7 +63,7 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   })
 
   const activeCategorizationWorkflowRun = activeTeamId
-    ? activeWorkflowRuns.find((run) => run.workflowName === CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME && !isStalePreparingWorkflowRun(run))
+    ? activeWorkflowRuns.find((run) => run.workflowName === CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME)
     : undefined
   const isCategorizeWorkflowActive = Boolean(activeCategorizationWorkflowRun)
   const isAiStartDisabled = isAiRequestPending || isCategorizeWorkflowActive
@@ -150,7 +150,11 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
 
   useEffect(() => {
     if (!activeTeamId || activeWorkflowRuns.length === 0) return
-    void reconcileAiCategorizationWorkflows({data: {teamId: activeTeamId}})
+    const reconcile = () => void reconcileAiCategorizationWorkflows({data: {teamId: activeTeamId}})
+      .catch(error => console.error('Could not reconcile AI categorization workflows', error))
+    reconcile()
+    const interval = window.setInterval(reconcile, activeWorkflowReconciliationIntervalMs)
+    return () => window.clearInterval(interval)
   }, [activeTeamId, activeWorkflowReconciliationKey, activeWorkflowRuns.length])
 
   const dashboardClassName = 'flex h-full min-h-0 flex-col'
@@ -200,7 +204,14 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
 
   const dashboardContent = (
     <div className={dashboardClassName}>
-      <CategorizationWorkflowTrace flueRunId={activeCategorizationWorkflowRun?.flueRunId} />
+      <CategorizationWorkflowTrace run={activeCategorizationWorkflowRun
+        ? {
+            id: activeCategorizationWorkflowRun.id,
+            status: activeCategorizationWorkflowRun.status as 'pending' | 'running',
+            error: activeCategorizationWorkflowRun.error,
+          }
+        : undefined}
+      />
       <div className={view === 'transactions' ? 'flex min-h-0 flex-1' : 'flex min-h-0 flex-1 flex-col'}>
         {view === 'transactions' ? (
           transactionRowsSyncing ? (
@@ -344,10 +355,6 @@ type ManualTransactionDialogProps = {
   bankAccountId: string
   onOpenChange: (open: boolean) => void
   onSave: (input: {id: string; bankAccountId: string; date: string; description: string; amount: string}) => void
-}
-
-function isStalePreparingWorkflowRun(run: {flueRunId: string | null; updatedAt?: number}) {
-  return run.flueRunId === null && typeof run.updatedAt === 'number' && Date.now() - run.updatedAt > stalePreparingWorkflowMs
 }
 
 function ManualTransactionDialog(props: ManualTransactionDialogProps) {

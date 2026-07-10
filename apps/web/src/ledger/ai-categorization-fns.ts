@@ -35,7 +35,12 @@ export const reconcileAiCategorizationWorkflows = createServerFn({method: 'POST'
   .validator((data: unknown) => reconcileAiCategorizationWorkflowsInput.parse(data))
   .handler(async ({data}) => {
     const {ensureSession} = await import('@/auth/session')
-    const {reconcileCategorizationWorkflowRunsForUser} = await import('./flue-categorization-workflow.server')
     const session = await ensureSession()
+    if (process.env.PENGE_AI_RUNTIME === 'eve') {
+      const {reconcileCategorizationWorkflowRunsForUser} = await import('./eve-categorization-reconciliation.server')
+      await reconcileCategorizationWorkflowRunsForUser({userId: session.user.id, teamId: data.teamId})
+      return
+    }
+    const {reconcileCategorizationWorkflowRunsForUser} = await import('./flue-categorization-workflow.server')
     await reconcileCategorizationWorkflowRunsForUser({userId: session.user.id, teamId: data.teamId})
   })

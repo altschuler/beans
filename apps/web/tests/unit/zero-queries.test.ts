@@ -53,7 +53,8 @@ describe('Zero ledger query shapes', () => {
 
     expect(ast.table).toBe('agentWorkflowRuns')
     expect(conditionIncludesSimple(ast.where, 'teamId', 'team-1')).toBe(true)
-    expect(conditionIncludesSimple(ast.where, 'status', 'active')).toBe(true)
+    expect(conditionIncludesSimple(ast.where, 'status', 'pending')).toBe(true)
+    expect(conditionIncludesSimple(ast.where, 'status', 'running')).toBe(true)
     expect(conditionHasExistsPath(ast.where, ['team', 'members'], {field: 'userId', value: 'user-1'})).toBe(true)
   })
 

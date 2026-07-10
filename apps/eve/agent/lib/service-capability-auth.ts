@@ -14,6 +14,7 @@ import {
 export type ExpectedCapabilityScope =
   | {purpose: 'chat-session'; chatId?: string}
   | {purpose: 'categorization-task'; appRunId: string}
+  | {purpose: 'categorization-trace'; appRunId: string}
 
 export const eveServiceCapabilityAuth: AuthFn<Request> = request => {
   const token = extractBearerToken(request.headers.get('authorization'))
@@ -42,7 +43,7 @@ export function capabilityMatchesScope(auth: SessionAuthContext, expected: Expec
     return auth.attributes.purpose === 'chat-session' &&
       (expected.chatId === undefined || auth.attributes.chatId === expected.chatId)
   }
-  return auth.attributes.purpose === 'categorization-task' && auth.attributes.appRunId === expected.appRunId
+  return auth.attributes.purpose === expected.purpose && auth.attributes.appRunId === expected.appRunId
 }
 
 export function capabilityScopeError(auth: SessionAuthContext, expected: ExpectedCapabilityScope): Response | null {
@@ -54,9 +55,9 @@ export function capabilityScopeError(auth: SessionAuthContext, expected: Expecte
       ? expected.chatId === undefined
         ? 'Eve chat capability is required'
         : 'Eve chat capability does not match the requested chat'
-      : auth.attributes.purpose === 'categorization-task'
+      : auth.attributes.purpose === expected.purpose
         ? 'Eve categorization capability does not match the requested app run'
-        : 'Eve categorization capability is required',
+        : `Eve ${expected.purpose} capability is required`,
   })
 }
 
@@ -68,10 +69,12 @@ function sessionAuthFromClaims(claims: EveServiceCapabilityClaims): SessionAuthC
       userId: claims.userId,
       ...(claims.purpose === 'chat-session'
         ? {chatId: claims.chatId}
-        : {
-            appRunId: claims.appRunId,
-            ...(claims.targetBankTransactionIds ? {targetBankTransactionIds: claims.targetBankTransactionIds} : {}),
-          }),
+        : claims.purpose === 'categorization-task'
+          ? {
+              appRunId: claims.appRunId,
+              ...(claims.targetBankTransactionIds ? {targetBankTransactionIds: claims.targetBankTransactionIds} : {}),
+            }
+          : {appRunId: claims.appRunId, eveSessionId: claims.eveSessionId}),
     },
     authenticator: 'penge-web',
     principalId: claims.userId,

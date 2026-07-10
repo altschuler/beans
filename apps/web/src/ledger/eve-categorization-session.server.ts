@@ -5,11 +5,11 @@ import {db, sql} from '@/db/client'
 import {requireCurrentPersonalTeamScope} from '@/teams/team-access.server'
 import {mintEveCategorizationTaskCapability} from '@/eve/service-capability.server'
 import {bankAccounts, bankTransactions, teamMembers} from '@penge/domain/schema'
+import {defaultEveCategorizationReconciler} from './eve-categorization-reconciliation.server'
 import {
   ActiveWorkflowRunExistsError,
   attachEveSessionToAgentWorkflowRun,
   CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME,
-  failStaleActiveAgentWorkflowRuns,
   markAgentWorkflowRunFailed,
   reserveActiveAgentWorkflowRun,
   type AgentWorkflowRun,
@@ -158,9 +158,8 @@ export async function invokeEveCategorizationTaskSession(input: EveCategorizatio
 const defaultStarter = createEveCategorizationSessionStarter({
   resolveBankTransactionTeamId: resolveAccessibleBankTransactionTeamId,
   resolveCurrentTeamId: resolveCurrentTeamIdForUser,
-  async reconcileWorkflowRuns(input) {
-    const staleBefore = new Date(Date.now() - stalePreparingWorkflowMs)
-    await failStaleActiveAgentWorkflowRuns(sql, {...input, staleBefore})
+  reconcileWorkflowRuns(input) {
+    return defaultEveCategorizationReconciler.reconcile(input)
   },
   reserveWorkflowRun(input) {
     return reserveActiveAgentWorkflowRun(sql, input)
@@ -191,8 +190,6 @@ async function resolveAccessibleBankTransactionTeamId(input: {userId: string; ba
 async function resolveCurrentTeamIdForUser(input: {userId: string}) {
   return (await requireCurrentPersonalTeamScope(input)).teamId
 }
-
-const stalePreparingWorkflowMs = 5 * 60 * 1000
 
 function isActiveWorkflowRunExistsError(error: unknown) {
   return error instanceof ActiveWorkflowRunExistsError || (typeof error === 'object' && error !== null && (error as {code?: string}).code === 'ACTIVE_WORKFLOW_RUN_EXISTS')

@@ -5,6 +5,7 @@ import {agentWorkflowRuns, teamMembers, teams, user} from '@penge/domain/schema'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 import {
   ActiveWorkflowRunExistsError,
+  advanceAgentWorkflowRunEveCursor,
   attachEveSessionToAgentWorkflowRun,
   attachFlueRunId,
   failStaleActiveAgentWorkflowRuns,
@@ -12,6 +13,7 @@ import {
   markAgentWorkflowRunCompletedByFlueRunId,
   markAgentWorkflowRunFailed,
   markAgentWorkflowRunFailedByFlueRunId,
+  markRunningAgentWorkflowRunCompleted,
   reserveActiveAgentWorkflowRun,
 } from '@penge/domain/workflow-runs'
 
@@ -46,7 +48,7 @@ describe('agent workflow run repository', () => {
       workflowName: 'categorize-transactions',
       teamId: 'team-1',
       requestedByUserId: 'user-1',
-      status: 'active',
+      status: 'pending',
       error: null,
       finishedAt: null,
     })
@@ -69,7 +71,7 @@ describe('agent workflow run repository', () => {
         requestedByUserId: 'user-1',
         now,
       }),
-    ).resolves.toMatchObject({id: 'different-workflow', status: 'active'})
+    ).resolves.toMatchObject({id: 'different-workflow', status: 'pending'})
 
     await expect(
       reserveActiveAgentWorkflowRun(sql, {
@@ -79,7 +81,7 @@ describe('agent workflow run repository', () => {
         requestedByUserId: 'user-1',
         now,
       }),
-    ).resolves.toMatchObject({id: 'different-team', status: 'active'})
+    ).resolves.toMatchObject({id: 'different-team', status: 'pending'})
   })
 
   it('allows a new run after the previous run is completed', async () => {
@@ -93,6 +95,10 @@ describe('agent workflow run repository', () => {
     await markAgentWorkflowRunCompleted(sql, {id: 'run-1', now: new Date('2026-06-24T10:01:00.000Z')})
 
     await expect(
+      markAgentWorkflowRunCompleted(sql, {id: 'run-1', now: new Date('2026-06-24T10:01:30.000Z')}),
+    ).resolves.toMatchObject({id: 'run-1', status: 'completed', finishedAt: new Date('2026-06-24T10:01:00.000Z')})
+
+    await expect(
       reserveActiveAgentWorkflowRun(sql, {
         id: 'run-2',
         teamId: 'team-1',
@@ -100,7 +106,7 @@ describe('agent workflow run repository', () => {
         requestedByUserId: 'user-1',
         now: new Date('2026-06-24T10:02:00.000Z'),
       }),
-    ).resolves.toMatchObject({id: 'run-2', status: 'active'})
+    ).resolves.toMatchObject({id: 'run-2', status: 'pending'})
   })
 
   it('attaches eve session cursors to active app workflow runs', async () => {
@@ -124,9 +130,38 @@ describe('agent workflow run repository', () => {
       flueRunId: null,
       eveSessionId: 'eve-session-1',
       eveNextStreamIndex: 7,
-      status: 'active',
+      status: 'running',
       updatedAt: new Date('2026-06-24T10:01:00.000Z'),
     })
+  })
+
+  it('does not let the Eve terminal fast path settle a run before session attachment', async () => {
+    await reserveActiveAgentWorkflowRun(sql, {
+      id: 'run-1', teamId: 'team-1', workflowName: 'categorize-transactions', requestedByUserId: 'user-1', now,
+    })
+
+    await expect(markRunningAgentWorkflowRunCompleted(sql, {id: 'run-1', now})).rejects.toMatchObject({
+      code: 'AGENT_WORKFLOW_RUN_NOT_FOUND',
+    })
+    await attachEveSessionToAgentWorkflowRun(sql, {id: 'run-1', eveSessionId: 'eve-session-1', now})
+    await expect(markRunningAgentWorkflowRunCompleted(sql, {id: 'run-1', now})).resolves.toMatchObject({
+      id: 'run-1', status: 'completed',
+    })
+  })
+
+  it('advances a running Eve cursor monotonically for the mapped session', async () => {
+    await reserveActiveAgentWorkflowRun(sql, {
+      id: 'run-1', teamId: 'team-1', workflowName: 'categorize-transactions', requestedByUserId: 'user-1', now,
+    })
+    await attachEveSessionToAgentWorkflowRun(sql, {id: 'run-1', eveSessionId: 'eve-session-1', eveNextStreamIndex: 2, now})
+
+    const cursorAdvancedAt = new Date('2026-06-24T10:05:00.000Z')
+    await expect(advanceAgentWorkflowRunEveCursor(sql, {
+      id: 'run-1', eveSessionId: 'eve-session-1', eveNextStreamIndex: 7, now: cursorAdvancedAt,
+    })).resolves.toMatchObject({eveNextStreamIndex: 7, status: 'running', updatedAt: now})
+    await expect(advanceAgentWorkflowRunEveCursor(sql, {
+      id: 'run-1', eveSessionId: 'eve-session-1', eveNextStreamIndex: 4, now: cursorAdvancedAt,
+    })).resolves.toMatchObject({eveNextStreamIndex: 7, updatedAt: now})
   })
 
   it('attaches Flue ids and marks admission failures without leaving runs active', async () => {
@@ -140,7 +175,7 @@ describe('agent workflow run repository', () => {
 
     await expect(
       attachFlueRunId(sql, {id: 'run-1', flueRunId: 'flue-run-1', now: new Date('2026-06-24T10:01:00.000Z')}),
-    ).resolves.toMatchObject({id: 'run-1', flueRunId: 'flue-run-1', status: 'active'})
+    ).resolves.toMatchObject({id: 'run-1', flueRunId: 'flue-run-1', status: 'running'})
 
     const failed = await markAgentWorkflowRunFailed(sql, {
       id: 'run-1',
@@ -208,7 +243,7 @@ describe('agent workflow run repository', () => {
     ).resolves.toEqual([])
 
     const rows = await db.select().from(agentWorkflowRuns).where(eq(agentWorkflowRuns.id, 'eve-run'))
-    expect(rows[0]).toMatchObject({status: 'active', eveSessionId: 'eve-session-1'})
+    expect(rows[0]).toMatchObject({status: 'running', eveSessionId: 'eve-session-1'})
   })
 
   it('fails stale preparing runs so a new run can be reserved', async () => {
@@ -243,7 +278,7 @@ describe('agent workflow run repository', () => {
         requestedByUserId: 'user-1',
         now: new Date('2026-06-24T10:07:00.000Z'),
       }),
-    ).resolves.toMatchObject({id: 'new-run', status: 'active'})
+    ).resolves.toMatchObject({id: 'new-run', status: 'pending'})
   })
 })
 

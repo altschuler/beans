@@ -44,6 +44,21 @@ describe('eve service capabilities', () => {
     expect(claims).not.toHaveProperty('chatId')
   })
 
+  it('round-trips a read-only categorization trace capability with the stored Eve session mapping', () => {
+    const token = mintEveServiceCapability(
+      {purpose: 'categorization-trace', teamId: 'team-1', userId: 'user-1', appRunId: 'run-1', eveSessionId: 'eve-session-1'},
+      {secret, now, ttlSeconds: 60},
+    )
+
+    expect(verifyEveServiceCapability(token, {secret, now})).toMatchObject({
+      purpose: 'categorization-trace',
+      teamId: 'team-1',
+      userId: 'user-1',
+      appRunId: 'run-1',
+      eveSessionId: 'eve-session-1',
+    })
+  })
+
   it('round-trips a target-less categorization task capability without target or chat scope', () => {
     const token = mintEveServiceCapability(
       {purpose: 'categorization-task', teamId: 'team-1', userId: 'user-1', appRunId: 'run-1'},

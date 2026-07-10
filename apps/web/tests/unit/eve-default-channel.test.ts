@@ -111,6 +111,7 @@ describe('eve default channel', () => {
     ['POST', '/eve/v1/session'],
     ['POST', '/eve/v1/session/eve-session_1'],
     ['POST', `/eve/v1/session/${'s'.repeat(200)}`],
+    ['GET', '/eve/v1/session/eve-session_1/stream'],
     ['GET', '/eve/v1/session/eve-session_1/stream?startIndex=0'],
     ['GET', '/eve/v1/session/eve-session_1/stream?startIndex=12'],
   ])('admits the exact proxy route %s %s', async (method, path) => {
@@ -128,7 +129,6 @@ describe('eve default channel', () => {
     ['POST', '/eve/v1/session/eve-session_1?extra=1'],
     ['POST', `/eve/v1/session/${'s'.repeat(201)}`],
     ['POST', '/eve/v1/session/%65ve-session_1'],
-    ['GET', '/eve/v1/session/eve-session_1/stream'],
     ['GET', '/eve/v1/session/eve-session_1/stream?extra=1'],
     ['GET', '/eve/v1/session/eve-session_1/stream?startIndex=1&startIndex=2'],
     ['GET', '/eve/v1/session/eve-session_1/stream?startIndex=01'],

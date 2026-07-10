@@ -1,82 +1,146 @@
 // @vitest-environment jsdom
 import React from 'react'
-import {renderToStaticMarkup} from 'react-dom/server'
-import {beforeEach, describe, expect, it, vi} from 'vitest'
+import {act, render, screen, waitFor} from '@testing-library/react'
+import {afterEach, describe, expect, it, vi} from 'vitest'
+import {CategorizationWorkflowTrace} from '@/components/ledger/categorization-workflow-trace'
 
-const flueMocks = vi.hoisted(() => ({
-  workflow: {
-    events: [] as unknown[],
-    logs: [] as unknown[],
-    status: 'idle',
-    result: null,
-    error: undefined as unknown,
-  },
-  useFlueWorkflow: vi.fn(() => flueMocks.workflow),
-}))
-
-vi.mock('@flue/react', () => ({
-  FlueProvider: ({children}: {children: React.ReactNode}) => children,
-  useFlueWorkflow: flueMocks.useFlueWorkflow,
-}))
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 describe('CategorizationWorkflowTrace', () => {
-  beforeEach(() => {
-    flueMocks.workflow = {
-      events: [],
-      logs: [],
-      status: 'idle',
-      result: null,
-      error: undefined,
-    }
-    flueMocks.useFlueWorkflow.mockClear()
+  it('renders nothing when there is no active run', () => {
+    const {container} = render(<CategorizationWorkflowTrace run={undefined} />)
+    expect(container).toBeEmptyDOMElement()
   })
 
-  it('renders nothing when there is no active run', async () => {
-    const {CategorizationWorkflowTrace} = await import('@/components/ledger/categorization-workflow-trace')
+  it('renders pending state before Eve attaches the session', () => {
+    render(<CategorizationWorkflowTrace run={{id: 'app-run-1', status: 'pending', error: null}} />)
 
-    const markup = renderToStaticMarkup(React.createElement(CategorizationWorkflowTrace, {flueRunId: undefined}))
-
-    expect(markup).toBe('')
-    expect(flueMocks.useFlueWorkflow).toHaveBeenCalledWith({runId: undefined})
+    expect(screen.getByRole('region', {name: 'AI workflow trace'})).toHaveTextContent('Preparing AI categorization trace')
+    expect(screen.getByText('pending')).toBeInTheDocument()
   })
 
-  it('renders a pending trace message before Flue attaches the run id', async () => {
-    const {CategorizationWorkflowTrace} = await import('@/components/ledger/categorization-workflow-trace')
+  it('derives safe phase labels from scrubbed Eve tool events', async () => {
+    const body = [
+      {type: 'actions.requested', data: {sequence: 0, turnId: 'turn-1', stepIndex: 0, actions: [
+        {kind: 'tool-call', callId: 'call-1', toolName: 'searchBankTransactions', input: {}},
+        {kind: 'tool-call', callId: 'call-2', toolName: 'applyCategorizationSuggestion', input: {}},
+      ]}},
+      {type: 'session.completed'},
+    ].map(event => JSON.stringify(event)).join('\n') + '\n'
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(body, {headers: {'content-type': 'application/x-ndjson'}})))
 
-    const markup = renderToStaticMarkup(React.createElement(CategorizationWorkflowTrace, {flueRunId: null}))
+    render(<CategorizationWorkflowTrace run={{id: 'app-run-1', status: 'running', error: null}} />)
 
-    expect(markup).toContain('AI workflow trace')
-    expect(markup).toContain('Preparing AI categorization trace')
-    expect(flueMocks.useFlueWorkflow).toHaveBeenCalledWith({runId: undefined})
+    await waitFor(() => {
+      expect(screen.getByText('Finding transactions…')).toBeInTheDocument()
+      expect(screen.getByText('Applying categorization suggestions…')).toBeInTheDocument()
+    })
+    expect(document.body).not.toHaveTextContent('searchBankTransactions')
+    expect(document.body).not.toHaveTextContent('applyCategorizationSuggestion')
   })
 
-  it('renders safe categorization progress and hides raw tool details', async () => {
-    flueMocks.workflow = {
-      events: [
-        {v: 3, type: 'run_start', eventIndex: 0, timestamp: '2026-06-27T10:00:00.000Z', runId: 'flue-run-1', workflowName: 'categorize-transactions', startedAt: '2026-06-27T10:00:00.000Z', input: {}},
-        {v: 3, type: 'thinking_delta', eventIndex: 1, timestamp: '2026-06-27T10:00:00.300Z', turnId: 'turn-1', contentIndex: 0, delta: 'Private model reasoning'},
-        {v: 3, type: 'tool_start', eventIndex: 2, timestamp: '2026-06-27T10:00:01.000Z', turnId: 'turn-1', toolName: 'applyCategorizationSuggestion', toolCallId: 'tool-1', args: {bankTransactionId: 'txn-secret-id', categoryAccountId: 'acct-secret-id'}},
-        {v: 3, type: 'tool', eventIndex: 3, timestamp: '2026-06-27T10:00:02.000Z', turnId: 'turn-1', toolName: 'applyCategorizationSuggestion', toolCallId: 'tool-1', isError: false, result: {bankTransactionId: 'txn-secret-id'}, durationMs: 10},
-        {v: 3, type: 'data', eventIndex: 4, timestamp: '2026-06-27T10:00:03.000Z', name: 'penge.workflow.progress', id: 'applying-suggestions', data: {message: 'Applying categorization suggestions…'}},
-        {v: 3, type: 'data', eventIndex: 5, timestamp: '2026-06-27T10:00:04.000Z', name: 'penge.workflow.progress', id: 'finishing', data: {message: 'Finishing workflow…'}},
-      ],
-      logs: [],
-      status: 'running',
-      result: null,
-      error: undefined,
-    }
-    const {CategorizationWorkflowTrace} = await import('@/components/ledger/categorization-workflow-trace')
+  it('reconnects a trace that ends early and resumes from the next event index', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(`${JSON.stringify({type: 'actions.requested', data: {actions: [
+        {kind: 'tool-call', callId: 'call-1', toolName: 'searchBankTransactions'},
+      ]}})}\n`))
+      .mockResolvedValueOnce(new Response(`${JSON.stringify({type: 'actions.requested', data: {actions: [
+        {kind: 'tool-call', callId: 'call-2', toolName: 'searchLedgerAccounts'},
+      ]}})}\n${JSON.stringify({type: 'session.completed'})}\n`))
+    vi.stubGlobal('fetch', fetchMock)
 
-    const markup = renderToStaticMarkup(React.createElement(CategorizationWorkflowTrace, {flueRunId: 'flue-run-1'}))
+    render(<CategorizationWorkflowTrace run={{id: 'app-run-1', status: 'running', error: null}} />)
+    await act(async () => undefined)
+    expect(screen.getByText('Finding transactions…')).toBeInTheDocument()
 
-    expect(markup).toContain('AI workflow trace')
-    expect(markup).toContain('running')
-    expect(markup).toContain('Applying categorization suggestions')
-    expect(markup).toContain('Finishing workflow')
-    expect(markup).not.toContain('Private model reasoning')
-    expect(markup).not.toContain('applyCategorizationSuggestion')
-    expect(markup).not.toContain('txn-secret-id')
-    expect(markup).not.toContain('acct-secret-id')
-    expect(flueMocks.useFlueWorkflow).toHaveBeenCalledWith({runId: 'flue-run-1'})
+    await act(async () => vi.advanceTimersByTime(250))
+    await act(async () => undefined)
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/eve/categorization/app-run-1/trace?startIndex=1',
+      expect.objectContaining({signal: expect.any(AbortSignal)}),
+    )
+    expect(screen.getByText('Checking available categories…')).toBeInTheDocument()
+  })
+
+  it('backs off repeated clean stream endings', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(''))
+      .mockResolvedValueOnce(new Response(''))
+      .mockResolvedValueOnce(new Response(`${JSON.stringify({type: 'session.completed'})}\n`))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<CategorizationWorkflowTrace run={{id: 'app-run-1', status: 'running', error: null}} />)
+    await act(async () => undefined)
+    await act(async () => vi.advanceTimersByTime(250))
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    await act(async () => vi.advanceTimersByTime(499))
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await act(async () => vi.advanceTimersByTime(1))
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('resumes after a mid-stream read error without replaying consumed events', async () => {
+    vi.useFakeTimers()
+    const interruptedBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`${JSON.stringify({type: 'actions.requested', data: {actions: [
+          {kind: 'tool-call', callId: 'call-1', toolName: 'searchBankTransactions'},
+        ]}})}\n`))
+        window.setTimeout(() => controller.error(new Error('stream interrupted')), 1)
+      },
+    })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(interruptedBody))
+      .mockResolvedValueOnce(new Response(`${JSON.stringify({type: 'session.completed'})}\n`))
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<CategorizationWorkflowTrace run={{id: 'app-run-1', status: 'running', error: null}} />)
+    await act(async () => undefined)
+    await act(async () => vi.advanceTimersByTime(1))
+    await act(async () => vi.advanceTimersByTime(250))
+    await act(async () => undefined)
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/eve/categorization/app-run-1/trace?startIndex=1',
+      expect.objectContaining({signal: expect.any(AbortSignal)}),
+    )
+    errorSpy.mockRestore()
+  })
+
+  it('retries after a transient trace connection error', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce(new Response(`${JSON.stringify({type: 'session.completed'})}\n`))
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<CategorizationWorkflowTrace run={{id: 'app-run-1', status: 'running', error: null}} />)
+    await act(async () => undefined)
+    expect(screen.getByText('Could not connect to AI categorization trace.')).toBeInTheDocument()
+
+    await act(async () => vi.advanceTimersByTime(250))
+    await act(async () => undefined)
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('Could not connect to AI categorization trace.')).toBeNull()
+    errorSpy.mockRestore()
+  })
+
+  it('renders terminal status from the app-owned run instead of the stream', () => {
+    render(<CategorizationWorkflowTrace run={{id: 'app-run-1', status: 'failed', error: 'AI categorization failed'}} />)
+
+    expect(screen.getByText('failed')).toBeInTheDocument()
+    expect(screen.getByText('AI categorization failed')).toBeInTheDocument()
   })
 })

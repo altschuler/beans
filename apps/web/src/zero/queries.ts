@@ -38,7 +38,11 @@ export const queries = defineQueries({
     }),
     activeAgentWorkflowRunsByTeam: defineQuery(activeAgentWorkflowRunsByTeamArgs, ({ctx, args}) => {
       const userID = requireZeroUserID(ctx)
-      return visibleAgentWorkflowRun(userID)(zql.agentWorkflowRuns.where('teamId', args.teamId).where('status', 'active')).orderBy('createdAt', 'desc')
+      return visibleAgentWorkflowRun(userID)(
+        zql.agentWorkflowRuns
+          .where('teamId', args.teamId)
+          .where(({cmp, or}) => or(cmp('status', 'pending'), cmp('status', 'running'))),
+      ).orderBy('createdAt', 'desc')
     }),
     teamDataAssistantChatsByTeamUser: defineQuery(teamDataAssistantChatsByTeamUserArgs, ({ctx, args}) => {
       const userID = requireZeroUserID(ctx)

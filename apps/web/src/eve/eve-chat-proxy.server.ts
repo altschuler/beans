@@ -523,8 +523,8 @@ function parseProxyRoute(request: Request, chatId: string): ProxyRoute | null {
   const stream = /^\/eve\/v1\/session\/([A-Za-z0-9_-]{1,200})\/stream$/.exec(suffix)
   if (!stream?.[1] || !sessionIdPattern.test(stream[1])) return null
   const query = /^\?startIndex=(0|[1-9]\d*)$/.exec(url.search)
-  if (!query?.[1]) return null
-  const startIndex = Number(query[1])
+  if (url.search !== '' && !query?.[1]) return null
+  const startIndex = query?.[1] === undefined ? 0 : Number(query[1])
   return Number.isSafeInteger(startIndex) ? {kind: 'stream', sessionId: stream[1], startIndex} : null
 }
 

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.11",
     "@penge/domain": "workspace:*",
     "ai": "7.0.18",
     "eve": "0.22.1",

@@ -276,21 +276,16 @@ describe('Eve chat reconciliation', () => {
     expect(deps.persistMissingSessionFailure).not.toHaveBeenCalled()
   })
 
-  it('uses clean EOF only as quiet confirmation of a preexisting committed boundary', async () => {
-    vi.useFakeTimers()
-    const deps = dependencies([{type: 'message.appended'}])
+  it('short-circuits a committed waiting boundary without opening another idle Eve stream', async () => {
+    const deps = dependencies()
     deps.hasCommittedBoundary.mockResolvedValue(true)
-    const promise = createChatReconciler(deps)(mapping({sessionState: 'waiting'}))
 
-    await vi.advanceTimersByTimeAsync(249)
-    expect(await promiseState(promise)).toBe('pending')
-    await vi.advanceTimersByTimeAsync(1)
-
-    await expect(promise).resolves.toEqual({
-      status: 'boundary', boundary: 'session.waiting', nextStreamIndex: 5,
+    await expect(createChatReconciler(deps)(mapping({sessionState: 'waiting'}))).resolves.toEqual({
+      status: 'boundary', boundary: 'session.waiting', nextStreamIndex: 4,
     })
-    expect(deps.sanitizeAndPersist).toHaveBeenCalledOnce()
-    expect(deps.createStream).toHaveBeenCalledOnce()
+    expect(deps.createStream).not.toHaveBeenCalled()
+    expect(deps.mintChatCapability).not.toHaveBeenCalled()
+    expect(deps.sanitizeAndPersist).not.toHaveBeenCalled()
   })
 
   it('bounds a stream with no boundary at 15 seconds and does not persist a local reset state', async () => {

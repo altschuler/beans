@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto'
 import type {Sql} from 'postgres'
 
-export type AgentWorkflowRunStatus = 'active' | 'completed' | 'failed'
+export type AgentWorkflowRunStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 export type AgentWorkflowRun = {
   id: string
@@ -83,7 +83,7 @@ export async function reserveActiveAgentWorkflowRun(
         ${input.workflowName},
         ${input.teamId},
         ${input.requestedByUserId},
-        'active',
+        'pending',
         null,
         ${timestamp},
         ${timestamp},
@@ -107,8 +107,8 @@ export async function attachFlueRunId(
   const now = input.now ?? new Date()
   const rows = await sql<AgentWorkflowRunRow[]>`
     update agent_workflow_runs
-    set flue_run_id = ${input.flueRunId}, updated_at = ${now.toISOString()}
-    where id = ${input.id} and status = 'active'
+    set flue_run_id = ${input.flueRunId}, status = 'running', updated_at = ${now.toISOString()}
+    where id = ${input.id} and status = 'pending'
     returning *
   `
   return requireWorkflowRun(rows, input.id)
@@ -123,8 +123,24 @@ export async function attachEveSessionToAgentWorkflowRun(
     update agent_workflow_runs
     set eve_session_id = ${input.eveSessionId},
         eve_next_stream_index = ${input.eveNextStreamIndex ?? 0},
+        status = 'running',
         updated_at = ${now.toISOString()}
-    where id = ${input.id} and status = 'active'
+    where id = ${input.id} and status = 'pending'
+    returning *
+  `
+  return requireWorkflowRun(rows, input.id)
+}
+
+export async function advanceAgentWorkflowRunEveCursor(
+  sql: Sql,
+  input: {id: string; eveSessionId: string; eveNextStreamIndex: number; now?: Date},
+): Promise<AgentWorkflowRun> {
+  const rows = await sql<AgentWorkflowRunRow[]>`
+    update agent_workflow_runs
+    set eve_next_stream_index = greatest(eve_next_stream_index, ${input.eveNextStreamIndex})
+    where id = ${input.id}
+      and eve_session_id = ${input.eveSessionId}
+      and status = 'running'
     returning *
   `
   return requireWorkflowRun(rows, input.id)
@@ -138,8 +154,29 @@ export async function markAgentWorkflowRunCompleted(
   const timestamp = now.toISOString()
   const rows = await sql<AgentWorkflowRunRow[]>`
     update agent_workflow_runs
-    set status = 'completed', error = null, updated_at = ${timestamp}, finished_at = ${timestamp}
-    where id = ${input.id} and status = 'active'
+    set status = 'completed',
+        error = null,
+        updated_at = case when status = 'completed' then updated_at else ${timestamp} end,
+        finished_at = coalesce(finished_at, ${timestamp})
+    where id = ${input.id} and status in ('pending', 'running', 'completed')
+    returning *
+  `
+  return requireWorkflowRun(rows, input.id)
+}
+
+export async function markRunningAgentWorkflowRunCompleted(
+  sql: Sql,
+  input: {id: string; now?: Date},
+): Promise<AgentWorkflowRun> {
+  const now = input.now ?? new Date()
+  const timestamp = now.toISOString()
+  const rows = await sql<AgentWorkflowRunRow[]>`
+    update agent_workflow_runs
+    set status = 'completed',
+        error = null,
+        updated_at = case when status = 'completed' then updated_at else ${timestamp} end,
+        finished_at = coalesce(finished_at, ${timestamp})
+    where id = ${input.id} and status in ('running', 'completed')
     returning *
   `
   return requireWorkflowRun(rows, input.id)
@@ -154,7 +191,7 @@ export async function markAgentWorkflowRunCompletedByFlueRunId(
   const rows = await sql<AgentWorkflowRunRow[]>`
     update agent_workflow_runs
     set status = 'completed', error = null, updated_at = ${timestamp}, finished_at = ${timestamp}
-    where flue_run_id = ${input.flueRunId} and status = 'active'
+    where flue_run_id = ${input.flueRunId} and status = 'running'
     returning *
   `
   return requireWorkflowRun(rows, input.flueRunId)
@@ -168,8 +205,29 @@ export async function markAgentWorkflowRunFailed(
   const timestamp = now.toISOString()
   const rows = await sql<AgentWorkflowRunRow[]>`
     update agent_workflow_runs
-    set status = 'failed', error = ${shortError(input.error)}, updated_at = ${timestamp}, finished_at = ${timestamp}
-    where id = ${input.id} and status = 'active'
+    set status = 'failed',
+        error = case when status = 'failed' then error else ${shortError(input.error)} end,
+        updated_at = case when status = 'failed' then updated_at else ${timestamp} end,
+        finished_at = coalesce(finished_at, ${timestamp})
+    where id = ${input.id} and status in ('pending', 'running', 'failed')
+    returning *
+  `
+  return requireWorkflowRun(rows, input.id)
+}
+
+export async function markRunningAgentWorkflowRunFailed(
+  sql: Sql,
+  input: {id: string; error: string; now?: Date},
+): Promise<AgentWorkflowRun> {
+  const now = input.now ?? new Date()
+  const timestamp = now.toISOString()
+  const rows = await sql<AgentWorkflowRunRow[]>`
+    update agent_workflow_runs
+    set status = 'failed',
+        error = case when status = 'failed' then error else ${shortError(input.error)} end,
+        updated_at = case when status = 'failed' then updated_at else ${timestamp} end,
+        finished_at = coalesce(finished_at, ${timestamp})
+    where id = ${input.id} and status in ('running', 'failed')
     returning *
   `
   return requireWorkflowRun(rows, input.id)
@@ -184,7 +242,7 @@ export async function markAgentWorkflowRunFailedByFlueRunId(
   const rows = await sql<AgentWorkflowRunRow[]>`
     update agent_workflow_runs
     set status = 'failed', error = ${shortError(input.error)}, updated_at = ${timestamp}, finished_at = ${timestamp}
-    where flue_run_id = ${input.flueRunId} and status = 'active'
+    where flue_run_id = ${input.flueRunId} and status = 'running'
     returning *
   `
   return requireWorkflowRun(rows, input.flueRunId)
@@ -204,11 +262,26 @@ export async function failStaleActiveAgentWorkflowRuns(
         finished_at = ${timestamp}
     where team_id = ${input.teamId}
       and workflow_name = ${input.workflowName}
-      and status = 'active'
+      and status = 'pending'
       and flue_run_id is null
       and eve_session_id is null
       and updated_at < ${input.staleBefore.toISOString()}
     returning *
+  `
+  return rows.map(mapWorkflowRun)
+}
+
+export async function listRunningAgentWorkflowRuns(
+  sql: Sql,
+  input: {teamId: string; workflowName: string},
+): Promise<AgentWorkflowRun[]> {
+  const rows = await sql<AgentWorkflowRunRow[]>`
+    select *
+    from agent_workflow_runs
+    where team_id = ${input.teamId}
+      and workflow_name = ${input.workflowName}
+      and status = 'running'
+    order by created_at desc
   `
   return rows.map(mapWorkflowRun)
 }
@@ -222,7 +295,7 @@ export async function listActiveAgentWorkflowRuns(
     from agent_workflow_runs
     where team_id = ${input.teamId}
       and workflow_name = ${input.workflowName}
-      and status = 'active'
+      and status in ('pending', 'running')
     order by created_at desc
   `
   return rows.map(mapWorkflowRun)

@@ -28,6 +28,7 @@ function isAllowedProxyRoute(request: Request) {
   if (request.method !== 'GET' || !/^\/eve\/v1\/session\/[A-Za-z0-9_-]{1,200}\/stream$/.test(url.pathname)) {
     return false
   }
+  if (url.search === '') return true
   const query = /^\?startIndex=(0|[1-9]\d*)$/.exec(url.search)
   return Boolean(query?.[1] && Number.isSafeInteger(Number(query[1])))
 }
