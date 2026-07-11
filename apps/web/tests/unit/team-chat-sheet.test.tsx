@@ -34,8 +34,8 @@ vi.mock('@/zero/mutators', () => ({mutators: {assistant: {
 }}}))
 vi.mock('@/lib/run-mutation', () => ({runZeroMutation: async () => true}))
 vi.mock('@/components/assistant/eve-chat-session', () => ({
-  EveChatSession: ({chatId, onFirstSubmit}: {chatId: string; onFirstSubmit(): void}) => (
-    <div data-testid="eve-chat-session" data-chat-id={chatId}>
+  EveChatSession: ({chatId, waitForChatCreation, onFirstSubmit}: {chatId: string; waitForChatCreation?: boolean; onFirstSubmit(): void}) => (
+    <div data-testid="eve-chat-session" data-chat-id={chatId} data-wait-for-chat-creation={String(Boolean(waitForChatCreation))}>
       <label>Message Ask Penge<textarea /></label>
       <button type="button" onClick={onFirstSubmit}>Test submit</button>
     </div>
@@ -60,6 +60,7 @@ describe('TeamChatSheet', () => {
     expect(within(panel).queryByText('Ask about transactions, categories, or what needs review.')).not.toBeInTheDocument()
     expect(within(panel).queryByText(/example/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(within(panel).getByTestId('eve-chat-session')).toHaveAttribute('data-wait-for-chat-creation', 'true')
   })
 
   it('resumes a recent submitted chat and touches it before the first submit', async () => {
@@ -69,6 +70,7 @@ describe('TeamChatSheet', () => {
     await user.click(screen.getByRole('button', {name: 'Ask Penge'}))
 
     await waitFor(() => expect(screen.getByTestId('eve-chat-session')).toHaveAttribute('data-chat-id', 'recent'))
+    expect(screen.getByTestId('eve-chat-session')).toHaveAttribute('data-wait-for-chat-creation', 'false')
     await user.click(screen.getByRole('button', {name: 'Test submit'}))
     expect(zero.touch).toHaveBeenCalledWith(expect.objectContaining({chatId: 'recent', firstSubmittedAt: expect.any(Number)}))
   })
@@ -89,6 +91,7 @@ describe('TeamChatSheet', () => {
     await user.click(screen.getByRole('button', {name: 'Clear chat'}))
     await waitFor(() => expect(zero.create).toHaveBeenCalled())
     expect(screen.getByTestId('eve-chat-session')).not.toHaveAttribute('data-chat-id', 'older')
+    expect(screen.getByTestId('eve-chat-session')).toHaveAttribute('data-wait-for-chat-creation', 'true')
   })
 
   it('closes on Escape and returns focus to the trigger', async () => {

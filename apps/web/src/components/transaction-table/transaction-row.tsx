@@ -8,10 +8,8 @@ type TransactionRowProps = {
   row: TransactionTableRowData
   categorizationAccounts: CategorizationAccountOption[]
   transferAccounts: TransferAccountOption[]
-  isAiRequestPending: boolean
   onCategorizeBankTransaction: (bankTransactionId: string, selection: CategorySelection) => void
   onConfirmTransaction: (bankTransactionId: string) => void
-  onAiCategorizeOne: (bankTransactionId: string) => void
   onSaveSplit: (row: TransactionTableRowData, splitLines: SplitLine[]) => boolean
   rowStyle?: CSSProperties
   rowIndex?: number
@@ -21,10 +19,8 @@ export function TransactionRow({
   row,
   categorizationAccounts,
   transferAccounts,
-  isAiRequestPending,
   onCategorizeBankTransaction,
   onConfirmTransaction,
-  onAiCategorizeOne,
   onSaveSplit,
   rowStyle,
   rowIndex,
@@ -42,9 +38,7 @@ export function TransactionRow({
             row={row}
             categorizationAccounts={categorizationAccounts}
             transferAccounts={transferAccounts}
-            isAiRequestPending={isAiRequestPending}
             onSelect={onCategorizeBankTransaction}
-            onAiCategorizeOne={onAiCategorizeOne}
             onSaveSplit={onSaveSplit}
           />
         </div>

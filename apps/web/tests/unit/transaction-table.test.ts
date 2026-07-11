@@ -32,10 +32,8 @@ describe('TransactionTable', () => {
         rows,
         categorizationAccounts: testCategorizationAccounts,
         transferAccounts: [],
-        isAiRequestPending: false,
         onCategorizeBankTransaction: vi.fn(),
         onConfirmTransaction: vi.fn(),
-        onAiCategorizeOne: vi.fn(),
         onSaveSplit: vi.fn(() => true),
       }),
     )
@@ -55,10 +53,8 @@ describe('TransactionTable', () => {
         rows: [buildTransactionTableRow({ledgerTransactionId: null, categoryAccountId: null, categoryLabel: 'Choose category'})],
         categorizationAccounts: testCategorizationAccounts,
         transferAccounts: testTransferAccounts,
-        isAiRequestPending: false,
         onCategorizeBankTransaction: vi.fn(),
         onConfirmTransaction: vi.fn(),
-        onAiCategorizeOne: vi.fn(),
         onSaveSplit: vi.fn(() => true),
       }),
     )

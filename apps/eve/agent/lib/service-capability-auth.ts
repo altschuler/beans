@@ -1,85 +1,35 @@
-import {
-  createUnauthorizedResponse,
-  extractBearerToken,
-  UnauthenticatedError,
-  type AuthFn,
-} from 'eve/channels/auth'
+import {extractBearerToken, UnauthenticatedError, type AuthFn} from 'eve/channels/auth'
 import type {SessionAuthContext} from 'eve/context'
-import {
-  EveServiceCapabilityError,
-  verifyEveServiceCapability,
-  type EveServiceCapabilityClaims,
-} from '@penge/domain/eve-service-capability'
-
-export type ExpectedCapabilityScope =
-  | {purpose: 'chat-session'; chatId?: string}
-  | {purpose: 'categorization-task'; appRunId: string}
-  | {purpose: 'categorization-trace'; appRunId: string}
+import {EveServiceCapabilityError, verifyEveServiceCapability} from '@penge/domain/eve-service-capability'
 
 export const eveServiceCapabilityAuth: AuthFn<Request> = request => {
   const token = extractBearerToken(request.headers.get('authorization'))
-  if (!token) {
-    throw new UnauthenticatedError({
-      message: 'Eve service capability bearer token is required',
-      challenges: [{scheme: 'Bearer'}],
-    })
-  }
-
+  if (!token) throw new UnauthenticatedError({
+    message: 'Eve service capability bearer token is required',
+    challenges: [{scheme: 'Bearer'}],
+  })
   try {
-    return sessionAuthFromClaims(verifyEveServiceCapability(token, {
+    const claims = verifyEveServiceCapability(token, {
       secret: getCapabilitySecret(),
       clockSkewSeconds: 30,
-    }))
+    })
+    return {
+      attributes: {
+        purpose: 'chat-session',
+        teamId: claims.teamId,
+        userId: claims.userId,
+        chatId: claims.chatId,
+      },
+      authenticator: 'penge-web',
+      principalId: claims.userId,
+      principalType: 'user',
+      subject: claims.userId,
+    } satisfies SessionAuthContext
   } catch (error) {
     if (error instanceof EveServiceCapabilityError) {
       throw new UnauthenticatedError({message: 'Eve service capability is invalid'})
     }
     throw error
-  }
-}
-
-export function capabilityMatchesScope(auth: SessionAuthContext, expected: ExpectedCapabilityScope) {
-  if (expected.purpose === 'chat-session') {
-    return auth.attributes.purpose === 'chat-session' &&
-      (expected.chatId === undefined || auth.attributes.chatId === expected.chatId)
-  }
-  return auth.attributes.purpose === expected.purpose && auth.attributes.appRunId === expected.appRunId
-}
-
-export function capabilityScopeError(auth: SessionAuthContext, expected: ExpectedCapabilityScope): Response | null {
-  if (capabilityMatchesScope(auth, expected)) return null
-  const chat = expected.purpose === 'chat-session'
-  return createUnauthorizedResponse({
-    status: 403,
-    message: chat
-      ? expected.chatId === undefined
-        ? 'Eve chat capability is required'
-        : 'Eve chat capability does not match the requested chat'
-      : auth.attributes.purpose === expected.purpose
-        ? 'Eve categorization capability does not match the requested app run'
-        : `Eve ${expected.purpose} capability is required`,
-  })
-}
-
-function sessionAuthFromClaims(claims: EveServiceCapabilityClaims): SessionAuthContext {
-  return {
-    attributes: {
-      purpose: claims.purpose,
-      teamId: claims.teamId,
-      userId: claims.userId,
-      ...(claims.purpose === 'chat-session'
-        ? {chatId: claims.chatId}
-        : claims.purpose === 'categorization-task'
-          ? {
-              appRunId: claims.appRunId,
-              ...(claims.targetBankTransactionIds ? {targetBankTransactionIds: claims.targetBankTransactionIds} : {}),
-            }
-          : {appRunId: claims.appRunId, eveSessionId: claims.eveSessionId}),
-    },
-    authenticator: 'penge-web',
-    principalId: claims.userId,
-    principalType: claims.purpose === 'chat-session' ? 'user' : 'service',
-    subject: claims.userId,
   }
 }
 

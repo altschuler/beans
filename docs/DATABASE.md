@@ -1,14 +1,14 @@
 # Database
 
-Postgres is the durable database. The web app's Drizzle schema lives in `apps/web/src/db/schema.ts`, and web app migrations live in `apps/web/drizzle/`.
+Postgres is the durable app/domain database. The shared Drizzle schema lives in `packages/domain/src/schema.ts`, and web app migrations live in `apps/web/drizzle/`.
 
-Eve has separate runtime-internal persistence; only app-owned authorization/status/cursor fields such as `eve_session_id`, `eve_continuation_token`, and `eve_next_stream_index` belong in Penge tables. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
+Eve has separate runtime-internal persistence. Penge stores only the chat-to-runtime mapping (`eve_session_id`, `eve_continuation_token`) needed for authorization and continuation; transcript and approval events remain in Eve. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
 
 Zero is the required sync layer for app/domain data. Any user-facing application data that should be available to the client must be exposed through Zero rather than fetched directly from server routes or ad-hoc client APIs.
 
 ## Generated files are read-only
 
-Never hand-edit generated database artifacts. Change the source files (`apps/web/src/db/schema.ts`, `apps/web/drizzle-zero.config.ts`, or related generator inputs) and rerun the appropriate generator instead.
+Never hand-edit generated database artifacts. Change the source files (`packages/domain/src/schema.ts`, `apps/web/drizzle-zero.config.ts`, or related generator inputs) and rerun the appropriate generator instead.
 
 Generated files include `apps/web/src/zero/schema.ts`, Drizzle migration metadata under `apps/web/drizzle/meta/`, and generated migration files under `apps/web/drizzle/`.
 
@@ -16,7 +16,7 @@ Generated files include `apps/web/src/zero/schema.ts`, Drizzle migration metadat
 
 Use Zero for all app/domain tables and queries:
 
-- Define tables in `apps/web/src/db/schema.ts`.
+- Define tables in `packages/domain/src/schema.ts`.
 - Include app/domain tables in `apps/web/drizzle-zero.config.ts`.
 - Regenerate the Zero schema with `just zero-generate` or `pnpm zero:generate` from the workspace root.
 - Do not hand-edit `apps/web/src/zero/schema.ts`; it is generated.
@@ -27,10 +27,7 @@ Current Zero-synced app/domain tables, and the only tables included in the local
 
 - `teams`
 - `team_members`
-- `agent_workflow_runs`
 - `team_data_assistant_chats`
-- `team_data_assistant_chat_events`
-- `team_data_assistant_chat_approvals`
 - `bank_connections`
 - `bank_accounts`
 - `bank_transactions`
@@ -54,9 +51,7 @@ These columns are Postgres `bigint` values exposed by Drizzle and Zero as `numbe
 
 When adding a new app/domain table, it is not complete until it is represented in both Drizzle and Zero generation config, and the generated Zero schema has been updated.
 
-`agent_workflow_runs` is the app-owned workflow visibility projection. It is Zero-synced so clients can observe `pending` and `running` team workflows plus terminal status, while Eve runtime state remains internal. Eve session ids and stream cursors remain server-only. Runtime cursor columns on app-owned tables are server-only and intentionally excluded from Zero unless a future UI projection requires a safe allowlisted field.
-
-Ask Penge keeps authorization/navigation metadata in `team_data_assistant_chats`. Its Eve session ordinal/state, continuation token, admission id, turn timestamps, committed stream cursor, follow-up delivery state, and captured pre-turn cursor are server-only coordination fields excluded from Zero. Approval claim ownership by follow-up admission is likewise server-only; it supports exact rollback only when durable reconciliation proves no delivery. `team_data_assistant_chat_events` is the append-only canonical sanitized event projection ordered by `(chat_id, session_ordinal, stream_index)`; `team_data_assistant_chat_approvals` stores only the bounded safe proposal and approval lifecycle projection. Both child tables cascade with the chat, are written only by server ingestion, and expose an explicit Zero allowlist through chat ownership and current membership. Raw Eve events and runtime handles never belong in either projection.
+Ask Penge keeps authorization and navigation metadata in `team_data_assistant_chats`. The Eve session id and continuation token are server-only and excluded from Zero. Eve's durable stream is the transcript and approval source of truth; Penge has no event or approval projection tables.
 
 `agent_tool_executions` is a server-only Eve write-idempotency ledger keyed by Eve session and tool call. It stores the structured result in the same database transaction as the guarded domain write so durable-step replay returns the original outcome. It must remain excluded from Zero and browser APIs.
 

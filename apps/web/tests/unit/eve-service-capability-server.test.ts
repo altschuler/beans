@@ -1,52 +1,21 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {verifyEveServiceCapability} from '@penge/domain/eve-service-capability'
 
-const serverSecret = 'server-secret-with-at-least-32-characters'
+const secret = 'a sufficiently long capability secret for tests'
+afterEach(() => vi.unstubAllEnvs())
 
-describe('web eve service capability facade', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs()
-    vi.resetModules()
-  })
-
-  it('mints chat capabilities from the server-only environment secret', async () => {
-    vi.stubEnv('PENGE_EVE_SERVICE_CAPABILITY_SECRET', serverSecret)
+describe('server Eve capability minting', () => {
+  it('mints only chat capabilities from the server secret', async () => {
+    vi.stubEnv('PENGE_EVE_SERVICE_CAPABILITY_SECRET', secret)
     const {mintEveChatSessionCapability} = await import('@/eve/service-capability.server')
-
-    const token = mintEveChatSessionCapability({teamId: 'team-1', userId: 'user-1', chatId: 'chat-1'}, {now: new Date('2026-07-09T12:00:00.000Z')})
-
-    expect(verifyEveServiceCapability(token, {secret: serverSecret, now: new Date('2026-07-09T12:00:30.000Z')})).toMatchObject({
-      purpose: 'chat-session',
-      teamId: 'team-1',
-      userId: 'user-1',
-      chatId: 'chat-1',
-    })
+    const now = new Date('2026-07-11T12:00:00.000Z')
+    const token = mintEveChatSessionCapability({teamId: 'team-1', userId: 'user-1', chatId: 'chat-1'}, {now})
+    expect(verifyEveServiceCapability(token, {secret, now})).toMatchObject({purpose: 'chat-session', chatId: 'chat-1'})
   })
 
-  it('mints categorization task capabilities with app run scope', async () => {
-    vi.stubEnv('PENGE_EVE_SERVICE_CAPABILITY_SECRET', serverSecret)
-    const {mintEveCategorizationTaskCapability} = await import('@/eve/service-capability.server')
-
-    const token = mintEveCategorizationTaskCapability(
-      {teamId: 'team-1', userId: 'user-1', appRunId: 'run-1', targetBankTransactionIds: ['txn-1']},
-      {now: new Date('2026-07-09T12:00:00.000Z')},
-    )
-
-    expect(verifyEveServiceCapability(token, {secret: serverSecret, now: new Date('2026-07-09T12:00:00.000Z')})).toMatchObject({
-      purpose: 'categorization-task',
-      teamId: 'team-1',
-      userId: 'user-1',
-      appRunId: 'run-1',
-      targetBankTransactionIds: ['txn-1'],
-    })
-  })
-
-  it('fails closed when the eve capability secret is not configured', async () => {
+  it('fails closed without the secret', async () => {
     vi.stubEnv('PENGE_EVE_SERVICE_CAPABILITY_SECRET', '')
     const {mintEveChatSessionCapability} = await import('@/eve/service-capability.server')
-
-    expect(() => mintEveChatSessionCapability({teamId: 'team-1', userId: 'user-1', chatId: 'chat-1'})).toThrow(
-      'PENGE_EVE_SERVICE_CAPABILITY_SECRET is required',
-    )
+    expect(() => mintEveChatSessionCapability({teamId: 'team-1', userId: 'user-1', chatId: 'chat-1'})).toThrow('PENGE_EVE_SERVICE_CAPABILITY_SECRET is required')
   })
 })

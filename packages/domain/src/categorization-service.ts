@@ -65,24 +65,6 @@ type SplitBankTransactionInput = {
   expectedCategorizationRevision?: number
 }
 
-export type AgentInterpretationInput =
-  | {kind: 'unable'}
-  | {kind: 'category'; categoryAccountId: string}
-  | {kind: 'split'; lines: CategorizationLineInput[]}
-  | {kind: 'transfer'; counterBankTransactionId: string}
-
-export type ApplyAgentBankTransactionInterpretationInput = {
-  userId: string
-  teamId: string
-  trustedScope?: true
-  bankTransactionId: string
-  targetBankTransactionIds?: string[]
-  expectedCategorizationRevision: number
-  confidence: LedgerTransactionAiConfidence
-  reasoning: string
-  interpretation: AgentInterpretationInput
-}
-
 type ConfirmBankTransactionInterpretationInput = {
   userId: string
   bankTransactionId: string
@@ -254,65 +236,6 @@ export async function splitBankTransaction(tx: DrizzleTransaction, input: SplitB
     bankTransactionId: input.bankTransactionId,
     targetBankTransactionIds: input.targetBankTransactionIds,
     interpretation: {kind: 'split', lines: input.lines},
-    expectedCategorizationRevision: input.expectedCategorizationRevision,
-  })
-}
-
-export async function applyAgentBankTransactionInterpretation(tx: DrizzleTransaction, input: ApplyAgentBankTransactionInterpretationInput) {
-  if ((input.interpretation.kind === 'category' || input.interpretation.kind === 'transfer') && input.confidence === 0) {
-    throw new Error('Category and transfer interpretations require confidence 1 or 2')
-  }
-
-  if (input.interpretation.kind === 'unable') {
-    return recordUnableAgentInterpretation(tx, input)
-  }
-
-  if (input.interpretation.kind === 'category') {
-    return applyBankTransactionInterpretation(tx, {
-      userId: input.userId,
-      teamId: input.teamId,
-      trustedScope: input.trustedScope,
-      bankTransactionId: input.bankTransactionId,
-      targetBankTransactionIds: input.targetBankTransactionIds,
-      interpretation: {kind: 'category', accountId: input.interpretation.categoryAccountId},
-      status: input.confidence === 2 ? 'confirmed' : 'needs_review',
-      aiConfidence: input.confidence,
-      aiReasoning: input.reasoning,
-      categorizedBy: 'ai',
-      requiredExistingStatus: 'needs_review',
-      expectedCategorizationRevision: input.expectedCategorizationRevision,
-    })
-  }
-
-  if (input.interpretation.kind === 'split') {
-    return applyBankTransactionInterpretation(tx, {
-      userId: input.userId,
-      teamId: input.teamId,
-      trustedScope: input.trustedScope,
-      bankTransactionId: input.bankTransactionId,
-      targetBankTransactionIds: input.targetBankTransactionIds,
-      interpretation: {kind: 'split', lines: input.interpretation.lines},
-      status: 'needs_review',
-      aiConfidence: 1,
-      aiReasoning: input.reasoning,
-      categorizedBy: 'ai',
-      requiredExistingStatus: 'needs_review',
-      expectedCategorizationRevision: input.expectedCategorizationRevision,
-    })
-  }
-
-  return applyBankTransactionInterpretation(tx, {
-    userId: input.userId,
-    teamId: input.teamId,
-    trustedScope: input.trustedScope,
-    bankTransactionId: input.bankTransactionId,
-    targetBankTransactionIds: input.targetBankTransactionIds,
-    interpretation: {kind: 'transfer', counterBankTransactionId: input.interpretation.counterBankTransactionId},
-    status: input.confidence === 2 ? 'confirmed' : 'needs_review',
-    aiConfidence: input.confidence,
-    aiReasoning: input.reasoning,
-    categorizedBy: 'ai',
-    requiredExistingStatus: 'needs_review',
     expectedCategorizationRevision: input.expectedCategorizationRevision,
   })
 }
@@ -556,32 +479,6 @@ async function deleteBankImportTransactionsWithoutBankPostings(tx: DrizzleTransa
       await tx.delete(ledgerTransactions).where(and(eq(ledgerTransactions.id, ledgerTransactionId), eq(ledgerTransactions.source, 'bank_import')))
     }
   }
-}
-
-async function recordUnableAgentInterpretation(tx: DrizzleTransaction, input: ApplyAgentBankTransactionInterpretationInput) {
-  if (input.confidence !== 0) throw new Error('Unable interpretations require confidence 0')
-  const normalizedAiReasoning = requireAiReasoning(input.reasoning)
-  const loaded = await loadBankTransactionForCategorization(tx, {
-    userId: input.userId,
-    teamId: input.teamId,
-    trustedScope: input.trustedScope,
-    bankTransactionId: input.bankTransactionId,
-  })
-  if (loaded.teamId !== input.teamId) return false
-  if (input.targetBankTransactionIds && !input.targetBankTransactionIds.includes(loaded.bankTransaction.id)) return false
-
-  const existing = await loadExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
-  if (existing && isProtectedFromAiOverwrite(existing.ledgerTransaction)) return false
-
-  const now = new Date()
-  await bumpCategorizationRevisions(tx, {
-    bankTransactionIds: [loaded.bankTransaction.id],
-    targetBankTransactionId: loaded.bankTransaction.id,
-    expectedCategorizationRevision: input.expectedCategorizationRevision,
-    now,
-  })
-  await recordBankTransactionAiResult(tx, loaded.bankTransaction.id, 0, normalizedAiReasoning, now)
-  return true
 }
 
 export async function clearLedgerCategorizations(tx: DrizzleTransaction, input: ClearLedgerCategorizationsInput) {

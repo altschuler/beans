@@ -1,6 +1,5 @@
 import {
   CategorizationRevisionConflictError,
-  applyAgentBankTransactionInterpretation,
   categorizeBankTransaction,
   splitBankTransaction,
 } from '@penge/domain/categorization-service'
@@ -23,73 +22,40 @@ import {
   searchLedgerTransactions,
 } from '@penge/domain/read-projections'
 import type {
-  ApplyCategorizationSuggestionInput,
   ApplyCategorizationsInput,
   GetBankTransactionDetailInput,
   ManageCategoryInput,
   SearchBankTransactionsInput,
   SearchLedgerAccountsInput,
   SearchLedgerTransactionsInput,
-  RuntimeScope,
+  ChatRuntimeScope,
 } from './finance-schemas'
 
 type WriteTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 type ChatCategorization = ApplyCategorizationsInput['categorizations'][number]
 type ToolCallIdentity = {sessionId: string; callId: string}
 
-export async function runSearchBankTransactions(input: SearchBankTransactionsInput, scope: RuntimeScope) {
+export async function runSearchBankTransactions(input: SearchBankTransactionsInput, scope: ChatRuntimeScope) {
   return toJson(await searchBankTransactions(db, {...toolScope(scope), filters: input}))
 }
 
-export async function runGetBankTransactionDetail(input: GetBankTransactionDetailInput, scope: RuntimeScope) {
+export async function runGetBankTransactionDetail(input: GetBankTransactionDetailInput, scope: ChatRuntimeScope) {
   return toJson(await getBankTransactionDetail(db, {...toolScope(scope), bankTransactionId: input.bankTransactionId}))
 }
 
-export async function runSearchLedgerTransactions(input: SearchLedgerTransactionsInput, scope: RuntimeScope) {
+export async function runSearchLedgerTransactions(input: SearchLedgerTransactionsInput, scope: ChatRuntimeScope) {
   return toJson(await searchLedgerTransactions(db, {...toolScope(scope), filters: input}))
 }
 
-export async function runSearchLedgerAccounts(input: SearchLedgerAccountsInput, scope: RuntimeScope) {
+export async function runSearchLedgerAccounts(input: SearchLedgerAccountsInput, scope: ChatRuntimeScope) {
   return toJson(await searchLedgerAccounts(db, {...toolScope(scope), filters: input}))
-}
-
-export async function runApplyCategorizationSuggestion(
-  input: ApplyCategorizationSuggestionInput,
-  scope: RuntimeScope,
-  identity: ToolCallIdentity,
-) {
-  if (scope.purpose !== 'categorization-task') throw new Error('Invalid trusted eve runtime scope')
-
-  try {
-    return await db.transaction(tx => replayableWrite(tx, scope, identity, 'applyCategorizationSuggestion', async () => {
-      const applied = await applyAgentBankTransactionInterpretation(tx, {
-        userId: scope.userId,
-        teamId: scope.teamId,
-        trustedScope: true,
-        targetBankTransactionIds: scope.targetBankTransactionIds,
-        bankTransactionId: input.bankTransactionId,
-        expectedCategorizationRevision: input.expectedCategorizationRevision,
-        confidence: input.interpretation.kind === 'split' ? 1 : input.confidence,
-        reasoning: input.reasoning,
-        interpretation: normalizeAutonomousInterpretation(input.interpretation),
-      })
-
-      return applied
-        ? {ok: true, status: 'applied'} as const
-        : {ok: false, status: 'rejected', error: 'Bank transaction is not writable in this task scope'} as const
-    }))
-  } catch (error) {
-    return categorizationErrorResult(error, input.bankTransactionId)
-  }
 }
 
 export async function runApplyCategorizations(
   input: ApplyCategorizationsInput,
-  scope: RuntimeScope,
+  scope: ChatRuntimeScope,
   identity: ToolCallIdentity,
 ) {
-  if (scope.purpose !== 'chat-session') throw new Error('Invalid trusted eve runtime scope')
-
   try {
     return await db.transaction(tx => replayableWrite(tx, scope, identity, 'applyCategorizations', async () => {
       const results = []
@@ -123,9 +89,7 @@ export async function runApplyCategorizations(
   }
 }
 
-export async function runManageCategory(input: ManageCategoryInput, scope: RuntimeScope, identity: ToolCallIdentity) {
-  if (scope.purpose !== 'chat-session') throw new Error('Invalid trusted eve runtime scope')
-
+export async function runManageCategory(input: ManageCategoryInput, scope: ChatRuntimeScope, identity: ToolCallIdentity) {
   try {
     return await db.transaction(tx => replayableWrite(tx, scope, identity, 'manageCategory', async () => {
       try {
@@ -150,7 +114,7 @@ export async function runManageCategory(input: ManageCategoryInput, scope: Runti
 
 async function applyChatCategorization(
   tx: WriteTransaction,
-  scope: RuntimeScope & {purpose: 'chat-session'},
+  scope: ChatRuntimeScope,
   input: ChatCategorization,
 ) {
   try {
@@ -282,7 +246,7 @@ async function applyCategoryManagementOperation(
 
 async function replayableWrite<T>(
   tx: WriteTransaction,
-  scope: RuntimeScope,
+  scope: ChatRuntimeScope,
   identity: ToolCallIdentity,
   toolName: string,
   execute: () => Promise<T>,
@@ -329,26 +293,8 @@ function toolResourceId(sessionId: string, callId: string) {
   return `eve:${normalizedSessionId}:${normalizedCallId}`
 }
 
-function toolScope(scope: RuntimeScope) {
-  return {
-    userId: scope.userId,
-    teamId: scope.teamId,
-    ...(scope.purpose === 'categorization-task' && scope.targetBankTransactionIds
-      ? {targetBankTransactionIds: scope.targetBankTransactionIds}
-      : {}),
-  }
-}
-
-function normalizeAutonomousInterpretation(input: ApplyCategorizationSuggestionInput['interpretation']) {
-  if (input.kind === 'category') return {kind: 'category' as const, categoryAccountId: input.categoryAccountId}
-  if (input.kind === 'split') {
-    return {
-      kind: 'split' as const,
-      lines: input.lines.map(line => ({accountId: line.categoryAccountId, amount: line.amount})),
-    }
-  }
-  if (input.kind === 'transfer') return {kind: 'transfer' as const, counterBankTransactionId: input.counterBankTransactionId}
-  return {kind: 'unable' as const}
+function toolScope(scope: ChatRuntimeScope) {
+  return {userId: scope.userId, teamId: scope.teamId}
 }
 
 class ChatBatchWriteError extends Error {

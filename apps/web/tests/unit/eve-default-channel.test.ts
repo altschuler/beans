@@ -38,11 +38,16 @@ function signedMalformedScopeToken() {
   return `${signingInput}.${signature}`
 }
 
-function taskToken() {
-  return mintEveServiceCapability(
-    {purpose: 'categorization-task', teamId: 'team-1', userId: 'user-1', appRunId: 'run-1'},
-    {secret, ttlSeconds: 60},
-  )
+function retiredPurposeToken() {
+  const token = chatToken()
+  const [header, encodedPayload] = token.split('.') as [string, string, string]
+  const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as Record<string, unknown>
+  payload.pur = 'categorization-task'
+  payload.appRunId = 'run-1'
+  delete payload.chatId
+  const changedPayload = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')
+  const signingInput = `${header}.${changedPayload}`
+  return `${signingInput}.${createHmac('sha256', secret).update(signingInput).digest('base64url')}`
 }
 
 async function responseError(result: unknown) {
@@ -142,15 +147,15 @@ describe('eve default channel', () => {
     expect((result as Response).status).toBe(403)
   })
 
-  it('rejects wrong-purpose, expired, malformed, and missing credentials without fallback auth', async () => {
-    const wrongPurpose = await authenticate('POST', '/eve/v1/session', taskToken())
+  it('rejects retired-purpose, expired, malformed, and missing credentials without fallback auth', async () => {
+    const wrongPurpose = await authenticate('POST', '/eve/v1/session', retiredPurposeToken())
     const expired = await authenticate('POST', '/eve/v1/session', chatToken(new Date(Date.now() - 120_000)))
     const malformed = await authenticate('POST', '/eve/v1/session', 'not-a-capability')
     const malformedScope = await authenticate('POST', '/eve/v1/session', signedMalformedScopeToken())
     const invalidSignature = await authenticate('POST', '/eve/v1/session', `${chatToken()}tampered`)
     const missing = await authenticate('POST', '/eve/v1/session')
 
-    expect((wrongPurpose.result as Response).status).toBe(403)
+    expect((wrongPurpose.result as Response).status).toBe(401)
     expect((expired.result as Response).status).toBe(401)
     expect((malformed.result as Response).status).toBe(401)
     expect((malformedScope.result as Response).status).toBe(401)

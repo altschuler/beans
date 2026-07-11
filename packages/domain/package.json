@@ -15,8 +15,7 @@
     "./read-projections": "./src/read-projections.ts",
     "./schema": "./src/schema.ts",
     "./team-chat-ui-context": "./src/team-chat-ui-context.ts",
-    "./team-scope": "./src/team-scope.ts",
-    "./workflow-runs": "./src/workflow-runs.ts"
+    "./team-scope": "./src/team-scope.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

@@ -8,7 +8,7 @@ Penge is a local-first budgeting app workspace.
 .
 ├─ apps/
 │  ├─ web/    # TanStack Start app, Zero client/server, Drizzle schema and migrations
-│  └─ eve/    # Eve finance assistant and categorization runtime
+│  └─ eve/    # Eve finance assistant runtime
 ├─ packages/
 │  └─ domain/ # Shared domain and database code
 └─ docs/

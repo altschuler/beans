@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, type FormEvent} from 'react'
+import {useRef, useState, type FormEvent} from 'react'
 import {useQuery, useZero} from '@rocicorp/zero/react'
 import {MoreHorizontal} from 'lucide-react'
 import {SyncAllBankAccountsButton} from '@/components/banking/sync-all-bank-accounts-button'
@@ -11,21 +11,14 @@ import {Input} from '@/components/ui/input'
 import {Label} from '@/components/ui/label'
 import {ClearCategorizationsDialog} from '@/components/dialogs'
 import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from '@/components/ui/dropdown-menu'
-import {toast} from 'sonner'
 import {useDialog} from '@/hooks/use-dialogs'
-import {showErrorToast} from '@/lib/show-error-toast'
 import {runZeroMutation} from '@/lib/run-mutation'
-import {aiCategorizeNeedsReviewBatch, aiCategorizeTransaction, reconcileAiCategorizationWorkflows} from '@/ledger/ai-categorization-fns'
 import {createManualTransactionInput, mutators, setStartingBalanceInput} from '@/zero/mutators'
 import {queries} from '@/zero/queries'
-import {CategorizationWorkflowTrace} from './categorization-workflow-trace'
 import {buildLedgerDashboardModel} from './ledger-dashboard-model'
 import {saveDashboardSplitTransaction} from './save-dashboard-split-transaction'
 
-const CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME = 'categorize-transactions'
-const PENDING_TEAM_ID_SENTINEL = '__pending_team__'
 const staleBankAccountSyncWarningMs = 4 * 60 * 60 * 1000
-const activeWorkflowReconciliationIntervalMs = 30_000
 
 type LedgerDashboardView = 'transactions' | 'bankAccountTransactions'
 
@@ -45,13 +38,9 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
   const [bankTransactions, bankTransactionsStatus] = useQuery(bankTransactionsQuery)
   const [bankAccounts, bankAccountsStatus] = useQuery(queries.domain.bankAccounts())
   const selectedBankAccount = view === 'bankAccountTransactions' ? bankAccounts.find((account) => account.id === bankAccountId) : undefined
-  const activeTeamId = (view === 'bankAccountTransactions' ? selectedBankAccount?.teamId : bankAccounts[0]?.teamId) ?? null
-  const [activeWorkflowRuns] = useQuery(queries.domain.activeAgentWorkflowRunsByTeam({teamId: activeTeamId ?? PENDING_TEAM_ID_SENTINEL}))
-  const [isAiRequestPending, setIsAiRequestPending] = useState(false)
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
   const [isManualTransactionDialogOpen, setIsManualTransactionDialogOpen] = useState(false)
   const [isStartingBalanceDialogOpen, setIsStartingBalanceDialogOpen] = useState(false)
-  const isAiRequestPendingRef = useRef(false)
   const isClearDialogOpenRef = useRef(false)
 
   const model = buildLedgerDashboardModel({
@@ -62,14 +51,6 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     bankAccountIdFilter: view === 'bankAccountTransactions' ? bankAccountId : null,
   })
 
-  const activeCategorizationWorkflowRun = activeTeamId
-    ? activeWorkflowRuns.find((run) => run.workflowName === CATEGORIZE_TRANSACTIONS_WORKFLOW_NAME)
-    : undefined
-  const isCategorizeWorkflowActive = Boolean(activeCategorizationWorkflowRun)
-  const isAiStartDisabled = isAiRequestPending || isCategorizeWorkflowActive
-  const activeWorkflowReconciliationKey = activeTeamId && activeWorkflowRuns.length > 0
-    ? `${activeTeamId}:${activeWorkflowRuns.map(run => `${run.id}:${run.updatedAt}`).join('|')}`
-    : null
   const bankAccountsComplete = bankAccountsStatus.type === 'complete'
   const bankTransactionsComplete = bankTransactionsStatus.type === 'complete'
   const selectedBankAccountMissing = view === 'bankAccountTransactions' && !selectedBankAccount && bankAccountsComplete
@@ -90,38 +71,6 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
 
   function confirmTransaction(bankTransactionId: string) {
     void runZeroMutation(zero.mutate(mutators.ledger.confirmTransaction({bankTransactionId})), 'Could not confirm transaction')
-  }
-
-  async function aiCategorizeBatch() {
-    if (isAiRequestPendingRef.current) return
-
-    isAiRequestPendingRef.current = true
-    setIsAiRequestPending(true)
-    try {
-      await aiCategorizeNeedsReviewBatch({data: {}})
-      toast.success('AI categorization started. You can keep reviewing while it runs.')
-    } catch (error) {
-      showErrorToast(error, 'AI categorization failed. Try again.')
-    } finally {
-      isAiRequestPendingRef.current = false
-      setIsAiRequestPending(false)
-    }
-  }
-
-  async function aiCategorizeOne(bankTransactionId: string) {
-    if (isAiRequestPendingRef.current) return
-
-    isAiRequestPendingRef.current = true
-    setIsAiRequestPending(true)
-    try {
-      await aiCategorizeTransaction({data: {bankTransactionId}})
-      toast.success('AI categorization started for this transaction.')
-    } catch (error) {
-      showErrorToast(error, 'AI could not categorize this transaction.')
-    } finally {
-      isAiRequestPendingRef.current = false
-      setIsAiRequestPending(false)
-    }
   }
 
   async function requestClearCategorizations() {
@@ -146,17 +95,6 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
     })
   }
 
-  const aiEligibleReviewCount = model.transactionRows.filter((row) => row.needsReview).length
-
-  useEffect(() => {
-    if (!activeTeamId || activeWorkflowRuns.length === 0) return
-    const reconcile = () => void reconcileAiCategorizationWorkflows({data: {teamId: activeTeamId}})
-      .catch(error => console.error('Could not reconcile AI categorization workflows', error))
-    reconcile()
-    const interval = window.setInterval(reconcile, activeWorkflowReconciliationIntervalMs)
-    return () => window.clearInterval(interval)
-  }, [activeTeamId, activeWorkflowReconciliationKey, activeWorkflowRuns.length])
-
   const dashboardClassName = 'flex h-full min-h-0 flex-col'
   function renderTransactionHeaderActions() {
     if (showStartingBalanceAction) {
@@ -174,10 +112,6 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
         <div className="text-sm font-semibold">
           {model.reviewCount} {model.reviewCount === 1 ? 'needs review' : 'need review'}
         </div>
-        {isCategorizeWorkflowActive ? <div className="text-sm font-semibold text-muted-foreground">AI categorization is running for this team</div> : null}
-        <Button type="button" variant="outline" disabled={aiEligibleReviewCount === 0 || isAiStartDisabled} onClick={() => void aiCategorizeBatch()}>
-          Auto-categorize
-        </Button>
         <SyncAllBankAccountsButton accounts={syncableBankAccounts} variant="outline" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -204,14 +138,6 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
 
   const dashboardContent = (
     <div className={dashboardClassName}>
-      <CategorizationWorkflowTrace run={activeCategorizationWorkflowRun
-        ? {
-            id: activeCategorizationWorkflowRun.id,
-            status: activeCategorizationWorkflowRun.status as 'pending' | 'running',
-            error: activeCategorizationWorkflowRun.error,
-          }
-        : undefined}
-      />
       <div className={view === 'transactions' ? 'flex min-h-0 flex-1' : 'flex min-h-0 flex-1 flex-col'}>
         {view === 'transactions' ? (
           transactionRowsSyncing ? (
@@ -221,10 +147,8 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
               rows={model.transactionRows}
               categorizationAccounts={model.categorizationAccounts}
               transferAccounts={model.transferAccounts}
-              isAiRequestPending={isAiStartDisabled}
               onCategorizeBankTransaction={categorizeBankTransaction}
               onConfirmTransaction={confirmTransaction}
-              onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
               onSaveSplit={saveSplit}
             />
           )
@@ -250,10 +174,8 @@ export function LedgerDashboard({view = 'transactions', bankAccountId}: LedgerDa
                   rows={model.transactionRows}
                   categorizationAccounts={model.categorizationAccounts}
                   transferAccounts={model.transferAccounts}
-                  isAiRequestPending={isAiStartDisabled}
                   onCategorizeBankTransaction={(bankTransactionId, selection) => void categorizeBankTransaction(bankTransactionId, selection)}
                   onConfirmTransaction={(bankTransactionId) => void confirmTransaction(bankTransactionId)}
-                  onAiCategorizeOne={(bankTransactionId) => void aiCategorizeOne(bankTransactionId)}
                   onSaveSplit={saveSplit}
                 />
               </div>

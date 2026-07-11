@@ -7,10 +7,8 @@ type TransactionTableProps = {
   rows: TransactionTableRowData[]
   categorizationAccounts: CategorizationAccountOption[]
   transferAccounts: TransferAccountOption[]
-  isAiRequestPending: boolean
   onCategorizeBankTransaction: (bankTransactionId: string, selection: CategorySelection) => void
   onConfirmTransaction: (bankTransactionId: string) => void
-  onAiCategorizeOne: (bankTransactionId: string) => void
   onSaveSplit: (row: TransactionTableRowData, splitLines: SplitLine[]) => boolean
 }
 
@@ -18,10 +16,8 @@ export function TransactionTable({
   rows,
   categorizationAccounts,
   transferAccounts,
-  isAiRequestPending,
   onCategorizeBankTransaction,
   onConfirmTransaction,
-  onAiCategorizeOne,
   onSaveSplit,
 }: TransactionTableProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -65,10 +61,8 @@ export function TransactionTable({
                 rowIndex={virtualRow.index}
                 categorizationAccounts={categorizationAccounts}
                 transferAccounts={transferAccounts}
-                isAiRequestPending={isAiRequestPending}
                 onCategorizeBankTransaction={onCategorizeBankTransaction}
                 onConfirmTransaction={onConfirmTransaction}
-                onAiCategorizeOne={onAiCategorizeOne}
                 onSaveSplit={onSaveSplit}
               />
             )

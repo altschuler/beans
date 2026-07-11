@@ -4,7 +4,7 @@
 
 The Transactions page shows bank transactions that need review or have already been interpreted. Rows are bank-transaction-first: the row id and all row actions use `bankTransactionId`.
 
-Rows can come from provider sync or manual entry. A row may briefly appear locally before the import-time interpretation syncs down, but durable server state creates a balanced Uncategorized interpretation. It still appears as `Choose category` and needs review until the user or AI categorizes it.
+Rows can come from provider sync or manual entry. A row may briefly appear locally before the import-time interpretation syncs down, but durable server state creates a balanced Uncategorized interpretation. It still appears as `Choose category` and needs review until the user or Ask Penge categorizes it.
 
 ## Category selector
 
@@ -12,7 +12,6 @@ The category cell is the main interaction surface. Opening it shows a searchable
 
 - category choices
 - transfer choices
-- an AI categorize action
 - a Split action
 
 Category choices are active, same-team, non-bank, non-system category accounts. Bank-linked accounts and locked system accounts are not normal categories.
@@ -58,7 +57,7 @@ Supported chat writes are category, split, and transfer interpretations. They us
 
 ## Status dot and confirmation
 
-The status dot is an attention marker, not a raw AI confidence display. Active Eve categorization is shown as a team-level workflow indicator; the row dot reflects the row's latest persisted categorization state.
+The status dot is an attention marker, not a raw AI confidence display. It reflects the row's latest persisted categorization state.
 
 - red: uncategorized or AI could not categorize
 - yellow: AI suggested a plausible category and review is recommended
@@ -71,6 +70,6 @@ Clicking a confirmable AI-result dot confirms the current interpretation by `ban
 
 The Transactions page has a destructive `Clear categorizations` action behind a confirmation dialog.
 
-Current behavior resets bank-import ledger interpretations for accessible teams to balanced Uncategorized interpretations and leaves imported bank transactions intact. The result is that imported rows return to a needs-category state; users or AI can categorize them again.
+Current behavior resets bank-import ledger interpretations for accessible teams to balanced Uncategorized interpretations and leaves imported bank transactions intact. The result is that imported rows return to a needs-category state; users or Ask Penge can categorize them again.
 
 This action is mainly a product reset/review tool. It must not delete or mutate bank transaction evidence.

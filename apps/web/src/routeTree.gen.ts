@@ -25,7 +25,6 @@ import { Route as ProtectedAppBankAccountsConnectRouteImport } from './routes/_p
 import { Route as ProtectedAppBankAccountsBankAccountIdRouteImport } from './routes/_protected/app/bank-accounts/$bankAccountId'
 import { Route as ProtectedAppAccountsAccountIdRouteImport } from './routes/_protected/app/accounts/$accountId'
 import { Route as ApiEveChatChatIdSplatRouteImport } from './routes/api/eve/chat/$chatId/$'
-import { Route as ApiEveCategorizationAppRunIdTraceRouteImport } from './routes/api/eve/categorization/$appRunId/trace'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -111,12 +110,6 @@ const ApiEveChatChatIdSplatRoute = ApiEveChatChatIdSplatRouteImport.update({
   path: '/api/eve/chat/$chatId/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiEveCategorizationAppRunIdTraceRoute =
-  ApiEveCategorizationAppRunIdTraceRouteImport.update({
-    id: '/api/eve/categorization/$appRunId/trace',
-    path: '/api/eve/categorization/$appRunId/trace',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -133,7 +126,6 @@ export interface FileRoutesByFullPath {
   '/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
   '/app/bank-accounts/$bankAccountId': typeof ProtectedAppBankAccountsBankAccountIdRoute
   '/app/bank-accounts/connect': typeof ProtectedAppBankAccountsConnectRoute
-  '/api/eve/categorization/$appRunId/trace': typeof ApiEveCategorizationAppRunIdTraceRoute
   '/api/eve/chat/$chatId/$': typeof ApiEveChatChatIdSplatRoute
 }
 export interface FileRoutesByTo {
@@ -151,7 +143,6 @@ export interface FileRoutesByTo {
   '/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
   '/app/bank-accounts/$bankAccountId': typeof ProtectedAppBankAccountsBankAccountIdRoute
   '/app/bank-accounts/connect': typeof ProtectedAppBankAccountsConnectRoute
-  '/api/eve/categorization/$appRunId/trace': typeof ApiEveCategorizationAppRunIdTraceRoute
   '/api/eve/chat/$chatId/$': typeof ApiEveChatChatIdSplatRoute
 }
 export interface FileRoutesById {
@@ -171,7 +162,6 @@ export interface FileRoutesById {
   '/_protected/app/accounts/$accountId': typeof ProtectedAppAccountsAccountIdRoute
   '/_protected/app/bank-accounts/$bankAccountId': typeof ProtectedAppBankAccountsBankAccountIdRoute
   '/_protected/app/bank-accounts/connect': typeof ProtectedAppBankAccountsConnectRoute
-  '/api/eve/categorization/$appRunId/trace': typeof ApiEveCategorizationAppRunIdTraceRoute
   '/api/eve/chat/$chatId/$': typeof ApiEveChatChatIdSplatRoute
 }
 export interface FileRouteTypes {
@@ -191,7 +181,6 @@ export interface FileRouteTypes {
     | '/app/accounts/$accountId'
     | '/app/bank-accounts/$bankAccountId'
     | '/app/bank-accounts/connect'
-    | '/api/eve/categorization/$appRunId/trace'
     | '/api/eve/chat/$chatId/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -209,7 +198,6 @@ export interface FileRouteTypes {
     | '/app/accounts/$accountId'
     | '/app/bank-accounts/$bankAccountId'
     | '/app/bank-accounts/connect'
-    | '/api/eve/categorization/$appRunId/trace'
     | '/api/eve/chat/$chatId/$'
   id:
     | '__root__'
@@ -228,7 +216,6 @@ export interface FileRouteTypes {
     | '/_protected/app/accounts/$accountId'
     | '/_protected/app/bank-accounts/$bankAccountId'
     | '/_protected/app/bank-accounts/connect'
-    | '/api/eve/categorization/$appRunId/trace'
     | '/api/eve/chat/$chatId/$'
   fileRoutesById: FileRoutesById
 }
@@ -240,7 +227,6 @@ export interface RootRouteChildren {
   ApiGocardlessCallbackRoute: typeof ApiGocardlessCallbackRoute
   ApiZeroMutateRoute: typeof ApiZeroMutateRoute
   ApiZeroQueryRoute: typeof ApiZeroQueryRoute
-  ApiEveCategorizationAppRunIdTraceRoute: typeof ApiEveCategorizationAppRunIdTraceRoute
   ApiEveChatChatIdSplatRoute: typeof ApiEveChatChatIdSplatRoute
 }
 
@@ -358,13 +344,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEveChatChatIdSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/eve/categorization/$appRunId/trace': {
-      id: '/api/eve/categorization/$appRunId/trace'
-      path: '/api/eve/categorization/$appRunId/trace'
-      fullPath: '/api/eve/categorization/$appRunId/trace'
-      preLoaderRoute: typeof ApiEveCategorizationAppRunIdTraceRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -425,8 +404,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGocardlessCallbackRoute: ApiGocardlessCallbackRoute,
   ApiZeroMutateRoute: ApiZeroMutateRoute,
   ApiZeroQueryRoute: ApiZeroQueryRoute,
-  ApiEveCategorizationAppRunIdTraceRoute:
-    ApiEveCategorizationAppRunIdTraceRoute,
   ApiEveChatChatIdSplatRoute: ApiEveChatChatIdSplatRoute,
 }
 export const routeTree = rootRouteImport

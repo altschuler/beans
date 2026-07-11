@@ -21,32 +21,11 @@ export function visibleBankConnection(userID: string) {
     connection.whereExists('team', visibleTeam(userID))
 }
 
-export function visibleAgentWorkflowRun(userID: string) {
-  return <TReturn>(
-    run: Query<'agentWorkflowRuns', Schema, TReturn>,
-  ): Query<'agentWorkflowRuns', Schema, TReturn> =>
-    run.whereExists('team', visibleTeam(userID))
-}
-
 export function visibleTeamDataAssistantChat(userID: string) {
   return <TReturn>(
     chat: Query<'teamDataAssistantChats', Schema, TReturn>,
   ): Query<'teamDataAssistantChats', Schema, TReturn> =>
     chat.where('userId', userID).whereExists('team', visibleTeam(userID))
-}
-
-export function visibleTeamDataAssistantChatEvent(userID: string) {
-  return <TReturn>(
-    event: Query<'teamDataAssistantChatEvents', Schema, TReturn>,
-  ): Query<'teamDataAssistantChatEvents', Schema, TReturn> =>
-    event.whereExists('chat', visibleTeamDataAssistantChat(userID))
-}
-
-export function visibleTeamDataAssistantChatApproval(userID: string) {
-  return <TReturn>(
-    approval: Query<'teamDataAssistantChatApprovals', Schema, TReturn>,
-  ): Query<'teamDataAssistantChatApprovals', Schema, TReturn> =>
-    approval.whereExists('chat', visibleTeamDataAssistantChat(userID))
 }
 
 export function visibleBankAccount(userID: string) {

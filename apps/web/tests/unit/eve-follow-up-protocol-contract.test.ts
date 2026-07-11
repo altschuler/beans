@@ -1,15 +1,15 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {eveChannel} from 'eve/channels/eve'
-import {createEve0221Client, eve0221Version} from '@/tests/helpers/eve-0221'
+import {createEve0225Client, eve0225Version} from '@/tests/helpers/eve-0225'
 
 const sessionId = 'eve-session-1'
 const continuationToken = 'continuation-1'
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('Eve 0.22.1 follow-up admission contract', () => {
-  it('does not acknowledge the public follow-up route until admitted delivery advances the durable stream', async () => {
-    expect(eve0221Version).toBe('0.22.1')
+describe('Eve 0.22.5 native follow-up receipt contract', () => {
+  it('does not acknowledge the public follow-up route until Eve advances the durable stream', async () => {
+    expect(eve0225Version).toBe('0.22.5')
     const durableEvents: unknown[] = [
       {type: 'session.started', data: {}},
       {type: 'session.waiting', data: {wait: 'next-user-message'}},
@@ -31,7 +31,7 @@ describe('Eve 0.22.1 follow-up admission contract', () => {
       route.method === 'POST' && route.path === '/eve/v1/session/:sessionId')
     const streamRoute = channel.routes.find(route =>
       route.method === 'GET' && route.path === '/eve/v1/session/:sessionId/stream')
-    if (!followUpRoute || !streamRoute) throw new Error('Eve 0.22.1 session routes are missing')
+    if (!followUpRoute || !streamRoute) throw new Error('Eve 0.22.5 session routes are missing')
 
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (request, init) => {
       const url = new URL(String(request))
@@ -58,7 +58,7 @@ describe('Eve 0.22.1 follow-up admission contract', () => {
       return streamRoute.handler(incoming, {params: {sessionId}, getSession})
     }))
 
-    const client = await createEve0221Client({host: 'https://eve.test', maxReconnectAttempts: 0})
+    const client = await createEve0225Client({host: 'https://eve.test', maxReconnectAttempts: 0})
     const session = client.session({sessionId, continuationToken, streamIndex: preTurnCursor})
     await session.send({message: 'follow up'})
 

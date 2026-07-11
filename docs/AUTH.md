@@ -13,7 +13,7 @@ Penge uses [Better Auth](https://www.better-auth.com/) for identity, credentials
 - `apps/web/src/routes/api/auth/$.ts` forwards Better Auth API requests to `auth.handler(request)`. Client calls such as sign-in, sign-up, sign-out, and session cookie management go through this route.
 - `apps/web/src/auth/client.ts` creates the browser `authClient` without an explicit base URL so Better Auth uses the current origin. This avoids absolute localhost HTTPS fetches during TanStack Start SPA shell generation.
 - `apps/web/src/components/auth/auth-form.tsx` signs users up or in with `authClient.signUp.email(...)` and `authClient.signIn.email(...)`.
-- Better Auth persists auth records in the Drizzle tables `user`, `session`, `account`, and `verification` from `apps/web/src/db/schema.ts`.
+- Better Auth persists auth records in the Drizzle tables `user`, `session`, `account`, and `verification` from `packages/domain/src/schema.ts`.
 - Better Auth reads the session token from request cookies and returns the current `{ user, session }` via `auth.api.getSession({ headers })`.
 
 ## Session helpers
@@ -104,13 +104,11 @@ Zero mutators follow the same rule: authenticate at the endpoint, derive `userID
 
 ### Runtime sidecar calls
 
-Ask Penge uses the Eve default conversation channel only through the app-owned same-origin proxy. For every start, follow-up, approval response, or stream read, `apps/web` authenticates Better Auth, resolves the chat row, verifies user ownership and current team membership, and requires the path Eve session id to match the server-owned current mapping. POST also requires an exact configured same-origin `Origin`. The proxy rejects browser authorization/identity headers and never exposes the Eve host or service secret.
+Ask Penge uses the Eve default conversation channel only through the app-owned same-origin proxy. For every start, follow-up, approval response, or stream read, `apps/web` authenticates Better Auth, verifies chat ownership and current team membership, and requires path session ids to match the server-owned mapping. POST also requires the configured same-origin `Origin`. The proxy rejects browser authorization/identity headers and never exposes the Eve host, service secret, or continuation token.
 
-After authorization, web mints a fresh short-lived `chat-session` capability limited to `{teamId, userId, chatId}`. Eve verifies issuer/audience/expiry/purpose and stamps that scope into session auth; every model-callable tool re-validates it. Session ids, continuation tokens, stream indexes, admission ids, tool-call ids, and approval request ids are coordination values, never authorization.
+After authorization, web mints a fresh short-lived `chat-session` capability limited to `{teamId, userId, chatId}`. Eve verifies audience, expiry, purpose, and signature and stamps that scope into session auth; every model-callable tool re-validates it. Session ids, continuation tokens, stream indexes, tool-call ids, and approval request ids are coordination values, never authorization.
 
-Chat Approve/Deny is defense in depth: Eve's durable approval is bound to the exact pending tool call, and the proxy additionally requires a matching current-session approval row. Approve is accepted only when Penge produced a ready, team-resolved, display-safe proposal. Deny may resolve a blocked proposal. Stale, replayed, unknown, cross-chat, cross-session, or multi-request textual responses fail closed.
-
-For Eve categorization, `apps/web` reserves the app-owned run first, mints a `categorization-task` capability, calls the internal Eve channel, and stores the returned Eve session/cursor on the app run. Authorized trace reads use a separate `categorization-trace` capability bound to the exact app run and stored Eve session; trace credentials cannot start tasks and task credentials cannot read streams. Domain trusted-scope APIs may be called only after one of these server boundaries has validated the user/team/resource scope.
+Eve's durable approval is bound to the exact pending tool call. The sanitizer resolves a display-safe proposal under trusted team scope on every live or replay stream. Unresolvable proposals fail closed with disabled controls. The proxy accepts only one explicit structured approve/deny response bound to a request id; textual aliases, numeric choices, mixed responses, and multi-request resolution are rejected. Domain guards and the idempotent tool-execution ledger remain authoritative for writes.
 
 ### Role-based authorization
 

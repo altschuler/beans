@@ -1,5 +1,5 @@
 import {useMemo, useState, type ReactNode} from 'react'
-import {ChevronDown, GitBranch, Sparkles} from 'lucide-react'
+import {ChevronDown, GitBranch} from 'lucide-react'
 import {Button} from '@/components/ui/button'
 import {Input} from '@/components/ui/input'
 import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover'
@@ -13,18 +13,15 @@ type CategorySelectorProps = {
   row: TransactionTableRow
   categorizationAccounts: CategorizationAccountOption[]
   transferAccounts: TransferAccountOption[]
-  isAiRequestPending: boolean
   onSelect: (bankTransactionId: string, selection: CategorySelection) => void
-  onAiCategorizeOne: (bankTransactionId: string) => void
   onSaveSplit: (row: TransactionTableRow, splitLines: SplitLine[]) => boolean
 }
 
-export function CategorySelector({row, categorizationAccounts, transferAccounts, isAiRequestPending, onSelect, onAiCategorizeOne, onSaveSplit}: CategorySelectorProps) {
+export function CategorySelector({row, categorizationAccounts, transferAccounts, onSelect, onSaveSplit}: CategorySelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [mode, setMode] = useState<CategorySelectorMode>('select')
   const [search, setSearch] = useState('')
   const [splitLines, setSplitLines] = useState<SplitLine[]>([])
-  const isAiDisabled = !row.canCategorize || !row.needsReview || isAiRequestPending
   const transferDirection = row.amount < 0 ? 'to' : 'from'
   const visibleTransferAccounts = useMemo(
     () => transferAccounts.filter(account => account.bankAccountId !== row.bankAccountId),
@@ -54,11 +51,6 @@ export function CategorySelector({row, categorizationAccounts, transferAccounts,
 
   function choose(selection: CategorySelection) {
     onSelect(row.bankTransactionId, selection)
-    closePopover()
-  }
-
-  function startAi() {
-    onAiCategorizeOne(row.bankTransactionId)
     closePopover()
   }
 
@@ -106,18 +98,6 @@ export function CategorySelector({row, categorizationAccounts, transferAccounts,
             <>
               <div className="mb-2 flex items-center gap-2">
                 <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search categories or transfers…" className="h-9 min-w-0 flex-1" autoFocus />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9 shrink-0"
-                  title="AI categorize transaction"
-                  aria-label="AI categorize transaction"
-                  disabled={isAiDisabled}
-                  onClick={startAi}
-                >
-                  <Sparkles className="h-4 w-4" aria-hidden="true" />
-                </Button>
                 <Button
                   type="button"
                   variant="outline"

@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest'
 import {asQueryInternals} from '@rocicorp/zero/bindings'
 import type {AST, Condition, AnyQuery} from '@rocicorp/zero'
 import {queries} from '@/zero/queries'
-import {visibleBankTransaction, visibleTeamDataAssistantChatApproval, visibleTeamDataAssistantChatEvent} from '@/zero/permissions'
+import {visibleBankTransaction} from '@/zero/permissions'
 import {zql} from '@/zero/schema'
 import {zeroContextFor} from '../helpers/zero'
 
@@ -11,16 +11,6 @@ function astFor(query: unknown) {
 }
 
 describe('Zero permission helpers', () => {
-  it('scopes chat projections through chat ownership and current team membership', () => {
-    const eventAst = astFor(visibleTeamDataAssistantChatEvent('user-1')(zql.teamDataAssistantChatEvents))
-    const approvalAst = astFor(visibleTeamDataAssistantChatApproval('user-1')(zql.teamDataAssistantChatApprovals))
-
-    for (const ast of [eventAst, approvalAst]) {
-      expect(conditionHasExistsPath(ast.where, ['chat'], {field: 'userId', value: 'user-1'})).toBe(true)
-      expect(conditionHasExistsPath(ast.where, ['chat', 'team', 'members'], {field: 'userId', value: 'user-1'})).toBe(true)
-    }
-  })
-
   it('scopes visible bank transactions through bank account team membership', () => {
     const ast = astFor(visibleBankTransaction('user-1')(zql.bankTransactions))
 
@@ -30,34 +20,6 @@ describe('Zero permission helpers', () => {
 })
 
 describe('Zero ledger query shapes', () => {
-  it('loads owned chat projections in transcript order', () => {
-    const eventAst = astFor(queries.domain.teamDataAssistantChatEventsByChat.fn({ctx: zeroContextFor('user-1'), args: {chatId: 'chat-1'}}))
-    const approvalAst = astFor(queries.domain.teamDataAssistantChatApprovalsByChat.fn({ctx: zeroContextFor('user-1'), args: {chatId: 'chat-1'}}))
-
-    expect(conditionIncludesSimple(eventAst.where, 'chatId', 'chat-1')).toBe(true)
-    expect(conditionHasExistsPath(eventAst.where, ['chat', 'team', 'members'], {field: 'userId', value: 'user-1'})).toBe(true)
-    expect(eventAst.orderBy).toEqual([
-      ['sessionOrdinal', 'asc'],
-      ['streamIndex', 'asc'],
-    ])
-    expect(conditionIncludesSimple(approvalAst.where, 'chatId', 'chat-1')).toBe(true)
-    expect(conditionHasExistsPath(approvalAst.where, ['chat', 'team', 'members'], {field: 'userId', value: 'user-1'})).toBe(true)
-    expect(approvalAst.orderBy).toEqual([
-      ['sessionOrdinal', 'asc'],
-      ['requestId', 'asc'],
-    ])
-  })
-
-  it('lists active workflow runs for an authorized team only', () => {
-    const ast = astFor(queries.domain.activeAgentWorkflowRunsByTeam.fn({ctx: zeroContextFor('user-1'), args: {teamId: 'team-1'}}))
-
-    expect(ast.table).toBe('agentWorkflowRuns')
-    expect(conditionIncludesSimple(ast.where, 'teamId', 'team-1')).toBe(true)
-    expect(conditionIncludesSimple(ast.where, 'status', 'pending')).toBe(true)
-    expect(conditionIncludesSimple(ast.where, 'status', 'running')).toBe(true)
-    expect(conditionHasExistsPath(ast.where, ['team', 'members'], {field: 'userId', value: 'user-1'})).toBe(true)
-  })
-
   it('narrows ledger account detail by account id while retaining team authorization and related data', () => {
     const ast = astFor(queries.domain.ledgerAccountDetail.fn({ctx: zeroContextFor('user-1'), args: {accountId: 'account-1'}}))
 

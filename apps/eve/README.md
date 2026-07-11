@@ -1,28 +1,17 @@
-# Penge eve runtime
+# Penge Eve runtime
 
-`apps/eve` is Penge's internal eve.dev runtime. Browser and orchestration requests must enter through Penge-owned authenticated boundaries; an eve session id, continuation token, stream index, sandbox id, or model message is never authorization.
+`apps/eve` is Penge's internal Eve assistant runtime. Browser requests enter through Penge-owned authenticated boundaries; runtime handles and model messages are never authorization.
 
-## Capability surfaces
+## Chat capability
 
-One eve agent serves two authenticated purposes selected from `ctx.session.auth.current.attributes` at `session.started`:
+The runtime accepts only the `chat-session` capability. It provides scoped finance reads, approval-gated chat categorization/category-management writes, and constrained workspace tools (`read_file`, `write_file`, `glob`, `grep`). Dynamic tools and instructions fail closed when trusted `{userId, teamId, chatId}` scope is missing or malformed. Authority fields never appear in model-callable schemas.
 
-- `chat-session`: shared finance reads, confirmed chat categorization/category-management writes, and the constrained workspace file tools (`read_file`, `write_file`, `glob`, `grep`).
-- `categorization-task`: shared finance reads plus `applyCategorizationSuggestion`. Task sessions receive no chat write, approval, question, delegation, shell, file, or network tools.
-
-The dynamic tools and instructions resolvers fail closed if the trusted scope is missing or malformed. Authority fields never appear in model-callable input schemas. All finance writes go through `@penge/domain` services and require current categorization revisions. Successful writes record their structured result in the server-only `agent_tool_executions` table within the same transaction, so eve durable-step replay returns the original outcome instead of repeating a side effect.
+All writes use `@penge/domain` services. Successful outcomes are recorded in `agent_tool_executions` in the same transaction so durable step replay does not repeat side effects.
 
 ## Sandbox policy
 
-The sandbox root is `/workspace`; interactive chat bulk categorization reserves `/workspace/bulk-categorization`. Files there are sensitive working memory, not authority or app-owned history, and must not be exposed through Zero or rendered raw.
+The sandbox root is `/workspace`; interactive bulk work uses `/workspace/bulk-categorization`. Files are sensitive working memory, not authority or app-owned history. Vercel, Docker, and microsandbox use deny-all egress; just-bash has no real network. Authored tools run in the app process and are not constrained by sandbox policy.
 
-`agent/sandbox.ts` uses eve's availability-aware backend in this order: Vercel Sandbox, Docker, microsandbox, then just-bash. Vercel, Docker, and microsandbox start with `deny-all` egress. Just-bash has no real network and rejects network-policy configuration, so it is left without a policy option. Domain allowlists are intentionally not used: Docker only supports allow-all/deny-all, and this runtime needs no sandbox egress.
+## Persistence
 
-All eve default tools are disabled statically. The dynamic chat capability reintroduces only the four file tools listed above. `bash`, `web_fetch`, `web_search`, `todo`, `ask_question`, and `agent` remain disabled. Authored `defineTool` code still runs in the app process with full environment and network access; sandbox policy does not constrain authored tools.
-
-## Persistence and reset
-
-Workspace state is per durable eve session. Docker keeps the session container filesystem, Vercel and microsandbox retain resumable session state through their backends, and just-bash stores local state under `.eve/sandbox-cache/`. Server shutdown stops sandbox compute but does not itself delete durable session state.
-
-For a local migration-only reset, stop eve and remove only eve-owned local runtime/sandbox state (for example `apps/eve/.eve/sandbox-cache/` and the configured local workflow state). Never reset Penge domain, Better Auth, banking, or ledger tables as part of an eve runtime reset.
-
-This first pass is local-development only. Production use with finance data is blocked until the chosen backend has an enforced retention duration and an app-owned deletion procedure that removes the eve session and its sandbox when the corresponding chat/run expires or is deleted. Do not assume deployment, app-row deletion, or server shutdown erases backend session data.
+Eve's default local workflow world and per-session sandbox state provide development durability. Production use is blocked until a durable world, retention period, and app-owned session/sandbox deletion procedure are selected and documented.

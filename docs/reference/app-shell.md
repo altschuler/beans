@@ -32,7 +32,7 @@ Protected pages use `PageLayout` for their own header context.
 - page-controlled content padding
 - an icon-only Ask Penge trigger after page-owned actions when chat scope is available
 
-This keeps page behavior explicit. For example, Transactions owns its review count, Auto-categorize, Sync all accounts, and More menu in its page header. Categories owns Add group and Add category. Bank accounts owns bank connection management. The chat trigger is shell-owned and consistent across protected app pages that use `PageLayout`.
+This keeps page behavior explicit. For example, Transactions owns its review count, Sync all accounts, and More menu in its page header. Categories owns Add group and Add category. Bank accounts owns bank connection management. The chat trigger is shell-owned and consistent across protected app pages that use `PageLayout`.
 
 ## Ask Penge chat surface
 

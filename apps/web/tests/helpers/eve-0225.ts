@@ -2,7 +2,7 @@ import {createRequire} from 'node:module'
 import {dirname, join} from 'node:path'
 import {pathToFileURL} from 'node:url'
 
-const supportedEveVersion = '0.22.1'
+const supportedEveVersion = '0.22.5'
 const require = createRequire(import.meta.url)
 const evePackagePath = require.resolve('eve/package.json', {paths: [join(import.meta.dirname, '../../../eve')]})
 const evePackage = require(evePackagePath) as {version?: unknown}
@@ -13,9 +13,9 @@ if (evePackage.version !== supportedEveVersion) {
 
 const eveRoot = dirname(evePackagePath)
 
-export const eve0221Version = supportedEveVersion
+export const eve0225Version = supportedEveVersion
 
-export async function createEve0221Client(
+export async function createEve0225Client(
   options: ConstructorParameters<typeof import('eve/client').Client>[0],
 ) {
   const {Client} = await import('eve/client')
@@ -43,10 +43,6 @@ type MockModelModule = {
   mockModel(input: Record<string, unknown>): unknown
 }
 
-type WorkflowStepsModule = {
-  resolveEffectiveOutputSchema(input: Record<string, unknown>): EveHarnessSession
-}
-
 type ContextModule = {
   ContextContainer: new () => {
     set(key: unknown, value: unknown): unknown
@@ -60,22 +56,17 @@ type ContextKeysModule = {
   SessionKey: unknown
 }
 
-export async function createEve0221ToolLoop(input: Record<string, unknown>) {
+export async function createEve0225ToolLoop(input: Record<string, unknown>) {
   const runtime = await loadEveModule<ToolLoopModule>('dist/src/harness/tool-loop.js')
   return runtime.createToolLoopHarness(input)
 }
 
-export async function createEve0221MockModel(input: Record<string, unknown>) {
+export async function createEve0225MockModel(input: Record<string, unknown>) {
   const runtime = await loadEveModule<MockModelModule>('dist/src/evals/mock-model.js')
   return runtime.mockModel(input)
 }
 
-export async function resolveEve0221OutputSchema(input: Record<string, unknown>) {
-  const runtime = await loadEveModule<WorkflowStepsModule>('dist/src/execution/workflow-steps.js')
-  return runtime.resolveEffectiveOutputSchema(input)
-}
-
-export async function runInEve0221Context<T>(sessionId: string, callback: () => T | Promise<T>) {
+export async function runInEve0225Context<T>(sessionId: string, callback: () => T | Promise<T>) {
   const [containerModule, keys] = await Promise.all([
     loadEveModule<ContextModule>('dist/src/context/container.js'),
     loadEveModule<ContextKeysModule>('dist/src/context/keys.js'),

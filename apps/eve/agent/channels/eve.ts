@@ -1,13 +1,10 @@
 import {eveChannel} from 'eve/channels/eve'
 import {ForbiddenError, type AuthFn} from 'eve/channels/auth'
-import {capabilityMatchesScope, eveServiceCapabilityAuth} from '../lib/service-capability-auth'
+import {eveServiceCapabilityAuth} from '../lib/service-capability-auth'
 
 const chatSessionAuth: AuthFn<Request> = async request => {
   const auth = await eveServiceCapabilityAuth(request)
   if (!auth) return auth
-  if (!capabilityMatchesScope(auth, {purpose: 'chat-session'})) {
-    throw new ForbiddenError({message: 'Eve chat capability is required'})
-  }
   if (!isAllowedProxyRoute(request)) {
     throw new ForbiddenError({message: 'Eve route is not available to chat capabilities'})
   }

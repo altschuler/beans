@@ -60,16 +60,6 @@ afterAll(async () => {
 })
 
 describe('eve finance tools', () => {
-  it('fails closed when a task capability contains an empty target list', async () => {
-    await expect(resolveTools({
-      purpose: 'categorization-task',
-      userId: 'user-1',
-      teamId: 'team-1',
-      appRunId: 'run-1',
-      targetBankTransactionIds: [],
-    })).rejects.toThrow('Invalid trusted eve runtime scope')
-  })
-
   it('rolls back a confirmed chat batch when any row conflicts', async () => {
     const chatScope = {purpose: 'chat-session', userId: 'user-1', teamId: 'team-1', chatId: 'chat-1'} as const
     const chat = await resolveTools(chatScope)
@@ -77,7 +67,7 @@ describe('eve finance tools', () => {
     await expect(execute(chat.applyCategorizations, {
       categorizations: [
         {
-          bankTransactionId: 'transaction-task',
+          bankTransactionId: 'transaction-batch',
           expectedCategorizationRevision: 0,
           interpretation: {kind: 'category', categoryAccountId: 'groceries'},
         },
@@ -94,44 +84,12 @@ describe('eve finance tools', () => {
       conflictCount: 1,
     })
 
-    await expect(interpretationFor('transaction-task')).resolves.toBeNull()
+    await expect(interpretationFor('transaction-batch')).resolves.toBeNull()
     const rows = await db.select().from(bankTransactions).where(eq(bankTransactions.bankAccountId, 'bank-1'))
     expect(rows).toEqual(expect.arrayContaining([
-      expect.objectContaining({id: 'transaction-task', categorizationRevision: 0}),
+      expect.objectContaining({id: 'transaction-batch', categorizationRevision: 0}),
       expect.objectContaining({id: 'transaction-chat', categorizationRevision: 0}),
     ]))
-  })
-
-  it('does not let an autonomous task overwrite a user-confirmed interpretation', async () => {
-    const chatScope = {purpose: 'chat-session', userId: 'user-1', teamId: 'team-1', chatId: 'chat-1'} as const
-    const chat = await resolveTools(chatScope)
-    await execute(chat.applyCategorizations, {
-      categorizations: [{
-        bankTransactionId: 'transaction-task',
-        expectedCategorizationRevision: 0,
-        interpretation: {kind: 'category', categoryAccountId: 'groceries'},
-      }],
-    }, chatScope)
-
-    const taskScope = {
-      purpose: 'categorization-task',
-      userId: 'user-1',
-      teamId: 'team-1',
-      appRunId: 'run-1',
-      targetBankTransactionIds: ['transaction-task'],
-    } as const
-    const task = await resolveTools(taskScope)
-    await expect(execute(task.applyCategorizationSuggestion, {
-      bankTransactionId: 'transaction-task',
-      expectedCategorizationRevision: 1,
-      confidence: 2,
-      reasoning: 'This must not replace a user-confirmed row.',
-      interpretation: {kind: 'category', categoryAccountId: 'groceries'},
-    }, taskScope)).resolves.toMatchObject({ok: false, status: 'rejected'})
-
-    await expect(interpretationFor('transaction-task')).resolves.toMatchObject({
-      transaction: {categorizedBy: 'user', userConfirmedBy: 'user-1'},
-    })
   })
 
   it('replays category creation with the same eve call id without duplicating the resource', async () => {
@@ -194,55 +152,7 @@ describe('eve finance tools', () => {
     expect(await db.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, 'groceries'))).toHaveLength(1)
   })
 
-  it('executes task and chat capabilities through trusted scoped domain services', async () => {
-    const taskScope = {
-      purpose: 'categorization-task',
-      userId: 'user-1',
-      teamId: 'team-1',
-      appRunId: 'run-1',
-      targetBankTransactionIds: ['transaction-task'],
-    } as const
-    const task = await resolveTools(taskScope)
-
-    const searchResult = await execute(task.searchBankTransactions, {reviewStatus: 'any', limit: 10}, taskScope) as Array<Record<string, unknown>>
-    expect(searchResult.map(row => row.id)).toEqual(['transaction-chat', 'transaction-task'])
-    expect(searchResult.find(row => row.id === 'transaction-task')).toMatchObject({canWrite: true, categorizationRevision: 0})
-    expect(searchResult.find(row => row.id === 'transaction-chat')).toMatchObject({canWrite: false})
-    expect(searchResult).not.toEqual(expect.arrayContaining([expect.objectContaining({id: 'transaction-other-team'})]))
-
-    await expect(execute(task.applyCategorizationSuggestion, {
-      bankTransactionId: 'transaction-chat',
-      expectedCategorizationRevision: 0,
-      confidence: 2,
-      reasoning: 'This row is outside the task target.',
-      interpretation: {kind: 'category', categoryAccountId: 'groceries'},
-    }, taskScope)).resolves.toMatchObject({ok: false, status: 'rejected'})
-    await expect(execute(task.applyCategorizationSuggestion, {
-      bankTransactionId: 'transaction-other-team',
-      expectedCategorizationRevision: 0,
-      confidence: 2,
-      reasoning: 'This row belongs to another team.',
-      interpretation: {kind: 'category', categoryAccountId: 'groceries'},
-    }, taskScope)).resolves.toMatchObject({ok: false, status: 'rejected'})
-    await expect(interpretationFor('transaction-chat')).resolves.toBeNull()
-    await expect(interpretationFor('transaction-other-team')).resolves.toBeNull()
-
-    const taskWrite = {
-      bankTransactionId: 'transaction-task',
-      expectedCategorizationRevision: 0,
-      confidence: 2,
-      reasoning: 'Matches repeated grocery purchases.',
-      interpretation: {kind: 'category', categoryAccountId: 'groceries'},
-    }
-    const firstTaskResult = await execute(task.applyCategorizationSuggestion, taskWrite, taskScope, 'categorize-call-1')
-    const replayedTaskResult = await execute(task.applyCategorizationSuggestion, taskWrite, taskScope, 'categorize-call-1')
-    expect(firstTaskResult).toEqual({ok: true, status: 'applied'})
-    expect(replayedTaskResult).toEqual(firstTaskResult)
-
-    const taskInterpretation = await interpretationFor('transaction-task')
-    expect(taskInterpretation?.transaction).toMatchObject({status: 'confirmed', categorizedBy: 'ai', userConfirmedBy: null})
-    expect(taskInterpretation?.postings.map(posting => posting.accountId)).toEqual(['bank-ledger-1', 'groceries'])
-
+  it('executes chat capabilities through trusted scoped domain services', async () => {
     const chatScope = {purpose: 'chat-session', userId: 'user-1', teamId: 'team-1', chatId: 'chat-1'} as const
     const chat = await resolveTools(chatScope)
     await expect(execute(chat.applyCategorizations, {
@@ -287,7 +197,7 @@ function context(attributes: Record<string, string | readonly string[]>, callId 
           attributes,
           authenticator: 'penge-web',
           principalId: 'user-1',
-          principalType: attributes.purpose === 'chat-session' ? 'user' : 'service',
+          principalType: 'user',
         },
         initiator: null,
       },
@@ -334,7 +244,7 @@ async function seedFixture() {
     ledgerAccount('uncategorized-2', 'team-2', 'group-2', 'adjustment', 'Uncategorized', {systemKey: 'uncategorized'}),
   ])
   await db.insert(bankTransactions).values([
-    bankTransaction('transaction-task', 'bank-1', '2026-07-08'),
+    bankTransaction('transaction-batch', 'bank-1', '2026-07-08'),
     bankTransaction('transaction-chat', 'bank-1', '2026-07-09'),
     bankTransaction('transaction-other-team', 'bank-2', '2026-07-10'),
   ])

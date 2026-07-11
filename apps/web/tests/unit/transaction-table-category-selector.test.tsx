@@ -14,9 +14,7 @@ describe('CategorySelector', () => {
         row={buildTransactionTableRow()}
         categorizationAccounts={testCategorizationAccounts}
         transferAccounts={testTransferAccounts}
-        isAiRequestPending={false}
         onSelect={vi.fn()}
-        onAiCategorizeOne={vi.fn()}
         onSaveSplit={vi.fn(() => true)}
       />,
     )
@@ -40,9 +38,7 @@ describe('CategorySelector', () => {
         row={buildTransactionTableRow({amount: 1_000_000})}
         categorizationAccounts={testCategorizationAccounts}
         transferAccounts={testTransferAccounts}
-        isAiRequestPending={false}
         onSelect={onSelect}
-        onAiCategorizeOne={vi.fn()}
         onSaveSplit={vi.fn(() => true)}
       />,
     )
@@ -58,28 +54,6 @@ describe('CategorySelector', () => {
     expect(onSelect).toHaveBeenCalledWith('bank-transaction-1', {kind: 'transfer', accountId: 'savings-ledger'})
   })
 
-  it('starts row AI categorization with the row bank transaction id', async () => {
-    const user = userEvent.setup()
-    const onAiCategorizeOne = vi.fn()
-
-    render(
-      <CategorySelector
-        row={buildTransactionTableRow()}
-        categorizationAccounts={testCategorizationAccounts}
-        transferAccounts={[]}
-        isAiRequestPending={false}
-        onSelect={vi.fn()}
-        onAiCategorizeOne={onAiCategorizeOne}
-        onSaveSplit={vi.fn(() => true)}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', {name: 'Category for Netto'}))
-    await user.click(screen.getByRole('button', {name: 'AI categorize transaction'}))
-
-    expect(onAiCategorizeOne).toHaveBeenCalledWith('bank-transaction-1')
-  })
-
   it('opens split editing from the selector without exposing split controls while closed', async () => {
     const user = userEvent.setup()
 
@@ -88,9 +62,7 @@ describe('CategorySelector', () => {
         row={buildTransactionTableRow()}
         categorizationAccounts={testCategorizationAccounts}
         transferAccounts={[]}
-        isAiRequestPending={false}
         onSelect={vi.fn()}
-        onAiCategorizeOne={vi.fn()}
         onSaveSplit={vi.fn(() => true)}
       />,
     )
