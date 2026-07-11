@@ -2,9 +2,7 @@
 
 Postgres is the durable database. The web app's Drizzle schema lives in `apps/web/src/db/schema.ts`, and web app migrations live in `apps/web/drizzle/`.
 
-Flue runtime persistence also uses Postgres through `@flue/postgres`, but it owns separate `flue_*` tables for the remaining automated-categorization workflow and trace. Those runtime tables are not Penge domain tables and must not be exposed through Zero. Eve has separate runtime-internal persistence; only app-owned authorization/status/cursor fields such as `eve_session_id`, `eve_continuation_token`, and `eve_next_stream_index` belong in Penge tables. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
-
-Flue `1.0.0-beta.9` uses runtime schema v4. This pre-1.0 schema is reset-only: if Flue reports a persisted schema mismatch in local or staging environments, stop Flue and clear only Flue-owned `flue_*` tables before restarting the sidecar. Do not clear Penge domain tables or Better Auth tables.
+Eve has separate runtime-internal persistence; only app-owned authorization/status/cursor fields such as `eve_session_id`, `eve_continuation_token`, and `eve_next_stream_index` belong in Penge tables. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
 
 Zero is the required sync layer for app/domain data. Any user-facing application data that should be available to the client must be exposed through Zero rather than fetched directly from server routes or ad-hoc client APIs.
 
@@ -56,7 +54,7 @@ These columns are Postgres `bigint` values exposed by Drizzle and Zero as `numbe
 
 When adding a new app/domain table, it is not complete until it is represented in both Drizzle and Zero generation config, and the generated Zero schema has been updated.
 
-`agent_workflow_runs` is the app-owned workflow visibility projection. It is Zero-synced so clients can observe `pending` and `running` team workflows plus terminal status, while separate runtime tables remain internal to Flue/eve. Eve session ids and stream cursors remain server-only. Runtime cursor columns on app-owned tables are server-only and intentionally excluded from Zero unless a future UI projection requires a safe allowlisted field.
+`agent_workflow_runs` is the app-owned workflow visibility projection. It is Zero-synced so clients can observe `pending` and `running` team workflows plus terminal status, while Eve runtime state remains internal. Eve session ids and stream cursors remain server-only. Runtime cursor columns on app-owned tables are server-only and intentionally excluded from Zero unless a future UI projection requires a safe allowlisted field.
 
 Ask Penge keeps authorization/navigation metadata in `team_data_assistant_chats`. Its Eve session ordinal/state, continuation token, admission id, turn timestamps, committed stream cursor, follow-up delivery state, and captured pre-turn cursor are server-only coordination fields excluded from Zero. Approval claim ownership by follow-up admission is likewise server-only; it supports exact rollback only when durable reconciliation proves no delivery. `team_data_assistant_chat_events` is the append-only canonical sanitized event projection ordered by `(chat_id, session_ordinal, stream_index)`; `team_data_assistant_chat_approvals` stores only the bounded safe proposal and approval lifecycle projection. Both child tables cascade with the chat, are written only by server ingestion, and expose an explicit Zero allowlist through chat ownership and current membership. Raw Eve events and runtime handles never belong in either projection.
 
@@ -81,9 +79,9 @@ Only await `runZeroMutation` when the next step genuinely requires server acknow
 
 When mocking a failing mutation in tests, resolve `.server` with `{type: 'error', error: {...}}` — do not reject it; rejection does not match Zero's real behavior.
 
-## Trusted server and Flue scope
+## Trusted server and Eve scope
 
-Some non-Zero server paths validate team access once at the web boundary and then pass a trusted `{userId, teamId}` scope to downstream domain code. Domain read projections and trusted Flue write paths filter directly by `teamId` after that boundary validation. This is different from Zero queries, which continue to encode read authorization as query filters over the authenticated `userID`.
+Some non-Zero server paths validate team access once at the web boundary and then pass a trusted `{userId, teamId}` scope to downstream domain code. Domain read projections and trusted Eve write paths filter directly by `teamId` after that boundary validation. This is different from Zero queries, which continue to encode read authorization as query filters over the authenticated `userID`.
 
 Do not call trusted-scope domain APIs from a new request path until that path has validated membership with server-side data, for example through `apps/web/src/teams/team-access.server.ts`.
 

@@ -45,7 +45,7 @@ The current domain authorization model is team-based:
 - Current memberships use role `owner`; the schema has a `role` column for future role-based permissions.
 - Banking resources belong to a team through `teamId` or through a parent record that belongs to a team.
 - A user may access team-owned data only when there is a matching `team_members` row for that user and team.
-- Once a server boundary has checked membership, downstream Flue/domain read and write code may receive a trusted `{userId, teamId}` scope and filter directly by `teamId`. Do not construct that trusted scope from client/model input without a server-side membership check.
+- Once a server boundary has checked membership, downstream Eve/domain read and write code may receive a trusted `{userId, teamId}` scope and filter directly by `teamId`. Do not construct that trusted scope from client/model input without a server-side membership check.
 
 ## Authorization patterns
 
@@ -110,17 +110,7 @@ After authorization, web mints a fresh short-lived `chat-session` capability lim
 
 Chat Approve/Deny is defense in depth: Eve's durable approval is bound to the exact pending tool call, and the proxy additionally requires a matching current-session approval row. Approve is accepted only when Penge produced a ready, team-resolved, display-safe proposal. Deny may resolve a blocked proposal. Stale, replayed, unknown, cross-chat, cross-session, or multi-request textual responses fail closed.
 
-Flue remains only for the default automated-categorization workflow and active-run trace until migration Sections 5–6. That path still uses the temporary `PENGE_FLUE_INTERNAL_TOKEN` boundary:
-
-1. `apps/web` authenticates the user and derives authorized team scope.
-2. It reserves an app-visible `agent_workflow_runs` row before calling the sidecar.
-3. It sends `appRunId`, trusted user/team scope, and optional exact target constraints to Flue.
-4. Flue categorization tools use only that trusted closure scope.
-5. Browser trace access is limited to authenticated `GET`/`HEAD /api/flue/runs/:flueRunId`; web resolves the app run and rechecks membership before adding the internal bearer.
-
-There is no browser Flue agent/chat proxy and no app-wide Flue provider. Keep the temporary Flue base URL/token only while this categorization path remains.
-
-For Eve categorization, `apps/web` reserves the app-owned run first, mints a `categorization-task` capability, calls the internal Eve channel, and stores the returned Eve session/cursor on the app run. Authorized trace reads use a separate `categorization-trace` capability bound to the exact app run and stored Eve session; trace credentials cannot start tasks and task credentials cannot read streams. This path remains selected with `PENGE_AI_RUNTIME=eve` until Section 6 removes the Flue fallback. Domain trusted-scope APIs may be called only after one of these server boundaries has validated the user/team/resource scope.
+For Eve categorization, `apps/web` reserves the app-owned run first, mints a `categorization-task` capability, calls the internal Eve channel, and stores the returned Eve session/cursor on the app run. Authorized trace reads use a separate `categorization-trace` capability bound to the exact app run and stored Eve session; trace credentials cannot start tasks and task credentials cannot read streams. Domain trusted-scope APIs may be called only after one of these server boundaries has validated the user/team/resource scope.
 
 ### Role-based authorization
 

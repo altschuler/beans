@@ -50,15 +50,15 @@ The server validates the target bank account and searches for an unreconciled op
 
 ## Chat-assisted categorization
 
-Ask Penge can propose and apply confirmed transaction categorization changes for the current team. The assistant must first read relevant context, state a concrete proposal, and wait for natural explicit confirmation of that latest proposal before calling the chat write tool.
+Ask Penge can propose transaction categorization changes for the current team. Chat write tools use Eve's durable per-call approval: the assistant invokes the exact pending tool call, Penge renders a display-safe proposal, and only Approve releases that call.
 
-For initial imports or large backlogs, Ask Penge can enter interactive bulk categorization mode. In that mode it uses a virtual workspace to track eligible transactions, category choices, grouped proposals, decisions, and progress. The assistant should reduce many uncategorized rows into concise group-level questions such as merchant or recurring-payment groups, then apply only the groups the user confirms through the multi-row `applyCategorizations` chat tool. It should verify remaining eligible transactions before saying a group or run is done.
+For initial imports or large backlogs, Ask Penge can enter interactive bulk categorization mode. In that mode it uses an Eve sandbox workspace to track eligible transactions, category choices, grouped proposals, decisions, and progress. The assistant should reduce many uncategorized rows into concise group-level questions such as merchant or recurring-payment groups, then apply only the groups approved through the multi-row `applyCategorizations` chat tool. It should verify remaining eligible transactions before saying a group or run is done.
 
 Supported chat writes are category, split, and transfer interpretations. They use the same guarded categorization services as manual UI actions, require the current `categorizationRevision`, and write user-confirmed interpretations. Stale revisions, invalid categories, unsafe transfers, unbalanced splits, and out-of-scope rows are rejected without partial writes.
 
 ## Status dot and confirmation
 
-The status dot is an attention marker, not a raw AI confidence display. Active Flue categorization is shown as a team-level workflow indicator; the row dot reflects the row's latest persisted categorization state.
+The status dot is an attention marker, not a raw AI confidence display. Active Eve categorization is shown as a team-level workflow indicator; the row dot reflects the row's latest persisted categorization state.
 
 - red: uncategorized or AI could not categorize
 - yellow: AI suggested a plausible category and review is recommended

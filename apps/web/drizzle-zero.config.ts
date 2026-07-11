@@ -25,7 +25,6 @@ export default drizzleZeroConfig(drizzleSchema, {
     },
     agentWorkflowRuns: {
       id: true,
-      flueRunId: false,
       workflowName: true,
       teamId: true,
       requestedByUserId: true,

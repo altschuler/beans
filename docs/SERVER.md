@@ -11,7 +11,7 @@ Keep Zero mutators short. Do not perform long-running external calls inside a Ze
 - notification delivery
 - webhooks to third-party systems
 
-For external orchestration, use a server function, server-only service, or an internal runtime sidecar such as the current Flue service or the eve migration skeleton instead:
+For external orchestration, use a server function, server-only service, or the internal Eve runtime sidecar instead:
 
 1. authenticate and authorize server-side
 2. make short committed database updates to record visible state, such as an `agent_workflow_runs` row or other processing marker
@@ -19,7 +19,7 @@ For external orchestration, use a server function, server-only service, or an in
 4. make short committed database updates with the result or admission failure
 5. clear transient processing state in a `finally` path when the orchestration owns transient state
 
-The temporary Flue categorization fallback lives in `apps/flue`. Eve-backed Ask Penge and automated categorization live in `apps/eve`; the web app owns chat admission and recovery, and reserves app-visible categorization state before task invocation. Eve categorization passes trusted `appRunId`, `userId`, and `teamId`, reconciles lifecycle from the durable stream, and serves only sanitized traces through app-run authorization. Runtime tools must not let the model choose authorization scope. Runtime sidecars should update domain tables through trusted server/domain logic, not through Zero.
+Eve-backed Ask Penge and automated categorization live in `apps/eve`; the web app owns chat admission and recovery, and reserves app-visible categorization state before task invocation. Eve categorization passes trusted `appRunId`, `userId`, and `teamId`, reconciles lifecycle from the durable stream, and serves only sanitized traces through app-run authorization. Runtime tools must not let the model choose authorization scope. Runtime sidecars should update domain tables through trusted server/domain logic, not through Zero.
 
 If the work needs durable retry, use an outbox table or background worker rather than relying on an in-request async task.
 

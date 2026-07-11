@@ -2,75 +2,44 @@
 
 ## Purpose
 
-AI categorization suggests categories for imported bank transactions. It is a review accelerator, not the authority of record. Server-side validation decides whether a model suggestion is allowed to affect ledger data.
+AI categorization suggests interpretations for imported bank transactions. It accelerates review; server-side domain validation remains authoritative.
 
-## Server boundary
+## Runtime boundary
 
-AI categorization starts through TanStack server functions, but the long-running work runs in the Flue sidecar, not in a Zero mutator or a synchronous web request. This keeps model/tool work outside Zero mutation processing while still letting clients read resulting domain state through Zero.
+TanStack server functions authenticate the user and authorize the team, then reserve an app-owned `agent_workflow_runs` row before starting an Eve task-mode session. Model work stays outside Zero mutators and long-lived database transactions. The server returns `{appRunId}` after Eve admits the task.
 
-Current entry points:
+Entry points support one target bank transaction or an eligible team batch. Only one `categorize-transactions` run may be `pending` or `running` for a team.
 
-- single-row AI categorize by `bankTransactionId`
-- team batch AI categorize for eligible needs-review transactions
+The web app mints a short-lived `categorization-task` capability scoped to `{appRunId, userId, teamId, targetBankTransactionIds?}`. Eve verifies it and stamps trusted session auth. The model never supplies authorization scope or target constraints.
 
-The web server function authenticates the user, resolves and authorizes the team, reserves an `agent_workflow_runs` row, invokes Flue asynchronously, and returns `{appRunId}` as soon as Flue accepts the workflow. The app run id is the web-visible workflow projection id; the Flue run id is separate and attached later by the Flue workflow lifecycle.
+## Workflow visibility and trace
 
-Only one active `categorize-transactions` workflow may exist for a team. Duplicate starts fail with a user-facing “AI categorization is already running for this team” style error.
+`agent_workflow_runs` is the Zero-synced product projection:
 
-## Workflow visibility and UI state
+- `pending`: reserved, session not attached;
+- `running`: Eve session attached;
+- `completed` or `failed`: terminal.
 
-`agent_workflow_runs` is the app-owned, Zero-synced workflow projection. The Transactions page reads active `categorize-transactions` runs for the current team and uses that team-level state to:
+Eve session ids and stream cursors are server-only. The Transactions page disables duplicate starts while a run is active and renders a compact trace from an authenticated app-run route. The route reads Eve's durable stream with a separate read-only `categorization-trace` capability and forwards only sanitized activity. Tool inputs, outputs, provider metadata, runtime ids, reasoning, and raw errors never reach the browser.
 
-- show that AI categorization is running for the team
-- disable row and batch AI start buttons while the workflow is active
-- show a compact active workflow trace once Flue attaches the runtime `flueRunId`
-- continue showing row updates through existing Zero transaction reads as Flue writes interpretations or unable results
+The trace is active-run visibility only. Product facts and categorized rows continue to arrive through normal Zero domain reads. Terminal status comes from the app run row; reconciliation converges it from Eve's durable stream if the best-effort completion callback is missed.
 
-The trace is active-run visibility only. Until `flueRunId` is attached, the page shows a pending trace message. Once it exists, the browser observes Flue through `useFlueWorkflow({runId})` via the authenticated `/api/flue/runs/:runId` proxy path. The proxy authorizes the request by looking up the app workflow run by `flue_run_id` and checking the signed-in user's team membership; unauthenticated requests return `401`, and unknown or inaccessible runs return `404`.
+## Agent context and tools
 
-Penge does not show per-row “agent is considering this row” state or completed-run trace history. The historical `bank_transactions.ai_processing_started_at` row-level claim has been retired; Flue categorization uses team-level workflow visibility rather than row-level processing claims.
+Categorization receives trusted `appRunId`, `userId`, `teamId`, and an optional exact target set. It can use scoped finance reads and only the autonomous `applyCategorizationSuggestion` write tool. Task sessions cannot ask questions, wait for approval, or use sandbox tools.
 
-## Agent context
-
-The Flue workflow receives trusted scope from the web app:
-
-- `appRunId`
-- `userId`
-- `teamId`
-- optional `targetBankTransactionIds` for a row-constrained run
-
-The model never supplies authorization scope. Flue tools use the trusted scope to search bank transactions, ledger transactions, and ledger accounts, then apply guarded interpretations through shared domain services.
-
-Eligible AI categories are active real categories: income, expense, or savings accounts with no linked bank account and no system key. Historical confirmed examples remain useful context, but the workflow now obtains them through broad scoped ledger search rather than a web-built prompt batch.
+The task stops when eligible targets are exhausted, after 100 attempts, after ten minutes, or when it cannot safely continue. Target constraints are enforced by the write tool, not only by instructions.
 
 ## Confidence scale
 
-AI confidence is an integer enum:
+- `0`: unable to categorize reliably; no ledger category is applied.
+- `1`: plausible; applied but still needs review.
+- `2`: confident; applied and marked confirmed by AI.
 
-- `0`: could not categorize reliably. No category is applied; the transaction still needs review.
-- `1`: plausible. The category is applied but the transaction still needs review.
-- `2`: confident. The category is applied and the interpretation is marked confirmed by AI.
+Every result includes concise display-safe reasoning.
 
-The model must also return concise display-safe reasoning. Reasoning is stored on the bank transaction and can appear in the status tooltip.
+## Guarded application
 
-## Applying interpretations
+The task may record unable, category, split, or transfer results through shared domain services. Every write requires the current `categorizationRevision`. Stale revisions, protected user-confirmed rows, invalid categories, unsafe transfers, unbalanced splits, and out-of-target rows fail without partial writes. Imported bank evidence is never mutated or deleted.
 
-The autonomous Flue categorizer writes through one guarded `applyCategorizationSuggestion` tool. It can record:
-
-- `unable` with confidence `0` and concise display-safe reasoning
-- a single category
-- a split, when strongly grounded in similar confirmed prior splits
-- a transfer, when a valid same-team opposite bank transaction exists
-
-For confidence `1` or `2`, AI uses the same bank-transaction-first interpretation path as manual categorization, with `categorizedBy = 'ai'`. Category and transfer interpretations may be AI-confirmed at confidence `2`; confidence `1` stays needs-review. Splits always stay needs-review. For confidence `0`, AI records the confidence and reasoning on the bank transaction without creating or replacing a ledger interpretation.
-
-AI application is guarded by `bank_transactions.categorization_revision`. Tools read the current revision and must pass it back when writing. Stale revisions, confirmed/user-confirmed rows, invalid categories, unsafe transfers, unbalanced splits, and rows outside the workflow target constraint are rejected without partial writes.
-
-## User confirmation after AI
-
-High-confidence AI rows can be confirmed by the user from the status dot. This preserves both facts:
-
-- AI set the category (`categorizedBy = 'ai'`)
-- a user later confirmed the interpretation (`userConfirmedAt` / `userConfirmedBy`)
-
-That distinction is why the UI uses separate soft-green and bright-green states.
+High-confidence AI rows can later be confirmed by a user while preserving both the original AI attribution and user-confirmation metadata.

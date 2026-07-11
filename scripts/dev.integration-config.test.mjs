@@ -7,7 +7,7 @@ const readJson = async path => JSON.parse(await readFile(path, 'utf8'))
 test('tracked dev commands consume generated checkout ports', async () => {
   const compose = await readFile('docker-compose.yml', 'utf8')
   const webPackage = await readJson('apps/web/package.json')
-  const fluePackage = await readJson('apps/flue/package.json')
+  const evePackage = await readJson('apps/eve/package.json')
   const playwrightConfig = await readFile('apps/web/playwright.config.ts', 'utf8')
 
   assert.match(compose, /'127\.0\.0\.1:\$\{POSTGRES_PORT:-5432\}:5432'/)
@@ -15,7 +15,8 @@ test('tracked dev commands consume generated checkout ports', async () => {
   assert.match(webPackage.scripts['dev:zero'], /--app-publications penge_zero_app/)
   assert.match(webPackage.scripts['dev:zero'], /--port \$\{ZERO_PORT:-4848\}/)
   assert.match(webPackage.scripts['dev:zero'], /--change-streamer-port \$\{ZERO_CHANGE_STREAMER_PORT:-4849\}/)
-  assert.match(fluePackage.scripts.dev, /dotenv -e \.env -- sh -c 'flue dev --target node --port \$\{FLUE_PORT:-3101\}'/)
+  assert.match(webPackage.scripts['test:e2e'], /^dotenv -e \.env -- playwright test$/)
+  assert.match(evePackage.scripts.dev, /dotenv -e \.env -- sh -c 'eve dev --port \$\{EVE_PORT:-3300\}'/)
   assert.match(playwrightConfig, /const appUrl = process\.env\.VITE_PUBLIC_APP_URL \?\? `https:\/\/localhost:\$\{process\.env\.PORT \?\? '3100'\}`/)
   assert.match(playwrightConfig, /baseURL: appUrl/)
   assert.match(playwrightConfig, /url: appUrl/)
@@ -29,7 +30,7 @@ test('justfile exposes managed worktree lifecycle and seed reset recipes', async
   }
 
   assert.match(justfile, /node scripts\/dev\.mjs create "\{\{ branch \}\}"/)
-  assert.match(justfile, /docker compose down -v --remove-orphans\n  just wait-db\n  pnpm db:migrate\n  just seed-restore\n  pnpm db:migrate/)
+  assert.match(justfile, /docker compose down -v --remove-orphans\n  just _zero-cache-clean\n  just wait-db\n  pnpm db:migrate\n  just seed-restore\n  pnpm db:migrate/)
   assert.match(justfile, /--table='"user"'/)
   assert.match(justfile, /--table=account/)
   assert.doesNotMatch(justfile, /--table=session/)

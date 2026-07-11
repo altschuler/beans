@@ -48,7 +48,6 @@ describe('zero schema', () => {
   })
 
   it('exposes workflow run fields with server column names', () => {
-    expect(schema.tables.agentWorkflowRuns.columns).not.toHaveProperty('flueRunId')
     expect(schema.tables.agentWorkflowRuns.columns.workflowName).toMatchObject({type: 'string', optional: false, serverName: 'workflow_name'})
     expect(schema.tables.agentWorkflowRuns.columns.teamId).toMatchObject({type: 'string', optional: false, serverName: 'team_id'})
     expect(schema.tables.agentWorkflowRuns.columns.requestedByUserId).toMatchObject({

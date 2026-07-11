@@ -162,7 +162,6 @@ describe('eve chat proxy route and request boundary', () => {
       ['POST', '/eve/v1/session/eve%2Fsession'],
       ['POST', '/eve/v1/session/eve%5Csession'],
       ['POST', '/eve/v1/session/eve-session/extra'],
-      ['GET', `/eve/v1/session/${sessionId}/stream`],
       ['GET', `/eve/v1/session/${sessionId}/stream?startIndex=00`],
       ['GET', `/eve/v1/session/${sessionId}/stream?startIndex=-1`],
       ['GET', `/eve/v1/session/${sessionId}/stream?startIndex=1.0`],

@@ -12,7 +12,7 @@ The authenticated shell owns one root Ask Penge surface under `apps/web/src/comp
 
 `team_data_assistant_chats` stores the user/team-owned thread metadata. The panel resumes the latest recently submitted chat, supports history switching and clear/new-thread behavior, and excludes empty placeholder threads from history. Each send derives a small known `clientContext.currentPage` hint from the current route. The hint is ephemeral Eve client context, is never authority, and is not persisted as message text or chat state.
 
-Chat UI files use product naming (`assistant`), not runtime naming. There is no app-wide Flue provider; the remaining workflow-only Flue provider is mounted only by the automated-categorization trace.
+Chat UI files use product naming (`assistant`), not runtime naming.
 
 ## Authorized Eve proxy
 
@@ -75,7 +75,3 @@ An unresolved admission initially remains leased because Eve may already be exec
 Ask Penge retains an interactive bulk mode under `/workspace/bulk-categorization`. Workspace files are sensitive per-session working memory, not authority. Only `read_file`, `write_file`, `glob`, and `grep` are available; shell, web/network, question, todo, and delegation tools remain disabled. Every final write re-reads authoritative data as needed, requires current revisions, and uses the same exact per-call Eve approval.
 
 Production Eve session/sandbox retention and app-owned deletion remain deployment work outside migration Section 4.
-
-## Current migration boundary
-
-Ask Penge chat is Eve-native. Flue is still the default automated categorization workflow/runtime and active-run trace; an Eve categorization spike can be selected with `PENGE_AI_RUNTIME=eve`, but migration Sections 5–6 are not complete. Keep the categorization-only Flue route/provider, runtime variables, dependencies, and `flue_run_id` until those sections replace the lifecycle and trace and perform broad removal.

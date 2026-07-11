@@ -602,8 +602,6 @@ describe('ledger Zero mutators', () => {
     expect(mutators).toHaveProperty('assistant.touchTeamDataAssistantChat')
     expect(serverMutators).toHaveProperty('assistant.createTeamDataAssistantChat')
     expect(serverMutators).toHaveProperty('assistant.touchTeamDataAssistantChat')
-    expect(mutators).not.toHaveProperty('flue.createTeamDataAssistantChat')
-    expect(serverMutators).not.toHaveProperty('flue.createTeamDataAssistantChat')
     expect(mutators.assistant).not.toHaveProperty('createTeamDataAssistantChatEvent')
     expect(mutators.assistant).not.toHaveProperty('updateTeamDataAssistantChatApproval')
     expect(serverMutators.assistant).not.toHaveProperty('createTeamDataAssistantChatEvent')

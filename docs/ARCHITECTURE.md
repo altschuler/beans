@@ -7,7 +7,6 @@ For product/system-design explanations, use `docs/reference/` alongside this arc
 Penge is a pnpm monorepo:
 
 - `apps/web/` is the TanStack Start application. It owns the browser UI, Better Auth, Zero, Drizzle schema/migrations, and web-facing server functions.
-- `apps/flue/` is the temporary fallback sidecar for automated categorization until the final migration cleanup. Ask Penge no longer uses Flue.
 - `apps/eve/` owns the Eve finance assistant, the authorized default chat channel, and the internal automated-categorization task and trace channel. Browser traffic always enters through `apps/web` authorization boundaries.
 - `packages/domain/` contains shared domain/database code used by the web app and runtime sidecars, including schema exports, categorization services, read projections, money helpers, runtime service capabilities, and workflow-run repository helpers.
 
@@ -15,7 +14,7 @@ The Eve runtime uses one finance assistant with dynamic capabilities selected fr
 
 Eve sandbox state is sensitive per-session working memory under `/workspace`, never app-owned state or Zero data. The runtime disables all default tools and dynamically restores only `read_file`, `write_file`, `glob`, and `grep` for chat. Sandbox egress is deny-all on Vercel, Docker, and microsandbox; just-bash has no real network. This policy does not constrain authored tools, which execute in the app runtime.
 
-Run commands from the workspace root by default. Package-local source paths in docs generally refer to `apps/web/src/...` for web code and `apps/flue/src/...` for Flue code.
+Run commands from the workspace root by default. Package-local source paths in docs generally refer to `apps/web/src/...` for web code and `apps/eve/agent/...` for Eve code.
 
 ## AI runtime boundaries
 
@@ -23,15 +22,15 @@ Ask Penge uses Eve's default conversation channel through the same-origin `/api/
 
 Penge persists only sanitized, ordered Eve chat events and safe approval proposals. Runtime session handles, continuation tokens, admission ids, cursors, and raw Eve events stay server-only. Live streams are sanitized and committed before browser delivery; bootstrap and reconciliation replay the same durable Eve stream after reload, interruption, or a stopped browser request. Follow-up delivery records an exact admission and pre-turn cursor: stream advancement or an acknowledged receipt proves delivery, while only a full clean zero-advance reconciliation deadline may restore an ambiguous lease and its admission-owned approval claims. Eve owns per-call durable approval state, while Penge independently requires a current safe proposal before forwarding Approve.
 
-Eve automated categorization reserves an app-owned `pending` run, starts an internal task-mode session with a scoped service capability, transitions the run to `running` when the session attaches, and reconciles terminal state from Eve's durable stream. The active trace is authorized by app run id and exposes only the shared sanitized event projection. Flue remains a temporary runtime-switch fallback until Section 6; there is no app-wide Flue provider and no browser-facing Flue chat or agent proxy.
+Eve automated categorization reserves an app-owned `pending` run, starts an internal task-mode session with a scoped service capability, transitions the run to `running` when the session attaches, and reconciles terminal state from Eve's durable stream. The active trace is authorized by app run id and exposes only the shared sanitized event projection.
 
-For local development, run web, Flue, and Eve as separate processes. The web app needs both runtime base URLs, the temporary Flue token, and the Eve service-capability secret; each sidecar uses its corresponding shared server credential and a non-web port.
+For local development, run web and Eve as separate processes. The web app uses the Eve runtime base URL and service-capability secret; Eve uses the corresponding shared secret and a non-web port.
 
-Local env files are generated per checkout by `scripts/dev.mjs` from `dev.config.mjs`. The generated root `.env` supplies `COMPOSE_PROJECT_NAME` plus isolated web, Flue, eve, Postgres, Zero, and Zero change-streamer ports. Generated `apps/web/.env`, `apps/flue/.env`, and `apps/eve/.env` sync the shared database URL, runtime URLs/tokens, and package-specific port settings while preserving unmanaged local secrets.
+Local env files are generated per checkout by `scripts/dev.mjs` from `dev.config.mjs`. The generated root `.env` supplies `COMPOSE_PROJECT_NAME` plus isolated web, Eve, Postgres, Zero, and Zero change-streamer ports. Generated `apps/web/.env` and `apps/eve/.env` sync the shared database URL, runtime URL/capability secret, and package-specific port settings while preserving unmanaged local secrets.
 
 Use `just init` to generate or refresh env files for the current checkout. Use `just worktree-create <branch>` and `just worktree-remove <branch>` for project-local `.worktrees/<branch-slug>` checkouts so Docker containers, networks, volumes, ports, and generated env files stay isolated. Do not run `git worktree add` directly in this repository.
 
-Start the apps from the workspace root with `just dev`, `just dev-web`, `just dev-flue`, or `just dev-eve` (or equivalent package-filtered commands). During the migration, `just dev` starts both Flue and eve so the eve spike can run without breaking current Flue-backed product paths. Package scripts still include fallback localhost ports for non-managed setups, but normal local work should use the generated env values.
+Start the apps from the workspace root with `just dev`, `just dev-web`, or `just dev-eve` (or equivalent package-filtered commands). `just dev` starts web and Eve. Package scripts include fallback localhost ports for non-managed setups, but normal local work should use generated env values.
 
 ## Client/server import boundaries
 
@@ -66,4 +65,4 @@ Server functions are reserved for special cases where Zero is not the right boun
 - tables intentionally excluded from Zero, such as Better Auth tables
 - operational endpoints that do not expose or mutate app/domain rows directly
 
-Zero mutators must still authorize server-side using the authenticated Zero context. Client-side filters, hidden UI, and client-supplied team ids are not authorization. The trusted-scope shortcut used by Flue/domain downstream code only applies after a server boundary has validated team membership.
+Zero mutators must still authorize server-side using the authenticated Zero context. Client-side filters, hidden UI, and client-supplied team ids are not authorization. The trusted-scope shortcut used by Eve/domain downstream code only applies after a server boundary has validated team membership.

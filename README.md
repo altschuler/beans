@@ -7,10 +7,10 @@ Penge is a local-first budgeting app workspace.
 ```txt
 .
 ├─ apps/
-│  ├─ web/   # TanStack Start app, Zero client/server, Drizzle schema and migrations
-│  └─ flue/  # Flue sidecar scaffold for agent/workflow automation
+│  ├─ web/    # TanStack Start app, Zero client/server, Drizzle schema and migrations
+│  └─ eve/    # Eve finance assistant and categorization runtime
 ├─ packages/
-│  └─ domain/ # placeholder for shared domain/database code extracted as needed
+│  └─ domain/ # Shared domain and database code
 └─ docs/
 ```
 
@@ -25,11 +25,11 @@ Penge is a local-first budgeting app workspace.
 
 ```bash
 cp apps/web/.env.example apps/web/.env
-cp apps/flue/.env.example apps/flue/.env
+cp apps/eve/.env.example apps/eve/.env
 just setup
 ```
 
-`apps/web/.env` is used by the web app, Drizzle, and Zero dev scripts. `apps/flue/.env` is used by `flue dev` / `flue run` for the sidecar.
+The web app owns browser-facing authorization and product state. Eve runs as an internal sidecar; browser requests reach it only through Penge-owned routes.
 
 ### Amp orbs
 
@@ -61,16 +61,11 @@ and Zero proxy configuration are separate from this dependency setup.
 just dev
 ```
 
-App: https://localhost:3100  
+App: https://localhost:3100
 Zero cache: http://localhost:4848
+Eve runtime: http://localhost:3300
 
-Run the Flue sidecar separately when working on agent workflows:
-
-```bash
-just dev-flue
-```
-
-Flue dev server: http://localhost:3101
+Run one service with `just dev-web` or `just dev-eve`.
 
 ## Database
 
@@ -80,7 +75,7 @@ just db-migrate
 just db-reset
 ```
 
-Postgres runs in Docker with `wal_level=logical` so Zero can replicate changes. Flue runtime persistence uses the same Postgres database via separate `flue_*` tables. Zero dev uses the explicit `penge_zero_app` publication so those Flue runtime tables are not part of Zero's change stream.
+Postgres runs in Docker with `wal_level=logical` so Zero can replicate changes. Eve runtime persistence is separate from Penge app/domain tables and is excluded from Zero. The explicit `penge_zero_app` publication contains only app/domain tables.
 
 ## Tests and checks
 
@@ -90,28 +85,20 @@ just test-e2e
 just check
 ```
 
-`just check` runs Knip's unused-file/dependency checker before the package lint, typecheck, and test commands. Run it directly with:
-
-```bash
-pnpm knip
-```
-
-Useful package-scoped commands:
+`just check` runs Knip before package lint, typecheck, and test commands. Useful package-scoped checks include:
 
 ```bash
 pnpm --filter @penge/web typecheck
-pnpm --filter @penge/flue typecheck
-pnpm --filter @penge/flue build
+pnpm --filter @penge/eve typecheck
+pnpm --filter @penge/domain typecheck
 ```
 
 ## Zero
 
-The Zero schema is generated from the web app's Drizzle schema:
+Generate the Zero schema from Drizzle with:
 
 ```bash
 just zero-generate
 ```
 
-Do not hand-edit `apps/web/src/zero/schema.ts`.
-
-The database migration `apps/web/drizzle/0020_zero_publication.sql` creates the local `penge_zero_app` Postgres publication, which limits Zero replication to app/domain tables. If the publication table set changes, run `just zero-reset` before restarting dev so both the local replica and Zero's upstream dev metadata are rebuilt.
+Do not hand-edit `apps/web/src/zero/schema.ts`. If the publication table set changes, run `just zero-reset` before restarting development.

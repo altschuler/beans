@@ -15,7 +15,7 @@ test('builds isolated root env values from the branch slug and allocated ports',
   })
 
   assert.equal(env.PORT, '3100')
-  assert.equal(env.FLUE_PORT, '3200')
+  assert.equal(env.EVE_PORT, '3300')
   assert.equal(env.POSTGRES_PORT, '5500')
   assert.equal(env.ZERO_PORT, '4848')
   assert.equal(env.ZERO_CHANGE_STREAMER_PORT, '5000')
@@ -23,7 +23,7 @@ test('builds isolated root env values from the branch slug and allocated ports',
   assert.equal(env.DATABASE_URL, 'postgres://postgres:postgres@localhost:5500/penge')
   assert.equal(env.TEST_DATABASE_URL, 'postgres://postgres:postgres@localhost:5500/penge_test')
   assert.equal(env.VITE_PUBLIC_APP_URL, 'https://localhost:3100')
-  assert.equal(env.PENGE_FLUE_BASE_URL, 'http://localhost:3200')
+  assert.equal(env.PENGE_EVE_BASE_URL, 'http://localhost:3300')
 })
 
 test('syncs managed web env keys while preserving manually managed secrets', async () => {
@@ -59,30 +59,30 @@ test('syncs managed web env keys while preserving manually managed secrets', asy
   assert.equal(next.COMPOSE_PROJECT_NAME, undefined)
 })
 
-test('syncs flue env to FLUE_PORT and removes ambiguous PORT values', async () => {
+test('syncs eve env to EVE_PORT and removes ambiguous PORT values', async () => {
   const rootEnv = await buildRootEnv({
     config,
-    branchName: 'feature/flue-port',
+    branchName: 'feature/eve-port',
     rootDir: '/tmp/penge',
     portAvailable,
   })
-  const flueSpec = config.envFiles.find(spec => spec.path === 'apps/flue/.env')
+  const eveSpec = config.envFiles.find(spec => spec.path === 'apps/eve/.env')
 
   const next = await applyEnvFileSpec({
-    spec: flueSpec,
+    spec: eveSpec,
     rootEnv,
     currentEnv: {
       DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/old',
       PORT: '3101',
       OPENAI_API_KEY: 'keep-openai-key',
-      EXTRA_FLUE_SECRET: 'keep-this-too',
+      EXTRA_EVE_SECRET: 'keep-this-too',
     },
   })
 
   assert.equal(next.DATABASE_URL, 'postgres://postgres:postgres@localhost:5500/penge')
-  assert.equal(next.FLUE_PORT, '3200')
-  assert.equal(next.PENGE_FLUE_INTERNAL_TOKEN, 'change-me')
+  assert.equal(next.EVE_PORT, '3300')
+  assert.equal(next.PENGE_EVE_SERVICE_CAPABILITY_SECRET, 'change-me-eve-service-capability-secret')
   assert.equal(next.OPENAI_API_KEY, 'keep-openai-key')
-  assert.equal(next.EXTRA_FLUE_SECRET, 'keep-this-too')
+  assert.equal(next.EXTRA_EVE_SECRET, 'keep-this-too')
   assert.equal(next.PORT, undefined)
 })

@@ -4,9 +4,6 @@ export default {
     '.': {
       entry: ['dev.config.mjs', 'scripts/dev.mjs', 'scripts/**/*.test.mjs'],
     },
-    'apps/flue': {
-      entry: ['flue.config.ts', 'src/db.ts', 'src/agents/*.ts', 'src/workflows/*.ts'],
-    },
     // eve loads agent/ files by filesystem convention (agent.ts, channels/,
     // tools/, hooks/, instructions/); nothing imports them directly.
     'apps/eve': {

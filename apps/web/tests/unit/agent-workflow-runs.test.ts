@@ -7,12 +7,9 @@ import {
   ActiveWorkflowRunExistsError,
   advanceAgentWorkflowRunEveCursor,
   attachEveSessionToAgentWorkflowRun,
-  attachFlueRunId,
   failStaleActiveAgentWorkflowRuns,
   markAgentWorkflowRunCompleted,
-  markAgentWorkflowRunCompletedByFlueRunId,
   markAgentWorkflowRunFailed,
-  markAgentWorkflowRunFailedByFlueRunId,
   markRunningAgentWorkflowRunCompleted,
   reserveActiveAgentWorkflowRun,
 } from '@penge/domain/workflow-runs'
@@ -44,7 +41,6 @@ describe('agent workflow run repository', () => {
 
     expect(first).toMatchObject({
       id: 'run-1',
-      flueRunId: null,
       workflowName: 'categorize-transactions',
       teamId: 'team-1',
       requestedByUserId: 'user-1',
@@ -127,12 +123,43 @@ describe('agent workflow run repository', () => {
 
     expect(attached).toMatchObject({
       id: 'run-1',
-      flueRunId: null,
       eveSessionId: 'eve-session-1',
       eveNextStreamIndex: 7,
       status: 'running',
       updatedAt: new Date('2026-06-24T10:01:00.000Z'),
     })
+  })
+
+  it('marks an Eve admission failure terminal without leaving the reserved run active', async () => {
+    await reserveActiveAgentWorkflowRun(sql, {
+      id: 'run-1',
+      teamId: 'team-1',
+      workflowName: 'categorize-transactions',
+      requestedByUserId: 'user-1',
+      now,
+    })
+
+    const failed = await markAgentWorkflowRunFailed(sql, {
+      id: 'run-1',
+      error: 'Eve rejected the task admission',
+      now: new Date('2026-06-24T10:02:00.000Z'),
+    })
+
+    expect(failed).toMatchObject({
+      id: 'run-1',
+      status: 'failed',
+      error: 'Eve rejected the task admission',
+      finishedAt: new Date('2026-06-24T10:02:00.000Z'),
+    })
+    await expect(
+      reserveActiveAgentWorkflowRun(sql, {
+        id: 'run-2',
+        teamId: 'team-1',
+        workflowName: 'categorize-transactions',
+        requestedByUserId: 'user-1',
+        now: new Date('2026-06-24T10:03:00.000Z'),
+      }),
+    ).resolves.toMatchObject({id: 'run-2', status: 'pending'})
   })
 
   it('does not let the Eve terminal fast path settle a run before session attachment', async () => {
@@ -162,61 +189,6 @@ describe('agent workflow run repository', () => {
     await expect(advanceAgentWorkflowRunEveCursor(sql, {
       id: 'run-1', eveSessionId: 'eve-session-1', eveNextStreamIndex: 4, now: cursorAdvancedAt,
     })).resolves.toMatchObject({eveNextStreamIndex: 7, updatedAt: now})
-  })
-
-  it('attaches Flue ids and marks admission failures without leaving runs active', async () => {
-    await reserveActiveAgentWorkflowRun(sql, {
-      id: 'run-1',
-      teamId: 'team-1',
-      workflowName: 'categorize-transactions',
-      requestedByUserId: 'user-1',
-      now,
-    })
-
-    await expect(
-      attachFlueRunId(sql, {id: 'run-1', flueRunId: 'flue-run-1', now: new Date('2026-06-24T10:01:00.000Z')}),
-    ).resolves.toMatchObject({id: 'run-1', flueRunId: 'flue-run-1', status: 'running'})
-
-    const failed = await markAgentWorkflowRunFailed(sql, {
-      id: 'run-1',
-      error: 'Flue rejected the workflow submission because the sidecar is unavailable',
-      now: new Date('2026-06-24T10:02:00.000Z'),
-    })
-
-    expect(failed).toMatchObject({id: 'run-1', status: 'failed', error: 'Flue rejected the workflow submission because the sidecar is unavailable'})
-    expect(failed.finishedAt).toEqual(new Date('2026-06-24T10:02:00.000Z'))
-
-    const rows = await db.select().from(agentWorkflowRuns).where(eq(agentWorkflowRuns.id, 'run-1'))
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({status: 'failed'})
-  })
-
-  it('settles active app workflow runs by Flue run id', async () => {
-    await reserveActiveAgentWorkflowRun(sql, {
-      id: 'run-1',
-      teamId: 'team-1',
-      workflowName: 'categorize-transactions',
-      requestedByUserId: 'user-1',
-      now,
-    })
-    await attachFlueRunId(sql, {id: 'run-1', flueRunId: 'flue-run-1', now: new Date('2026-06-24T10:01:00.000Z')})
-
-    await expect(
-      markAgentWorkflowRunCompletedByFlueRunId(sql, {flueRunId: 'flue-run-1', now: new Date('2026-06-24T10:02:00.000Z')}),
-    ).resolves.toMatchObject({id: 'run-1', status: 'completed', error: null})
-
-    await reserveActiveAgentWorkflowRun(sql, {
-      id: 'run-2',
-      teamId: 'team-1',
-      workflowName: 'categorize-transactions',
-      requestedByUserId: 'user-1',
-      now: new Date('2026-06-24T10:03:00.000Z'),
-    })
-    await attachFlueRunId(sql, {id: 'run-2', flueRunId: 'flue-run-2', now: new Date('2026-06-24T10:04:00.000Z')})
-
-    await expect(
-      markAgentWorkflowRunFailedByFlueRunId(sql, {flueRunId: 'flue-run-2', error: 'provider unavailable', now: new Date('2026-06-24T10:05:00.000Z')}),
-    ).resolves.toMatchObject({id: 'run-2', status: 'failed', error: 'provider unavailable'})
   })
 
   it('does not fail stale active runs after eve has admitted a session', async () => {

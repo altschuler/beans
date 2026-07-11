@@ -100,7 +100,6 @@ export const agentWorkflowRuns = pgTable(
   'agent_workflow_runs',
   {
     id: text('id').primaryKey(),
-    flueRunId: text('flue_run_id'),
     eveSessionId: text('eve_session_id'),
     eveNextStreamIndex: integer('eve_next_stream_index').notNull().default(0),
     workflowName: text('workflow_name').notNull(),
