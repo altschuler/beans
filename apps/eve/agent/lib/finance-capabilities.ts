@@ -14,6 +14,7 @@ import {
   updateCategoryGroup,
 } from '@penge/domain/category-management'
 import {db, type Database} from '@penge/domain/db'
+import {formatMoneyDecimal} from '@penge/domain/money'
 import {agentToolExecutions} from '@penge/domain/schema'
 import {
   getBankTransactionDetail,
@@ -21,14 +22,17 @@ import {
   searchLedgerAccounts,
   searchLedgerTransactions,
 } from '@penge/domain/read-projections'
-import type {
-  ApplyCategorizationsInput,
-  GetBankTransactionDetailInput,
-  ManageCategoryInput,
-  SearchBankTransactionsInput,
-  SearchLedgerAccountsInput,
-  SearchLedgerTransactionsInput,
-  ChatRuntimeScope,
+import {
+  normalizeSearchBankTransactionsFilters,
+  normalizeSearchLedgerAccountsFilters,
+  normalizeSearchLedgerTransactionsFilters,
+  type ApplyCategorizationsInput,
+  type GetBankTransactionDetailInput,
+  type ManageCategoryInput,
+  type SearchBankTransactionsInput,
+  type SearchLedgerAccountsInput,
+  type SearchLedgerTransactionsInput,
+  type ChatRuntimeScope,
 } from './finance-schemas'
 
 type WriteTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
@@ -36,19 +40,22 @@ type ChatCategorization = ApplyCategorizationsInput['categorizations'][number]
 type ToolCallIdentity = {sessionId: string; callId: string}
 
 export async function runSearchBankTransactions(input: SearchBankTransactionsInput, scope: ChatRuntimeScope) {
-  return toJson(await searchBankTransactions(db, {...toolScope(scope), filters: input}))
+  const transactions = await searchBankTransactions(db, {...toolScope(scope), filters: normalizeSearchBankTransactionsFilters(input)})
+  return toJson(transactions.map(formatMoneyFields))
 }
 
 export async function runGetBankTransactionDetail(input: GetBankTransactionDetailInput, scope: ChatRuntimeScope) {
-  return toJson(await getBankTransactionDetail(db, {...toolScope(scope), bankTransactionId: input.bankTransactionId}))
+  const transaction = await getBankTransactionDetail(db, {...toolScope(scope), bankTransactionId: input.bankTransactionId})
+  return toJson(transaction ? {...formatMoneyFields(transaction), postings: transaction.postings.map(formatMoneyFields)} : null)
 }
 
 export async function runSearchLedgerTransactions(input: SearchLedgerTransactionsInput, scope: ChatRuntimeScope) {
-  return toJson(await searchLedgerTransactions(db, {...toolScope(scope), filters: input}))
+  const transactions = await searchLedgerTransactions(db, {...toolScope(scope), filters: normalizeSearchLedgerTransactionsFilters(input)})
+  return toJson(transactions.map(transaction => ({...transaction, postings: transaction.postings.map(formatMoneyFields)})))
 }
 
 export async function runSearchLedgerAccounts(input: SearchLedgerAccountsInput, scope: ChatRuntimeScope) {
-  return toJson(await searchLedgerAccounts(db, {...toolScope(scope), filters: input}))
+  return toJson(await searchLedgerAccounts(db, {...toolScope(scope), filters: normalizeSearchLedgerAccountsFilters(input)}))
 }
 
 export async function runApplyCategorizations(
@@ -295,6 +302,10 @@ function toolResourceId(sessionId: string, callId: string) {
 
 function toolScope(scope: ChatRuntimeScope) {
   return {userId: scope.userId, teamId: scope.teamId}
+}
+
+function formatMoneyFields<T extends {amount: number; currency: string}>(value: T) {
+  return {...value, amount: formatMoneyDecimal(value.amount, value.currency)}
 }
 
 class ChatBatchWriteError extends Error {

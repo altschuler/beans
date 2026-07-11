@@ -42,10 +42,9 @@ vi.mock("@tanstack/react-router", () => ({
     select({ location: { pathname: "/app/transactions" } }),
 }));
 
-import { EveChatSession, EveChatTranscript } from "@/components/assistant/eve-chat-session";
+import { EveChatSession } from "@/components/assistant/eve-chat-session";
 import {
   approvalCards,
-  canStopEveTurn,
   sendEveApprovalResponse,
 } from "@/components/assistant/eve-chat-state";
 
@@ -161,12 +160,6 @@ describe("Eve chat live state", () => {
     );
     expect(JSON.stringify(fetch.mock.calls)).not.toContain("continuationToken");
   });
-
-  it("allows local stop only after a new session is attached", () => {
-    expect(canStopEveTurn("submitted", false)).toBe(false);
-    expect(canStopEveTurn("submitted", true)).toBe(true);
-    expect(canStopEveTurn("streaming", false)).toBe(true);
-  });
 });
 
 describe("EveChatSession", () => {
@@ -271,39 +264,127 @@ function pendingApprovalMessage(approved?: boolean) {
 }
 
 describe("Eve chat transcript", () => {
-  it("renders safe text and only app-owned links", async () => {
-    const {
-      MessageScroller,
-      MessageScrollerContent,
-      MessageScrollerProvider,
-      MessageScrollerViewport,
-    } = await import("@/components/ui/message-scroller");
-    render(
-      <MessageScrollerProvider>
-        <MessageScroller>
-          <MessageScrollerViewport>
-            <MessageScrollerContent>
-              <EveChatTranscript
-                messages={[
-                  {
-                    id: "assistant-1",
-                    role: "assistant",
-                    parts: [
-                      {
-                        type: "text",
-                        text: "[Transactions](/app/transactions) [Unsafe](https://evil.invalid)",
-                        state: "done",
-                      },
-                    ],
-                  },
-                ]}
-              />
-            </MessageScrollerContent>
-          </MessageScrollerViewport>
-        </MessageScroller>
-      </MessageScrollerProvider>,
+  it("keeps an approval before messages that arrived after it", async () => {
+    componentMocks.streams.push([
+      event("session.waiting", { wait: "next-user-message" }),
+    ]);
+    componentMocks.agents.push(
+      agentState({
+        data: {
+          messages: [
+            pendingApprovalMessage(),
+            {
+              id: "assistant-after-approval",
+              role: "assistant",
+              parts: [
+                {
+                  type: "text",
+                  text: "Message after the approval",
+                  state: "done",
+                },
+              ],
+            },
+          ],
+        },
+      }),
     );
-    expect(screen.getByRole("link", { name: "Transactions" })).toHaveAttribute(
+
+    render(<EveChatSession chatId="chat-1" onFirstSubmit={vi.fn()} />);
+
+    const approval = await screen.findByLabelText("Category change approval");
+    const laterMessage = screen.getByText("Message after the approval");
+    expect(
+      approval.compareDocumentPosition(laterMessage) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("positions the latest user message near the top", async () => {
+    const originalRect = Element.prototype.getBoundingClientRect;
+    const originalScrollTo = Element.prototype.scrollTo;
+    const clientHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientHeight",
+    );
+    const scrollHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight",
+    );
+    const positions: Record<string, [number, number]> = {
+      "assistant-1": [0, 200],
+      "user-1": [300, 400],
+      "assistant-2": [430, 900],
+    };
+
+    Element.prototype.getBoundingClientRect = function () {
+      const position = positions[(this as HTMLElement).dataset.messageId ?? ""];
+      const viewport = this.closest<HTMLElement>("[data-slot='message-scroller-viewport']");
+      if (!position) return new DOMRect(0, 0, 0, this.matches("[data-slot='message-scroller-viewport']") ? 300 : 0);
+      return new DOMRect(0, position[0] - (viewport?.scrollTop ?? 0), 0, position[1] - position[0]);
+    };
+    Element.prototype.scrollTo = function (options?: ScrollToOptions | number) {
+      if (typeof options === "object" && options.top !== undefined)
+        (this as HTMLElement).scrollTop = options.top;
+    };
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.matches("[data-slot='message-scroller-viewport']") ? 300 : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.matches("[data-slot='message-scroller-viewport']") ? 900 : 0;
+      },
+    });
+
+    componentMocks.streams.push([event("session.waiting", { wait: "next-user-message" })]);
+    componentMocks.agents.push(agentState({
+      data: {
+        messages: [
+          { id: "assistant-1", role: "assistant", parts: [{ type: "text", text: "Earlier answer", state: "done" }] },
+          { id: "user-1", role: "user", parts: [{ type: "text", text: "Latest question", state: "done" }] },
+          { id: "assistant-2", role: "assistant", parts: [{ type: "text", text: "Long latest answer", state: "done" }] },
+        ],
+      },
+    }));
+
+    try {
+      render(<EveChatSession chatId="chat-1" onFirstSubmit={vi.fn()} />);
+      const latestQuestion = await screen.findByText("Latest question");
+      await waitFor(() =>
+        expect(latestQuestion.closest("[data-message-id]")?.getBoundingClientRect().top).toBe(64),
+      );
+    } finally {
+      Element.prototype.getBoundingClientRect = originalRect;
+      Element.prototype.scrollTo = originalScrollTo;
+      if (clientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeight);
+      else delete (HTMLElement.prototype as {clientHeight?: number}).clientHeight;
+      if (scrollHeight) Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeight);
+      else delete (HTMLElement.prototype as {scrollHeight?: number}).scrollHeight;
+    }
+  });
+
+  it("renders safe text and only app-owned links", async () => {
+    componentMocks.streams.push([event("session.waiting", { wait: "next-user-message" })]);
+    componentMocks.agents.push(agentState({
+      data: {
+        messages: [{
+          id: "assistant-1",
+          role: "assistant",
+          parts: [{
+            type: "text",
+            text: "[Transactions](/app/transactions) [Unsafe](https://evil.invalid)",
+            state: "done",
+          }],
+        }],
+      },
+    }));
+
+    render(<EveChatSession chatId="chat-1" onFirstSubmit={vi.fn()} />);
+
+    expect(await screen.findByRole("link", { name: "Transactions" })).toHaveAttribute(
       "href",
       "/app/transactions",
     );

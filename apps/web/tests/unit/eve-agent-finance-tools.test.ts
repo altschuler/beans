@@ -60,6 +60,56 @@ afterAll(async () => {
 })
 
 describe('eve finance tools', () => {
+  it('returns model-facing transaction amounts as decimal money strings', async () => {
+    const chatScope = {purpose: 'chat-session', userId: 'user-1', teamId: 'team-1', chatId: 'chat-1'} as const
+    const chat = await resolveTools(chatScope)
+
+    const transactions = await execute(chat.searchBankTransactions, {
+      reviewStatus: 'any',
+      bankTransactionIds: ['transaction-chat'],
+    }, chatScope) as Array<{amount: string; currency: string}>
+
+    expect(transactions).toEqual([expect.objectContaining({amount: '-9.00', currency: 'DKK'})])
+
+    const detail = await execute(chat.getBankTransactionDetail, {
+      bankTransactionId: 'transaction-chat',
+    }, chatScope) as {amount: string; currency: string}
+    expect(detail).toMatchObject({amount: '-9.00', currency: 'DKK'})
+  })
+
+  it('treats model sentinel filter values as absent filters', async () => {
+    const chatScope = {purpose: 'chat-session', userId: 'user-1', teamId: 'team-1', chatId: 'chat-1'} as const
+    const chat = await resolveTools(chatScope)
+
+    // Exact payload shape observed from gpt-5.4-mini: every optional filter
+    // filled with a sentinel ([], "", 0, null) instead of omitted.
+    const transactions = await execute(chat.searchBankTransactions, {
+      reviewStatus: 'any',
+      bankTransactionIds: [],
+      bankAccountIds: [],
+      textContains: '',
+      counterpartyContains: '',
+      currency: null,
+      amountMin: 0,
+      amountMax: 0,
+      direction: 'outflow',
+      dateFrom: '1900-01-01',
+      dateTo: '2100-01-01',
+      limit: 1,
+    }, chatScope) as Array<{id: string}>
+    expect(transactions).toEqual([expect.objectContaining({id: 'transaction-chat'})])
+
+    const accounts = await execute(chat.searchLedgerAccounts, {
+      type: 'expense',
+      status: 'any',
+      textContains: '',
+      linkedBankAccount: false,
+      eligibleCategoryOnly: true,
+      limit: 200,
+    }, chatScope) as Array<{id: string}>
+    expect(accounts).toEqual([expect.objectContaining({id: 'groceries'})])
+  })
+
   it('rolls back a confirmed chat batch when any row conflicts', async () => {
     const chatScope = {purpose: 'chat-session', userId: 'user-1', teamId: 'team-1', chatId: 'chat-1'} as const
     const chat = await resolveTools(chatScope)
@@ -305,7 +355,7 @@ function bankTransaction(id: string, bankAccountId: string, bookingDate: string)
     status: 'booked',
     bookingDate,
     valueDate: null,
-    amount: -1_000_000,
+    amount: id === 'transaction-chat' ? -90_000 : -1_000_000,
     currency: 'DKK',
     description: 'Supermarket purchase',
     counterpartyName: 'Supermarket',

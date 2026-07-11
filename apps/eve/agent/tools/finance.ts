@@ -25,17 +25,17 @@ export default defineDynamic({
       requireChatRuntimeScope(ctx)
       return {
         searchBankTransactions: defineTool({
-          description: 'Search trusted-team bank transactions with compact categorization context. Internal ids are for follow-up tool calls only.',
+          description: 'Search trusted-team bank transactions with compact categorization context. Amounts are decimal money strings in major currency units. Internal ids are for follow-up tool calls only.',
           inputSchema: searchBankTransactionsInputSchema,
           async execute(input, toolCtx) { return runSearchBankTransactions(input, requireChatRuntimeScope(toolCtx)) },
         }),
         getBankTransactionDetail: defineTool({
-          description: 'Read allowlisted detail for one trusted-team bank transaction, including its current categorization revision.',
+          description: 'Read allowlisted detail for one trusted-team bank transaction, including its current categorization revision. Amounts are decimal money strings in major currency units.',
           inputSchema: getBankTransactionDetailInputSchema,
           async execute(input, toolCtx) { return runGetBankTransactionDetail(input, requireChatRuntimeScope(toolCtx)) },
         }),
         searchLedgerTransactions: defineTool({
-          description: 'Search trusted-team ledger history for confirmed examples, split patterns, and transfer context.',
+          description: 'Search trusted-team ledger history for confirmed examples, split patterns, and transfer context. Posting amounts are decimal money strings in major currency units.',
           inputSchema: searchLedgerTransactionsInputSchema,
           async execute(input, toolCtx) { return runSearchLedgerTransactions(input, requireChatRuntimeScope(toolCtx)) },
         }),

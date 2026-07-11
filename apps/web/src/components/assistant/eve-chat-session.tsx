@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -165,11 +164,6 @@ function EveChatSessionStore({
     agent.status,
     Boolean(agent.session.sessionId ?? replay.initialSession?.sessionId),
   );
-  const approvals = useMemo(
-    () => approvalCards(agent.data.messages),
-    [agent.data.messages],
-  );
-
   useEffect(() => resizeComposer(inputRef.current), [draft]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -221,31 +215,19 @@ function EveChatSessionStore({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+      <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport className="p-4">
             <MessageScrollerContent
               className="gap-6"
               aria-label="Ask Penge chat transcript"
             >
-              <EveChatTranscript messages={agent.data.messages} />
-              {approvals.map(({ toolCallId, ...approval }) => (
-                <MessageScrollerItem
-                  key={toolCallId}
-                  messageId={`approval:${toolCallId}`}
-                >
-                  <ChatApprovalCard
-                    {...approval}
-                    submittingDecision={
-                      submittingApproval?.requestId === approval.requestId
-                        ? submittingApproval.decision
-                        : null
-                    }
-                    readOnly={replay.readOnly}
-                    onRespond={respondToApproval}
-                  />
-                </MessageScrollerItem>
-              ))}
+              <EveChatTranscript
+                messages={agent.data.messages}
+                submittingApproval={submittingApproval}
+                readOnly={replay.readOnly}
+                onRespond={respondToApproval}
+              />
               {busy ? (
                 <MessageScrollerItem messageId="activity">
                   <ChatActivity
@@ -331,10 +313,16 @@ function EveChatSessionStore({
   );
 }
 
-export function EveChatTranscript({
+function EveChatTranscript({
   messages,
+  submittingApproval,
+  readOnly,
+  onRespond,
 }: {
   messages: readonly EveMessage[];
+  submittingApproval: ChatApprovalAction | null;
+  readOnly: boolean;
+  onRespond(action: ChatApprovalAction): void;
 }) {
   return messages.map((message) => {
     const text = message.parts
@@ -350,9 +338,14 @@ export function EveChatTranscript({
             part.state === "input-streaming"),
       )
       .at(-1);
-    if (!text && !activity) return null;
+    const approvals = approvalCards([message]);
+    if (!text && !activity && approvals.length === 0) return null;
     return (
-      <MessageScrollerItem key={message.id} messageId={message.id}>
+      <MessageScrollerItem
+        key={message.id}
+        messageId={message.id}
+        scrollAnchor={message.role === "user"}
+      >
         {text ? <ChatMessage role={message.role}>{text}</ChatMessage> : null}
         {activity ? (
           <ChatActivity
@@ -361,6 +354,23 @@ export function EveChatTranscript({
               "Thinking through the request…"
             }
           />
+        ) : null}
+        {approvals.length > 0 ? (
+          <div className={cn("space-y-6", (text || activity) && "mt-6")}>
+            {approvals.map(({ toolCallId, ...approval }) => (
+              <ChatApprovalCard
+                key={toolCallId}
+                {...approval}
+                submittingDecision={
+                  submittingApproval?.requestId === approval.requestId
+                    ? submittingApproval.decision
+                    : null
+                }
+                readOnly={readOnly}
+                onRespond={onRespond}
+              />
+            ))}
+          </div>
         ) : null}
       </MessageScrollerItem>
     );
