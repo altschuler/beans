@@ -1,18 +1,17 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
+import {Client} from 'eve/client'
 import {eveChannel} from 'eve/channels/eve'
-import {createEve0225Client, eve0225Version} from '@/tests/helpers/eve-0225'
 
 const sessionId = 'eve-session-1'
 const continuationToken = 'continuation-1'
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('Eve 0.22.5 native follow-up receipt contract', () => {
+describe('Eve native follow-up receipt contract', () => {
   it('does not acknowledge the public follow-up route until Eve advances the durable stream', async () => {
-    expect(eve0225Version).toBe('0.22.5')
     const durableEvents: unknown[] = [
       {type: 'session.started', data: {}},
-      {type: 'session.waiting', data: {wait: 'next-user-message'}},
+      {type: 'session.waiting', data: {continuationToken, wait: 'next-user-message'}},
     ]
     const preTurnCursor = durableEvents.length
     const ordering: string[] = []
@@ -31,7 +30,7 @@ describe('Eve 0.22.5 native follow-up receipt contract', () => {
       route.method === 'POST' && route.path === '/eve/v1/session/:sessionId')
     const streamRoute = channel.routes.find(route =>
       route.method === 'GET' && route.path === '/eve/v1/session/:sessionId/stream')
-    if (!followUpRoute || !streamRoute) throw new Error('Eve 0.22.5 session routes are missing')
+    if (!followUpRoute || !streamRoute) throw new Error('Eve session routes are missing')
 
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (request, init) => {
       const url = new URL(String(request))
@@ -58,7 +57,7 @@ describe('Eve 0.22.5 native follow-up receipt contract', () => {
       return streamRoute.handler(incoming, {params: {sessionId}, getSession})
     }))
 
-    const client = await createEve0225Client({host: 'https://eve.test', maxReconnectAttempts: 0})
+    const client = new Client({host: 'https://eve.test', maxReconnectAttempts: 0})
     const session = client.session({sessionId, continuationToken, streamIndex: preTurnCursor})
     await session.send({message: 'follow up'})
 

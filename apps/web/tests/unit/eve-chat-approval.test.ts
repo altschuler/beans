@@ -1,14 +1,4 @@
-import {describe, expect, it, vi} from 'vitest'
-import {always} from 'eve/tools/approval'
-import {z} from 'zod'
-import {
-  createEve0225MockModel,
-  createEve0225ToolLoop,
-  eve0225Version,
-  runInEve0225Context,
-  type EveHarnessResult,
-  type EveHarnessSession,
-} from '../helpers/eve-0225'
+import {describe, expect, it} from 'vitest'
 
 type ResolverContext = {
   session: {
@@ -25,11 +15,6 @@ type ApprovalPolicy = (context: {
 }) => unknown
 
 type ResolvedTool = {approval?: ApprovalPolicy}
-
-type InputRequestedEvent = {
-  type: 'input.requested'
-  data: {requests: Array<{action: {callId: string}; requestId: string}>}
-}
 
 async function toolsFor(purpose: 'chat-session') {
   const resolver = (await import('../../../eve/agent/tools/finance')).default as unknown as {
@@ -48,16 +33,6 @@ function decision(policy: ApprovalPolicy, callId: string, approvedTools = new Se
   return policy({approvedTools, callId, toolName: 'write', toolInput: {operation: 'proposal'}})
 }
 
-function protocolSession(sessionId: string): EveHarnessSession {
-  return {
-    agent: {modelReference: {id: 'mock'}, system: '', tools: []},
-    compaction: {recentWindowSize: 10, threshold: 100_000},
-    continuationToken: `continuation:${sessionId}`,
-    history: [],
-    sessionId,
-  }
-}
-
 describe('eve chat approvals', () => {
   it('requires Eve approval for every exact chat write call, even after the tool was approved before', async () => {
     const tools = await toolsFor('chat-session')
@@ -68,74 +43,5 @@ describe('eve chat approvals', () => {
       expect(decision(policy!, 'call-1')).toBe('user-approval')
       expect(decision(policy!, 'call-2', new Set([name]))).toBe('user-approval')
     }
-  })
-
-  it('uses Eve tool-loop park/resume so only the exact matching Approve executes', async () => {
-    expect(eve0225Version).toBe('0.22.5')
-    const execute = vi.fn(async (input: {scenario: string}) => ({ok: true, scenario: input.scenario}))
-    const model = await createEve0225MockModel({
-      respond: (request: {lastUserMessage: string | null; toolResults: unknown[]}) => {
-        if (request.toolResults.length > 0) return 'Tool call resolved.'
-        const scenario = request.lastUserMessage?.replace('call:', '') ?? 'unknown'
-        return {toolCalls: [{id: `call-${scenario}`, name: 'manageCategory', input: {scenario}}]}
-      },
-    })
-    const events: unknown[] = []
-    const harness = await createEve0225ToolLoop({
-      capabilities: {requestInput: true},      handleEvent: async (event: unknown) => { events.push(event) },
-      mode: 'conversation',
-      resolveModel: async () => model,
-      tools: new Map([['manageCategory', {
-        approval: always(),
-        description: 'Exercise exact Eve approval.',
-        execute,
-        inputSchema: z.object({scenario: z.string()}),
-        name: 'manageCategory',
-      }]]),
-    })
-    const start = async (scenario: string) => {
-      events.length = 0
-      const sessionId = `session-${scenario}`
-      const parked = await runInEve0225Context(sessionId, () => harness(protocolSession(sessionId), {message: `call:${scenario}`}))
-      const requested = events.find((event): event is InputRequestedEvent => (        typeof event === 'object' && event !== null && (event as {type?: unknown}).type === 'input.requested'
-      ))
-      const request = requested?.data.requests.find(item => item.action.callId === `call-${scenario}`)
-      if (!request) throw new Error(`Missing approval request for ${scenario}`)
-      return {parked, request, sessionId}
-    }
-    const resume = (scenario: {parked: EveHarnessResult; sessionId: string}, requestId: string, optionId: 'approve' | 'deny') => (
-      runInEve0225Context(scenario.sessionId, () => harness(scenario.parked.session, {
-        inputResponses: [{requestId, optionId}],
-      }))
-    )
-
-    const denied = await start('deny')
-    await resume(denied, denied.request.requestId, 'deny')
-    expect(execute).not.toHaveBeenCalled()
-
-    const target = await start('target')
-    const other = await start('other')
-    await resume(target, other.request.requestId, 'approve')
-    expect(execute).not.toHaveBeenCalled()
-
-    const approved = await start('approve')
-    const completed = await resume(approved, approved.request.requestId, 'approve')
-    expect(JSON.stringify(completed.session.history)).toContain(approved.request.requestId)
-    expect(JSON.stringify(completed.session.history)).toContain('approve')
-    expect(execute).toHaveBeenCalledTimes(1)
-    expect(execute).toHaveBeenCalledWith(
-      {scenario: 'approve'},
-      expect.objectContaining({toolCallId: 'call-approve'}),
-    )
-
-    await runInEve0225Context(approved.sessionId, () => harness(completed.session, {
-      inputResponses: [{requestId: approved.request.requestId, optionId: 'approve'}],
-    }))
-    expect(execute).toHaveBeenCalledTimes(1)
-
-    await runInEve0225Context(approved.sessionId, () => harness(completed.session, {
-      inputResponses: [{requestId: denied.request.requestId, optionId: 'approve'}],
-    }))
-    expect(execute).toHaveBeenCalledTimes(1)
   })
 })

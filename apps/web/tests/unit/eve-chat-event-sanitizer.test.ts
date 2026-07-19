@@ -220,6 +220,11 @@ const eveFixtures = {
     data: { sequence: 1, turnId: "turn-1" },
     meta,
   },
+  "turn.cancelled": {
+    type: "turn.cancelled",
+    data: { sequence: 1, turnId: "turn-1" },
+    meta,
+  },
   "turn.failed": {
     type: "turn.failed",
     data: {
@@ -274,7 +279,7 @@ const eveFixtures = {
   },
   "session.waiting": {
     type: "session.waiting",
-    data: { wait: "next-user-message" },
+    data: { continuationToken: rawSecret, wait: "next-user-message" },
     meta,
   },
   "session.failed": {
@@ -352,7 +357,7 @@ const maliciousMalformedFixtures: unknown[] = [
 ];
 
 describe("Eve chat event sanitizer", () => {
-  it("exhaustively emits one reducer-consumable safe event for every Eve 0.22.5 discriminant", async () => {
+  it("exhaustively emits one reducer-consumable safe event for every Eve 0.25.1 discriminant", async () => {
     const reducer = defaultMessageReducer();
     let state = reducer.initial();
     const fixtures = Object.values(eveFixtures);

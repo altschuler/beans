@@ -11,8 +11,8 @@
   "dependencies": {
     "@ai-sdk/openai": "^4.0.11",
     "@penge/domain": "workspace:*",
-    "ai": "7.0.18",
-    "eve": "0.22.5",
+    "ai": "7.0.31",
+    "eve": "0.25.1",
     "zod": "4.4.3"
   },
   "devDependencies": {
