@@ -13,6 +13,7 @@ build/
 !.env.example
 
 # Local tooling/session artifacts
+.amp/portals/
 .superpowers/
 .worktrees
 .worktrees/

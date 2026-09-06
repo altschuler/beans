@@ -1,0 +1,4 @@
+services:
+  postgres:
+    command: exec /usr/lib/postgresql/18/bin/postgres -D "$PWD/.local/orb-postgres" -k /tmp -p "$PORT"
+    port: 5432

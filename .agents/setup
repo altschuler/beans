@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+export DEBIAN_FRONTEND=noninteractive
+
+echo '==> System tools and PostgreSQL 18'
+started=$SECONDS
+if ! dpkg-query -W -f='${Status}' postgresql-18 2>/dev/null | grep -q 'install ok installed'; then
+  sudo install -d /usr/share/postgresql-common/pgdg
+  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc >/dev/null
+  echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+  sudo apt-get update -qq
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-18 build-essential python3 openssl
+fi
+echo "System tools: $((SECONDS - started))s"
+
+echo '==> Pinned orb toolchain'
+started=$SECONDS
+if [[ $(node --version 2>/dev/null || true) != v24.20.0 ]]; then
+  sudo npm install -g --prefix /usr/local --force node@24.20.0
+fi
+if [[ $(pnpm --version 2>/dev/null || true) != 10.34.5 ]]; then
+  sudo npm install -g --prefix /usr/local pnpm@10.34.5
+fi
+if ! command -v just >/dev/null; then
+  tools=$(mktemp -d)
+  curl -fsSL https://github.com/casey/just/releases/download/1.40.0/just-1.40.0-x86_64-unknown-linux-musl.tar.gz | tar -xz -C "$tools" just
+  sudo install -m 755 "$tools/just" /usr/local/bin/just
+  rm -r "$tools"
+fi
+echo "Toolchain: $((SECONDS - started))s"
+
+echo '==> Workspace dependencies and Chromium'
+started=$SECONDS
+CI=true pnpm install --frozen-lockfile
+pnpm --filter @penge/web exec playwright install chromium
+echo "Dependencies: $((SECONDS - started))s"
+
+echo '==> Local configuration and database'
+started=$SECONDS
+for app in web flue; do
+  [[ -f apps/$app/.env ]] || cp -- "apps/$app/.env.example" "apps/$app/.env"
+done
+# The build reads NODE_EXTRA_CA_CERTS before Vite can create its dev certificate.
+pnpm --filter @penge/web exec node --input-type=module -e "import {getLocalHttpsConfig} from './vite.local-https.ts'; getLocalHttpsConfig()"
+export PATH="/usr/lib/postgresql/18/bin:$PATH"
+data="$PWD/.local/orb-postgres"
+if [[ ! -f "$data/PG_VERSION" ]]; then
+  mkdir -p "$data"
+  initdb -D "$data" -U postgres --auth-local=trust --auth-host=scram-sha-256 --pwfile=<(printf '%s\n' postgres) >/dev/null
+  cat >> "$data/postgresql.conf" <<'EOF'
+listen_addresses = '127.0.0.1'
+wal_level = logical
+fsync = off
+synchronous_commit = off
+full_page_writes = off
+EOF
+fi
+# Use only this orb's cluster, never an injected or remote DATABASE_URL.
+# Stop this temporary server before snapshotting; Amp supervises the runtime DB.
+if ! pg_ctl -D "$data" status >/dev/null; then
+  pg_ctl -D "$data" -l "$data/setup.log" -o '-k /tmp -p 55432' -w start >/dev/null
+  trap 'pg_ctl -D "$data" -m fast -w stop >/dev/null' EXIT
+fi
+port=$(sed -n '4p' "$data/postmaster.pid")
+for db in penge penge_test; do
+  if [[ $(psql -h /tmp -p "$port" -U postgres -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = '$db'") != 1 ]]; then
+    createdb -h /tmp -p "$port" -U postgres "$db"
+  fi
+  DATABASE_URL="postgres://postgres:postgres@127.0.0.1:$port/$db" pnpm db:migrate
+done
+echo "Local database: $((SECONDS - started))s"
+echo 'Orb setup complete. Start PostgreSQL with: amp orb services ensure'

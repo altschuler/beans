@@ -31,6 +31,30 @@ just setup
 
 `apps/web/.env` is used by the web app, Drizzle, and Zero dev scripts. `apps/flue/.env` is used by `flue dev` / `flue run` for the sidecar.
 
+### Amp orbs
+
+`.agents/setup` prepares Node 24.20.0, pnpm 10.34.5, just, locked workspace
+dependencies, Playwright Chromium, and PostgreSQL 18. Amp snapshots these files
+for reuse by fresh orbs. Warm setup rechecks dependencies and applies migrations;
+`.agents/resume` only checks the prepared files, with no installs or downloads.
+
+Orbs use native PostgreSQL instead of Docker. Start it with
+`amp orb services ensure`, then run `pnpm test`, `pnpm typecheck`, or `pnpm build`.
+The isolated `.local/orb-postgres` cluster contains migrated `penge` and
+`penge_test` databases, with logical replication enabled. Its durability settings
+are intentionally relaxed for disposable development data. Setup never resets
+existing data or imports the private seed dump.
+
+Missing app `.env` files are copied from the examples without replacing existing
+files. External bank and AI integrations still need project secrets; setup does
+not authenticate users or populate real financial data.
+
+Do not use `just setup`, `just init`, or Docker-based `just dev`/`db-*` recipes in
+orbs. To run the app, supervise `pnpm dev:web` and `pnpm dev:flue` with
+`amp orb service start`. Playwright's default server command is `just dev`, so
+start the app first and use its existing-server mode (`CI` unset). Portal origin
+and Zero proxy configuration are separate from this dependency setup.
+
 ## Development
 
 ```bash
