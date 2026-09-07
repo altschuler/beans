@@ -56,6 +56,10 @@ nuke-and-reset:
 wait-db:
   @docker compose up -d --wait --wait-timeout 120 || (docker compose ps -a; docker compose logs --tail=120 postgres; echo 'Postgres did not become healthy within 120 seconds' >&2; exit 1)
 
+# Add synthetic households and known test logins to a running local database.
+seed:
+  pnpm --dir apps/web exec dotenv -e .env -- node scripts/seed.mjs
+
 seed-capture:
   #!/usr/bin/env bash
   set -euo pipefail
@@ -83,7 +87,7 @@ seed-restore:
   elif [[ -f ../../.local/dev-seed/penge-data.dump ]]; then
     seed_path=../../.local/dev-seed/penge-data.dump
   else
-    echo 'Missing local seed dump. Run `just seed-capture` in the main checkout before `just init` or `just worktree-create`.' >&2
+    echo 'Missing local seed dump. Run `just seed-capture` in the source checkout, or use `just seed` for synthetic data.' >&2
     exit 1
   fi
 
@@ -102,8 +106,7 @@ db-reset:
   just _zero-cache-clean
   just wait-db
   pnpm db:migrate
-  just seed-restore
-  pnpm db:migrate
+  just seed
 
 db-generate:
   pnpm db:generate

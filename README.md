@@ -77,6 +77,46 @@ just db-reset
 
 Postgres runs in Docker with `wal_level=logical` so Zero can replicate changes. Eve runtime persistence is separate from Penge app/domain tables and is excluded from Zero. The explicit `penge_zero_app` publication contains only app/domain tables.
 
+### Synthetic test data
+
+Run `just seed` against a running, migrated local database (uses `apps/web/.env`,
+with an already-exported `DATABASE_URL` taking precedence). It also works in
+orbs after `amp orb services ensure` and `pnpm db:migrate`. No bank credentials,
+private dump, AI service, or running web server are needed.
+
+| Email | Password |
+| --- | --- |
+| `anna@example.test` | `12345678` |
+| `bob@example.test` | `12345678` |
+
+Each user has an isolated personal household, the standard chart of accounts,
+manual checking and savings accounts, opening balances, and fixed synthetic DKK
+history from April through September 2026. Scenarios include salary, rent, varied
+groceries, utilities, restaurants, refunds, reimbursements, split purchases,
+matched savings transfers, and uncategorized transactions needing review.
+Amounts use the application's scale-4 integer representation and every ledger
+entry balances. No real bank connections, sessions, or fake AI chat histories
+are created; users sign in normally and can start new chats.
+
+The source of truth is `apps/web/scripts/seed-data.json`. All IDs, dates,
+timestamps, amounts, chart definitions, and test password hashes are fixed in
+that file; the loader does not generate random values or use today's date.
+Fresh databases seeded from the same fixture get identical application rows.
+Edit the JSON to change the scenarios, keeping references and postings balanced,
+then run `pnpm --filter @penge/web test tests/unit/seed.test.mjs`.
+
+Seeding is atomic and additive: existing demo users (including changed passwords
+and edited transactions) and unrelated data are left untouched on reruns.
+Existing databases are not migrated to revised fixtures by `just seed`; use a
+fresh disposable database (or the destructive `just db-reset` locally) to load
+the exact fixture state. Date-filtered views may need April–September 2026
+selected because fixture dates intentionally do not advance with the clock.
+The command rejects remote database hosts and `NODE_ENV=production`; these
+public credentials must only be used in disposable development databases.
+`just db-reset` **deletes local database data** and now seeds synthetic data by
+default, so `just setup`/`just init` no longer need a private dump. The explicit
+`seed-capture`/`seed-restore` recipes remain available for private snapshots.
+
 ## Tests and checks
 
 ```bash
