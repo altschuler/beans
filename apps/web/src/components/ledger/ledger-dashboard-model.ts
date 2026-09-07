@@ -56,7 +56,6 @@ export type LedgerDashboardStatusIndicator = {
   className: string
   canConfirm: boolean
 }
-export type LedgerDashboardAiIndicator = LedgerDashboardStatusIndicator
 
 type NormalizedAccount = LedgerDashboardAccount & {status: string; sortOrder: number; systemKey: string | null; linkedBankAccountId: string | null}
 type NormalizedPosting = LedgerDashboardPosting & {amount: number; sortOrder: number; bankTransactionId: string | null}
@@ -176,10 +175,8 @@ export function buildLedgerDashboardModel(input: {
           currency: bankTransaction.currency,
           status: transaction?.status ?? 'needs_review',
           needsReview: transaction?.status !== 'confirmed',
-          aiConfidence: bankTransaction.aiConfidence,
           canCategorize: true,
           statusIndicator,
-          aiIndicator: statusIndicator,
           categoryAccountId: interpretation.categoryAccountId,
           categoryLabel: interpretation.categoryLabel,
           isSplit: interpretation.isSplit,
@@ -419,5 +416,4 @@ function isRealCategorizationAccount(account: NormalizedAccount) {
 function uniqueAccounts(accounts: NormalizedAccount[]) {
   return uniqBy(accounts, account => account.id)
 }
-
 

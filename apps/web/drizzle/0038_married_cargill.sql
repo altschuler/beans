@@ -1,0 +1,1 @@
+ALTER TABLE "bank_transactions" DROP COLUMN "categorization_revision";

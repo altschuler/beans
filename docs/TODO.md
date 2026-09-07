@@ -13,20 +13,12 @@
 
 ## Local development configuration
 
-- Make local service ports easy to change from one documented place. Web defaults remain duplicated across `apps/web/package.json`, `apps/web/vite.config.ts`, `apps/web/.env.example`, `apps/web/playwright.config.ts`, test env setup, server URL fallbacks, and `README.md`. Eve defaults span `apps/eve/package.json`, `apps/eve/.env.example`, `apps/web/.env.example`, `dev.config.mjs`, and architecture docs. Local generated env files must stay aligned.
+- Make local service ports easy to change from one documented place. Web defaults remain duplicated across `apps/web/package.json`, `apps/web/vite.config.ts`, `apps/web/.env.example`, `apps/web/playwright.config.ts`, test env setup, server URL fallbacks, and `README.md`. Local generated env files must stay aligned.
 
 ## Production ready
 
-- Re-add automated categorization with a lightweight app-visible status row and cursor, without mirroring Eve events. A later UI improvement may show “agent is considering this row” as informational activity, not as a claim, lease, or write lock.
-  - Until then, `TransactionTableRow.aiIndicator` and `aiConfidence` are write-only, while the `ai_confident`/`ai_failed` status dots still derive from `bankTransactions.aiConfidence`. The removed categorization flow was the only active writer, so persisted confidence values can remain stale until they are explicitly cleared or categorization returns.
 - Add production zero-cache config before deploy. No production deployment/config exists beyond dev/env-example basics. Separate `ZERO_CVR_DB`/`ZERO_CHANGE_DB`, set `ZERO_ADMIN_PASSWORD`, configure a persistent `ZERO_REPLICA_FILE`, enable CVR garbage collection, and define a production equivalent of the local `penge_zero_app` publication.
 - Document and harden production Zero cookie deployment. If `zero-cache` runs on a subdomain, Better Auth cookies need appropriate cross-subdomain configuration, and auth cookies must not use `SameSite=None`.
-- Select and document the durable Eve persistence backend for deployment.
-- Define retention and an app-owned deletion procedure for Eve sessions and sensitive sandbox state.
-
-## Read-model cleanup
-
-- Unify transaction read-model derivations shared by Zero UI and Eve/domain read projections. Current UI and Eve paths independently derive review/status indicators, user-confirmed vs AI-confirmed semantics, interpretation kind, category/split/transfer summaries, and write eligibility. Prefer shared pure domain read-model functions with thin Zero relation adapters and Eve/domain adapters; avoid SQL views for now because current `drizzle-zero` generation is table/primary-key oriented and does not appear to support synced generated views.
 
 ## Zero review
 

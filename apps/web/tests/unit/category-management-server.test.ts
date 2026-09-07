@@ -188,15 +188,14 @@ describe('category management server functions', () => {
     }))).rejects.toThrow(message)
   })
 
-  it('rejects trusted-scope updates that omit the trusted team id', async () => {
+  it('rejects group updates outside the user team', async () => {
     const {updateCategoryGroup} = await import('@penge/domain/category-management')
 
     await expect(db.transaction(tx => updateCategoryGroup(tx, {
-      userId: 'user-2',
-      trustedScope: true,
+      userId: 'user-1',
       groupId: 'other-group',
-      name: 'Missing team guard',
-    }))).rejects.toThrow('Trusted team scope is required')
+      name: 'Blocked',
+    }))).rejects.toThrow('Category group not found')
   })
 
   it('rejects category deletion when postings exist', async () => {

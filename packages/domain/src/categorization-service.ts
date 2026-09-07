@@ -1,4 +1,4 @@
-import {and, eq, inArray, isNotNull, isNull, sql} from 'drizzle-orm'
+import {and, eq, inArray, isNotNull, isNull} from 'drizzle-orm'
 import {keyBy, uniq} from 'lodash-es'
 import type {Database} from './db'
 import {absoluteMoneyAmount, formatMoneyDecimal} from './money'
@@ -16,53 +16,32 @@ type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 type DrizzleTransaction = DatabaseTransaction
 
 type LedgerTransactionFinalStatus = 'confirmed' | 'needs_review'
-type LedgerTransactionAiConfidence = 0 | 1 | 2
-type LedgerTransactionCategorizedBy = 'user' | 'ai'
+type LedgerTransactionCategorizedBy = 'user'
 
 type BankTransactionInterpretation =
   | {kind: 'category'; accountId: string}
   | {kind: 'split'; lines: CategorizationLineInput[]}
   | {kind: 'transfer'; accountId: string}
-  | {kind: 'transfer'; counterBankTransactionId: string}
 
 type ApplyBankTransactionInterpretationInput = {
   userId: string
   teamId?: string
-  trustedScope?: true
   bankTransactionId: string
-  targetBankTransactionIds?: string[]
   interpretation: BankTransactionInterpretation
-  status?: LedgerTransactionFinalStatus
-  aiConfidence?: LedgerTransactionAiConfidence | null
-  aiReasoning?: string | null
-  categorizedBy?: LedgerTransactionCategorizedBy | null
-  requiredExistingStatus?: LedgerTransactionFinalStatus
-  expectedCategorizationRevision?: number
 }
 
 type CategorizeBankTransactionInput = {
   userId: string
   teamId?: string
-  trustedScope?: true
   bankTransactionId: string
-  targetBankTransactionIds?: string[]
   selection: {kind: 'category'; accountId: string} | {kind: 'transfer'; accountId: string}
-  status?: LedgerTransactionFinalStatus
-  aiConfidence?: LedgerTransactionAiConfidence | null
-  aiReasoning?: string | null
-  categorizedBy?: LedgerTransactionCategorizedBy | null
-  requiredExistingStatus?: LedgerTransactionFinalStatus
-  expectedCategorizationRevision?: number
 }
 
 type SplitBankTransactionInput = {
   userId: string
   teamId?: string
-  trustedScope?: true
   bankTransactionId: string
-  targetBankTransactionIds?: string[]
   lines: CategorizationLineInput[]
-  expectedCategorizationRevision?: number
 }
 
 type ConfirmBankTransactionInterpretationInput = {
@@ -90,7 +69,6 @@ type LoadedBankTransactionForCategorization = {
     bookingDate: string | null
     valueDate: string | null
     description: string
-    categorizationRevision: number
   }
   sourceLedgerAccount: {id: string; linkedBankAccountId: string | null; teamId: string}
 }
@@ -101,29 +79,11 @@ type ReconciledPostingInvariantInput = LoadedImportedLedgerTransaction & {
   postingAccount: {teamId: string; linkedBankAccountId: string | null}
 }
 
-const MAX_AI_REASONING_LENGTH = 500
 const TRANSFER_MATCH_DATE_WINDOW_DAYS = 2
 const TRANSFER_CONFIRM_INVALID_MESSAGE = 'Transfer is not valid and cannot be confirmed'
 const SYSTEM_LEDGER_ACCOUNT_KEYS = {
   uncategorized: 'uncategorized',
 } as const
-
-export class CategorizationRevisionConflictError extends Error {
-  readonly code = 'categorization_revision_conflict'
-
-  constructor(
-    readonly bankTransactionId: string,
-    readonly expectedCategorizationRevision: number,
-    readonly actualCategorizationRevision: number,
-  ) {
-    super('Bank transaction categorization changed, please re-read before writing')
-    this.name = 'CategorizationRevisionConflictError'
-  }
-}
-
-export function normalizeAiReasoning(reasoning: string) {
-  return reasoning.trim().slice(0, MAX_AI_REASONING_LENGTH)
-}
 
 export async function ensureUncategorizedBankImportInterpretation(
   tx: DrizzleTransaction,
@@ -215,16 +175,8 @@ export async function categorizeBankTransaction(tx: DrizzleTransaction, input: C
   return applyBankTransactionInterpretation(tx, {
     userId: input.userId,
     teamId: input.teamId,
-    trustedScope: input.trustedScope,
     bankTransactionId: input.bankTransactionId,
-    targetBankTransactionIds: input.targetBankTransactionIds,
     interpretation: input.selection,
-    status: input.status,
-    aiConfidence: input.aiConfidence,
-    aiReasoning: input.aiReasoning,
-    categorizedBy: input.categorizedBy,
-    requiredExistingStatus: input.requiredExistingStatus,
-    expectedCategorizationRevision: input.expectedCategorizationRevision,
   })
 }
 
@@ -232,11 +184,8 @@ export async function splitBankTransaction(tx: DrizzleTransaction, input: SplitB
   return applyBankTransactionInterpretation(tx, {
     userId: input.userId,
     teamId: input.teamId,
-    trustedScope: input.trustedScope,
     bankTransactionId: input.bankTransactionId,
-    targetBankTransactionIds: input.targetBankTransactionIds,
     interpretation: {kind: 'split', lines: input.lines},
-    expectedCategorizationRevision: input.expectedCategorizationRevision,
   })
 }
 
@@ -244,42 +193,19 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
   const loaded = await loadBankTransactionForCategorization(tx, {
     userId: input.userId,
     teamId: input.teamId,
-    trustedScope: input.trustedScope,
     bankTransactionId: input.bankTransactionId,
   })
   if (input.teamId && loaded.teamId !== input.teamId) return false
-  if (input.targetBankTransactionIds && !input.targetBankTransactionIds.includes(loaded.bankTransaction.id)) return false
 
   let existing = await loadExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
 
-  const isAiCategorization = input.categorizedBy === 'ai'
-  if (isAiCategorization && existing && isProtectedFromAiOverwrite(existing.ledgerTransaction)) {
-    return false
-  }
-
-  if (input.requiredExistingStatus && existing && existing.ledgerTransaction.status !== input.requiredExistingStatus) {
-    return false
-  }
-
-  const normalizedAiReasoning = isAiCategorization ? requireAiReasoning(input.aiReasoning) : null
   const now = new Date()
-  const targetRevisionClaimed = input.expectedCategorizationRevision !== undefined
-  if (targetRevisionClaimed) {
-    await bumpCategorizationRevisions(tx, {
-      bankTransactionIds: [loaded.bankTransaction.id],
-      targetBankTransactionId: loaded.bankTransaction.id,
-      expectedCategorizationRevision: input.expectedCategorizationRevision,
-      now,
-    })
-  }
-
   if (!existing) {
     await ensureUncategorizedBankImportInterpretation(tx, {bankTransactionId: loaded.bankTransaction.id, now})
     existing = await loadExistingInterpretationForBankTransaction(tx, loaded.teamId, loaded.bankTransaction.id)
   }
   if (!existing) throw new Error('Bank transaction interpretation not found')
 
-  const existingBankTransactionIds = await loadBankTransactionIdsForLedgerTransaction(tx, existing.ledgerTransaction.id)
   // Re-categorization updates the existing ledger transaction in place (reusing its id) rather than
   // deleting and re-inserting, so Zero syncs an update instead of a delete+insert and id-keyed lookups
   // stay stable. Category/counter postings are fully rebuilt, but the source bank posting is left
@@ -294,31 +220,21 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
     date: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
     // Left null: the bank transaction owns the description for bank-import interpretations (see schema).
     description: null,
-    status: input.status ?? 'confirmed',
-    categorizedBy: input.categorizedBy ?? 'user',
-    requiredExistingStatus: input.requiredExistingStatus,
+    status: 'confirmed' as const,
+    categorizedBy: 'user' as const,
     now,
   }
 
   if (input.interpretation.kind === 'transfer') {
-    const transferTarget = 'counterBankTransactionId' in input.interpretation
-      ? await loadTransferTargetForCounterBankTransaction(tx, {
-          teamId: loaded.teamId,
-          sourceBankTransactionId: loaded.bankTransaction.id,
-          counterBankTransactionId: input.interpretation.counterBankTransactionId,
-          sourceBankAccountId: loaded.bankTransaction.bankAccountId,
-          sourceAmount: loaded.bankTransaction.amount,
-          currency: loaded.bankTransaction.currency,
-        })
-      : await loadTransferTargetForLedgerAccount(tx, {
-          teamId: loaded.teamId,
-          sourceBankTransactionId: loaded.bankTransaction.id,
-          transferLedgerAccountId: input.interpretation.accountId,
-          sourceBankAccountId: loaded.bankTransaction.bankAccountId,
-          sourceAmount: loaded.bankTransaction.amount,
-          currency: loaded.bankTransaction.currency,
-          sourceDate: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
-        })
+    const transferTarget = await loadTransferTargetForLedgerAccount(tx, {
+      teamId: loaded.teamId,
+      sourceBankTransactionId: loaded.bankTransaction.id,
+      transferLedgerAccountId: input.interpretation.accountId,
+      sourceBankAccountId: loaded.bankTransaction.bankAccountId,
+      sourceAmount: loaded.bankTransaction.amount,
+      currency: loaded.bankTransaction.currency,
+      sourceDate: loaded.bankTransaction.bookingDate ?? loaded.bankTransaction.valueDate,
+    })
 
     const claimed = await claimExistingInterpretationForRewrite(tx, existing.ledgerTransaction.id, loaded.bankTransaction.id, writeFields)
     if (!claimed) return false
@@ -343,17 +259,7 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
     }
     await tx.delete(ledgerTransactions).where(eq(ledgerTransactions.id, counterExisting.ledgerTransaction.id))
     await validatePersistedTransactionBalance(tx, ledgerTransactionId)
-    if (isAiCategorization) {
-      await recordBankTransactionAiResult(tx, loaded.bankTransaction.id, input.aiConfidence ?? null, normalizedAiReasoning, now)
-    } else {
-      await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
-    }
-    await bumpCategorizationRevisions(tx, {
-      bankTransactionIds: targetRevisionClaimed
-        ? [...existingBankTransactionIds, transferTarget.counterBankTransaction.id].filter(id => id !== loaded.bankTransaction.id)
-        : [...existingBankTransactionIds, loaded.bankTransaction.id, transferTarget.counterBankTransaction.id],
-      now,
-    })
+    await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
     return true
   }
 
@@ -381,18 +287,10 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
     now,
   })
 
-  await writeRebuiltInterpretation(tx, {...writeFields, hasExisting: true, sourceBankTransactionId: loaded.bankTransaction.id, postings})
-  if (isAiCategorization) {
-    await recordBankTransactionAiResult(tx, loaded.bankTransaction.id, input.aiConfidence ?? null, normalizedAiReasoning, now)
-  } else {
-    await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
-  }
-  await bumpCategorizationRevisions(tx, {
-    bankTransactionIds: targetRevisionClaimed
-      ? existingBankTransactionIds.filter(id => id !== loaded.bankTransaction.id)
-      : [...existingBankTransactionIds, loaded.bankTransaction.id],
-    now,
-  })
+  // The source bank posting was preserved; only insert the rebuilt category postings.
+  await tx.insert(ledgerPostings).values(postings.filter(posting => posting.bankTransactionId !== loaded.bankTransaction.id))
+  await validatePersistedTransactionBalance(tx, ledgerTransactionId)
+  await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
   return true
 }
 
@@ -503,7 +401,6 @@ export async function clearLedgerCategorizations(tx: DrizzleTransaction, input: 
     await resetExistingBankPostingToUncategorizedInterpretation(tx, {bankTransactionId, now})
   }
   await deleteBankImportTransactionsWithoutBankPostings(tx, transactionIds)
-  await bumpCategorizationRevisions(tx, {bankTransactionIds, now})
 
   return {cleared: transactionIds.length}
 }
@@ -532,11 +429,6 @@ export async function confirmBankTransactionInterpretation(tx: DrizzleTransactio
   if (!updatedTransaction) {
     throw new Error('Transaction was changed concurrently, please retry')
   }
-
-  await bumpCategorizationRevisions(tx, {
-    bankTransactionIds: await loadBankTransactionIdsForLedgerTransaction(tx, ledgerTransaction.id),
-    now,
-  })
 }
 
 
@@ -691,10 +583,10 @@ async function loadRefreshableUncategorizedInterpretation(tx: DrizzleTransaction
 // serializing on a shared lock — acceptable given low write concurrency.
 async function loadBankTransactionForCategorization(
   tx: DrizzleTransaction,
-  input: {userId: string; teamId?: string; trustedScope?: true; bankTransactionId: string},
+  input: {userId: string; teamId?: string; bankTransactionId: string},
 ): Promise<LoadedBankTransactionForCategorization> {
   const conditions = [eq(bankTransactions.id, input.bankTransactionId)]
-  if (input.trustedScope && input.teamId) conditions.push(eq(bankAccounts.teamId, input.teamId))
+  if (input.teamId) conditions.push(eq(bankAccounts.teamId, input.teamId))
 
   const selection = {
     teamId: bankAccounts.teamId,
@@ -706,7 +598,6 @@ async function loadBankTransactionForCategorization(
       bookingDate: bankTransactions.bookingDate,
       valueDate: bankTransactions.valueDate,
       description: bankTransactions.description,
-      categorizationRevision: bankTransactions.categorizationRevision,
     },
     sourceLedgerAccount: {
       id: ledgerAccounts.id,
@@ -714,22 +605,14 @@ async function loadBankTransactionForCategorization(
       teamId: ledgerAccounts.teamId,
     },
   }
-  const [row] = input.trustedScope && input.teamId
-    ? await tx
-        .select(selection)
-        .from(bankTransactions)
-        .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
-        .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
-        .where(and(...conditions))
-        .limit(1)
-    : await tx
-        .select(selection)
-        .from(bankTransactions)
-        .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
-        .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
-        .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
-        .where(and(...conditions, eq(teamMembers.userId, input.userId)))
-        .limit(1)
+  const [row] = await tx
+    .select(selection)
+    .from(bankTransactions)
+    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
+    .innerJoin(teamMembers, eq(teamMembers.teamId, bankAccounts.teamId))
+    .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
+    .where(and(...conditions, eq(teamMembers.userId, input.userId)))
+    .limit(1)
 
   if (!row) throw new Error('Bank transaction not found')
   if (row.sourceLedgerAccount.teamId !== row.teamId || row.sourceLedgerAccount.linkedBankAccountId !== row.bankTransaction.bankAccountId) {
@@ -795,26 +678,12 @@ async function loadExistingInterpretationForBankTransaction(tx: DrizzleTransacti
   }
 }
 
-function isProtectedFromAiOverwrite(ledgerTransaction: {status: string; userConfirmedAt?: Date | null; userConfirmedBy?: string | null}) {
-  return ledgerTransaction.status !== 'needs_review' || Boolean(ledgerTransaction.userConfirmedAt || ledgerTransaction.userConfirmedBy)
-}
-
-async function loadBankTransactionIdsForLedgerTransaction(tx: DrizzleTransaction, ledgerTransactionId: string) {
-  const rows = await tx
-    .select({bankTransactionId: ledgerPostings.bankTransactionId})
-    .from(ledgerPostings)
-    .where(and(eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId), isNotNull(ledgerPostings.bankTransactionId)))
-
-  return rows.flatMap(row => (row.bankTransactionId ? [row.bankTransactionId] : []))
-}
-
 type RewriteLedgerTransactionFields = {
   userId: string
   date: string | null
   description: string | null
   status: LedgerTransactionFinalStatus
   categorizedBy: LedgerTransactionCategorizedBy
-  requiredExistingStatus?: LedgerTransactionFinalStatus
   now: Date
 }
 
@@ -829,17 +698,14 @@ type RewriteLedgerTransactionFields = {
 // clients instead of a delete+insert that briefly exposes two postings for one bank transaction.
 async function claimExistingInterpretationForRewrite(tx: DrizzleTransaction, existingLedgerTransactionId: string, _sourceBankTransactionId: string, fields: RewriteLedgerTransactionFields) {
   const conditions = [eq(ledgerTransactions.id, existingLedgerTransactionId)]
-  if (fields.requiredExistingStatus) {
-    conditions.push(eq(ledgerTransactions.status, fields.requiredExistingStatus))
-  }
 
   const [updated] = await tx
     .update(ledgerTransactions)
     .set({
       status: fields.status,
       categorizedBy: fields.categorizedBy,
-      userConfirmedAt: fields.categorizedBy === 'ai' ? null : fields.now,
-      userConfirmedBy: fields.categorizedBy === 'ai' ? null : fields.userId,
+      userConfirmedAt: fields.now,
+      userConfirmedBy: fields.userId,
       date: fields.date,
       description: fields.description,
       updatedAt: fields.now,
@@ -848,46 +714,6 @@ async function claimExistingInterpretationForRewrite(tx: DrizzleTransaction, exi
     .returning({id: ledgerTransactions.id})
 
   return Boolean(updated)
-}
-
-async function writeRebuiltInterpretation(
-  tx: DrizzleTransaction,
-  input: {
-    hasExisting: boolean
-    ledgerTransactionId: string
-    teamId: string
-    userId: string
-    date: string | null
-    description: string | null
-    status: LedgerTransactionFinalStatus
-    categorizedBy: LedgerTransactionCategorizedBy
-    sourceBankTransactionId: string
-    now: Date
-    postings: BuiltLedgerPosting[]
-  },
-) {
-  if (input.hasExisting) {
-    // The transaction row was already updated in place by claimExistingInterpretationForRewrite, which
-    // also preserved the source bank posting. Insert only the rebuilt category/counter postings; the
-    // source posting stays as-is, so skip it here (it was not deleted). Balance is validated against the
-    // full persisted set, which includes the preserved source.
-    const rebuiltPostings = input.postings.filter(posting => posting.bankTransactionId !== input.sourceBankTransactionId)
-    await tx.insert(ledgerPostings).values(rebuiltPostings)
-    await validatePersistedTransactionBalance(tx, input.ledgerTransactionId)
-    return
-  }
-
-  await insertBankImportLedgerInterpretation(tx, {
-    ledgerTransactionId: input.ledgerTransactionId,
-    teamId: input.teamId,
-    userId: input.userId,
-    date: input.date,
-    description: input.description,
-    postings: input.postings,
-    status: input.status,
-    categorizedBy: input.categorizedBy,
-    now: input.now,
-  })
 }
 
 async function loadTransferTargetForLedgerAccount(
@@ -921,58 +747,6 @@ async function loadTransferTargetForLedgerAccount(
   }
 
   return {transferAccount, counterBankTransaction}
-}
-
-async function loadTransferTargetForCounterBankTransaction(
-  tx: DrizzleTransaction,
-  input: {
-    teamId: string
-    sourceBankTransactionId: string
-    counterBankTransactionId: string
-    sourceBankAccountId: string
-    sourceAmount: number
-    currency: string
-  },
-) {
-  const [row] = await tx
-    .select({
-      counterBankTransaction: {
-        id: bankTransactions.id,
-        bankAccountId: bankTransactions.bankAccountId,
-        amount: bankTransactions.amount,
-        currency: bankTransactions.currency,
-      },
-      transferAccount: {
-        id: ledgerAccounts.id,
-        teamId: ledgerAccounts.teamId,
-        type: ledgerAccounts.type,
-        status: ledgerAccounts.status,
-        linkedBankAccountId: ledgerAccounts.linkedBankAccountId,
-      },
-      teamId: bankAccounts.teamId,
-    })
-    .from(bankTransactions)
-    .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.bankAccountId))
-    .innerJoin(ledgerAccounts, eq(ledgerAccounts.linkedBankAccountId, bankAccounts.id))
-    .where(eq(bankTransactions.id, input.counterBankTransactionId))
-    .limit(1)
-
-  if (
-    !row ||
-    row.teamId !== input.teamId ||
-    row.transferAccount.teamId !== input.teamId ||
-    row.transferAccount.type !== 'bank' ||
-    row.transferAccount.status !== 'active' ||
-    !row.transferAccount.linkedBankAccountId ||
-    row.counterBankTransaction.id === input.sourceBankTransactionId ||
-    row.counterBankTransaction.bankAccountId === input.sourceBankAccountId ||
-    row.counterBankTransaction.amount !== -input.sourceAmount ||
-    row.counterBankTransaction.currency !== input.currency
-  ) {
-    throw new Error('Invalid transfer counter transaction')
-  }
-
-  return {transferAccount: row.transferAccount, counterBankTransaction: row.counterBankTransaction}
 }
 
 async function loadTransferLedgerAccount(tx: DrizzleTransaction, teamId: string, accountId: string): Promise<TransferLedgerAccount> {
@@ -1281,85 +1055,9 @@ async function validatePersistedTransactionBalance(tx: DrizzleTransaction, ledge
   validateLedgerPostingsBalance(postings)
 }
 
-async function bumpCategorizationRevisions(
-  tx: DrizzleTransaction,
-  input: {
-    bankTransactionIds: string[]
-    targetBankTransactionId?: string
-    expectedCategorizationRevision?: number
-    now: Date
-  },
-) {
-  const bankTransactionIds = uniq(input.bankTransactionIds)
-  if (bankTransactionIds.length === 0) return
-
-  if (input.expectedCategorizationRevision !== undefined && input.targetBankTransactionId) {
-    const [updatedTarget] = await tx
-      .update(bankTransactions)
-      .set({
-        categorizationRevision: sql`${bankTransactions.categorizationRevision} + 1`,
-        updatedAt: input.now,
-      })
-      .where(
-        and(
-          eq(bankTransactions.id, input.targetBankTransactionId),
-          eq(bankTransactions.categorizationRevision, input.expectedCategorizationRevision),
-        ),
-      )
-      .returning({id: bankTransactions.id})
-
-    if (!updatedTarget) {
-      const [current] = await tx
-        .select({categorizationRevision: bankTransactions.categorizationRevision})
-        .from(bankTransactions)
-        .where(eq(bankTransactions.id, input.targetBankTransactionId))
-        .limit(1)
-      throw new CategorizationRevisionConflictError(
-        input.targetBankTransactionId,
-        input.expectedCategorizationRevision,
-        current?.categorizationRevision ?? -1,
-      )
-    }
-
-    const remainingIds = bankTransactionIds.filter(id => id !== input.targetBankTransactionId)
-    if (remainingIds.length === 0) return
-    await bumpCategorizationRevisions(tx, {bankTransactionIds: remainingIds, now: input.now})
-    return
-  }
-
-  await tx
-    .update(bankTransactions)
-    .set({
-      categorizationRevision: sql`${bankTransactions.categorizationRevision} + 1`,
-      updatedAt: input.now,
-    })
-    .where(inArray(bankTransactions.id, bankTransactionIds))
-}
-
-async function recordBankTransactionAiResult(
-  tx: DrizzleTransaction,
-  bankTransactionId: string,
-  aiConfidence: LedgerTransactionAiConfidence | null,
-  aiReasoning: string | null,
-  now: Date,
-) {
-  await tx
-    .update(bankTransactions)
-    .set({aiConfidence, aiReasoning, updatedAt: now})
-    .where(eq(bankTransactions.id, bankTransactionId))
-}
-
 async function clearBankTransactionAiState(tx: DrizzleTransaction, bankTransactionId: string, now: Date) {
   await tx
     .update(bankTransactions)
     .set({aiConfidence: null, aiReasoning: null, updatedAt: now})
     .where(eq(bankTransactions.id, bankTransactionId))
-}
-
-function requireAiReasoning(reasoning: string | null | undefined) {
-  const normalizedReasoning = normalizeAiReasoning(reasoning ?? '')
-  if (!normalizedReasoning) {
-    throw new Error('AI reasoning is required')
-  }
-  return normalizedReasoning
 }

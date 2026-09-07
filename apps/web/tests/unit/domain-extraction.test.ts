@@ -1,19 +1,14 @@
 import {describe, expect, it} from 'vitest'
 
 import {buildBankTransactionCategorizationPostings, validateLedgerPostingsBalance} from '@penge/domain/categorization'
-import {CategorizationRevisionConflictError, normalizeAiReasoning} from '@penge/domain/categorization-service'
 import {DEFAULT_CURRENCY, parseDecimalMoneyToAmount} from '@penge/domain/money'
-import {searchBankTransactions} from '@penge/domain/read-projections'
 import {bankTransactions} from '@penge/domain/schema'
 
 describe('domain extraction public imports', () => {
-  it('exposes shared categorization, money, schema, service, and read-projection modules', () => {
+  it('exposes shared categorization, money, and schema modules', () => {
     expect(DEFAULT_CURRENCY).toBe('DKK')
     expect(parseDecimalMoneyToAmount('12.34')).toBe(123_400)
     expect(bankTransactions).toBeDefined()
-    expect(normalizeAiReasoning('  useful reason  ')).toBe('useful reason')
-    expect(new CategorizationRevisionConflictError('bt-1', 1, 2).code).toBe('categorization_revision_conflict')
-    expect(typeof searchBankTransactions).toBe('function')
 
     const postings = buildBankTransactionCategorizationPostings({
       ledgerTransactionId: 'lt-1',

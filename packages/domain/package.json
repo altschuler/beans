@@ -7,15 +7,9 @@
     "./categorization": "./src/categorization.ts",
     "./categorization-service": "./src/categorization-service.ts",
     "./category-management": "./src/category-management.ts",
-    "./chat-approval-proposals": "./src/chat-approval-proposals.ts",
     "./db": "./src/db.ts",
-    "./eve-chat-approval": "./src/eve-chat-approval.ts",
-    "./eve-service-capability": "./src/eve-service-capability.ts",
     "./money": "./src/money.ts",
-    "./read-projections": "./src/read-projections.ts",
-    "./schema": "./src/schema.ts",
-    "./team-chat-ui-context": "./src/team-chat-ui-context.ts",
-    "./team-scope": "./src/team-scope.ts"
+    "./schema": "./src/schema.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

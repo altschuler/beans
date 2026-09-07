@@ -5,7 +5,6 @@ export default {
 
   ports: {
     PORT: [3100, 3199],
-    EVE_PORT: [3300, 3399],
     POSTGRES_PORT: [5500, 5599],
     ZERO_PORT: [4848, 4999],
     ZERO_CHANGE_STREAMER_PORT: [5000, 5099],
@@ -25,8 +24,6 @@ export default {
     BETTER_AUTH_URL: ({env}) => `https://localhost:${env.PORT}`,
     BETTER_AUTH_TRUSTED_ORIGINS: 'https://localhost:*',
     VITE_PUBLIC_APP_URL: ({env}) => `https://localhost:${env.PORT}`,
-    PENGE_EVE_BASE_URL: ({env}) => `http://localhost:${env.EVE_PORT}`,
-    PENGE_EVE_SERVICE_CAPABILITY_SECRET: 'change-me-eve-service-capability-secret',
   },
 
   envFiles: [
@@ -48,27 +45,12 @@ export default {
         'BETTER_AUTH_URL',
         'BETTER_AUTH_TRUSTED_ORIGINS',
         'VITE_PUBLIC_APP_URL',
-        'PENGE_EVE_BASE_URL',
-        'PENGE_EVE_SERVICE_CAPABILITY_SECRET',
       ],
-      remove: ['PORT', 'EVE_PORT', 'POSTGRES_PORT', 'COMPOSE_PROJECT_NAME'],
+      remove: ['PORT', 'POSTGRES_PORT', 'COMPOSE_PROJECT_NAME'],
       defaults: {
         BETTER_AUTH_SECRET: {randomBase64Url: 32},
         GOCARDLESS_SECRET_ID: 'replace-with-gocardless-bank-account-data-secret-id',
         GOCARDLESS_SECRET_KEY: 'replace-with-gocardless-bank-account-data-secret-key',
-      },
-      databaseUrl: {
-        key: 'DATABASE_URL',
-        portKey: 'POSTGRES_PORT',
-        databaseName: 'penge',
-      },
-    },
-    {
-      path: 'apps/eve/.env',
-      sync: ['DATABASE_URL', 'EVE_PORT', 'PENGE_EVE_SERVICE_CAPABILITY_SECRET'],
-      remove: ['PORT', 'POSTGRES_PORT', 'COMPOSE_PROJECT_NAME'],
-      defaults: {
-        OPENAI_API_KEY: '',
       },
       databaseUrl: {
         key: 'DATABASE_URL',

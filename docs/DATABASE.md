@@ -2,7 +2,7 @@
 
 Postgres is the durable app/domain database. The shared Drizzle schema lives in `packages/domain/src/schema.ts`, and web app migrations live in `apps/web/drizzle/`.
 
-Eve has separate runtime-internal persistence. Penge stores only the chat-to-runtime mapping (`eve_session_id`, `eve_continuation_token`) needed for authorization and continuation; transcript and approval events remain in Eve. Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
+Local Zero dev uses the explicit `penge_zero_app` publication so the change streamer follows only app/domain tables instead of every table in `public`.
 
 Zero is the required sync layer for app/domain data. Any user-facing application data that should be available to the client must be exposed through Zero rather than fetched directly from server routes or ad-hoc client APIs.
 
@@ -27,7 +27,6 @@ Current Zero-synced app/domain tables, and the only tables included in the local
 
 - `teams`
 - `team_members`
-- `team_data_assistant_chats`
 - `bank_connections`
 - `bank_accounts`
 - `bank_transactions`
@@ -51,9 +50,7 @@ These columns are Postgres `bigint` values exposed by Drizzle and Zero as `numbe
 
 When adding a new app/domain table, it is not complete until it is represented in both Drizzle and Zero generation config, and the generated Zero schema has been updated.
 
-Ask Penge keeps authorization and navigation metadata in `team_data_assistant_chats`. The Eve session id and continuation token are server-only and excluded from Zero. Eve's durable stream is the transcript and approval source of truth; Penge has no event or approval projection tables.
-
-`agent_tool_executions` is a server-only Eve write-idempotency ledger keyed by Eve session and tool call. It stores the structured result in the same database transaction as the guarded domain write so durable-step replay returns the original outcome. It must remain excluded from Zero and browser APIs.
+Migration history is preserved. Use forward migrations for removals; do not rewrite applied SQL or snapshots. The live schema contains no assistant runtime tables. Historical categorization confidence, reasoning, and provenance remain financial review data, not processing state.
 
 ## Client mutations
 
@@ -73,12 +70,6 @@ closePopover()
 Only await `runZeroMutation` when the next step genuinely requires server acknowledgement rather than optimistic state.
 
 When mocking a failing mutation in tests, resolve `.server` with `{type: 'error', error: {...}}` — do not reject it; rejection does not match Zero's real behavior.
-
-## Trusted server and Eve scope
-
-Some non-Zero server paths validate team access once at the web boundary and then pass a trusted `{userId, teamId}` scope to downstream domain code. Domain read projections and trusted Eve write paths filter directly by `teamId` after that boundary validation. This is different from Zero queries, which continue to encode read authorization as query filters over the authenticated `userID`.
-
-Do not call trusted-scope domain APIs from a new request path until that path has validated membership with server-side data, for example through `apps/web/src/teams/team-access.server.ts`.
 
 ## Tables not synced with Zero
 

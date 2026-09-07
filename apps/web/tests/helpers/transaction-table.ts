@@ -23,16 +23,8 @@ export function buildTransactionTableRow(overrides: Partial<TransactionTableRow>
     currency: 'DKK',
     status: 'needs_review',
     needsReview: true,
-    aiConfidence: 1,
     canCategorize: true,
     statusIndicator: {
-      kind: 'needs_review',
-      title: 'Review recommended',
-      ariaLabel: 'Review recommended',
-      className: 'bg-yellow-600',
-      canConfirm: true,
-    },
-    aiIndicator: {
       kind: 'needs_review',
       title: 'Review recommended',
       ariaLabel: 'Review recommended',

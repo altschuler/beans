@@ -45,7 +45,6 @@ The current domain authorization model is team-based:
 - Current memberships use role `owner`; the schema has a `role` column for future role-based permissions.
 - Banking resources belong to a team through `teamId` or through a parent record that belongs to a team.
 - A user may access team-owned data only when there is a matching `team_members` row for that user and team.
-- Once a server boundary has checked membership, downstream Eve/domain read and write code may receive a trusted `{userId, teamId}` scope and filter directly by `teamId`. Do not construct that trusted scope from client/model input without a server-side membership check.
 
 ## Authorization patterns
 
@@ -70,8 +69,6 @@ Prefer boundary helpers that encode authorization checks near the request bounda
 
 - `apps/web/src/teams/team-access.server.ts` owns general team-access helpers.
 - `userCanAccessTeam(teamId, userId)` checks for a matching `team_members` row.
-- `requireAccessibleTeamScope({teamId, userId})` returns a trusted scope only after membership is verified.
-- `requireCurrentPersonalTeamScope({userId})` resolves the user's current team scope from server-side membership data.
 - `requireAccessibleBankAccount(bankAccountId, userId)` joins through `team_members` so users can only operate on bank accounts in teams they belong to.
 - `listAccessibleBankAccountsForSync(userId)` joins through `team_members` and returns only linked bank accounts the user can sync.
 
@@ -101,14 +98,6 @@ Zero is used for app/domain data, not auth data.
 Current examples in `apps/web/src/zero/queries.ts` scope teams, team members, bank connections, bank accounts, and bank transactions to the authenticated user. Shared helpers in `apps/web/src/zero/permissions.ts` centralize the repeated visibility predicates, but the authorization model remains filter-based per query.
 
 Zero mutators follow the same rule: authenticate at the endpoint, derive `userID` from the session, and authorize each write against team membership or a stricter permission check. Client-supplied team ids in Zero arguments are requests, not authority.
-
-### Runtime sidecar calls
-
-Ask Penge uses the Eve default conversation channel only through the app-owned same-origin proxy. For every start, follow-up, approval response, or stream read, `apps/web` authenticates Better Auth, verifies chat ownership and current team membership, and requires path session ids to match the server-owned mapping. POST also requires the configured same-origin `Origin`. The proxy rejects browser authorization/identity headers and never exposes the Eve host, service secret, or continuation token.
-
-After authorization, web mints a fresh short-lived `chat-session` capability limited to `{teamId, userId, chatId}`. Eve verifies audience, expiry, purpose, and signature and stamps that scope into session auth; every model-callable tool re-validates it. Session ids, continuation tokens, stream indexes, tool-call ids, and approval request ids are coordination values, never authorization.
-
-Eve's durable approval is bound to the exact pending tool call. The sanitizer resolves a display-safe proposal under trusted team scope on every live or replay stream. Unresolvable proposals fail closed with disabled controls. The proxy accepts only one explicit structured approve/deny response bound to a request id; textual aliases, numeric choices, mixed responses, and multi-request resolution are rejected. Domain guards and the idempotent tool-execution ledger remain authoritative for writes.
 
 ### Role-based authorization
 

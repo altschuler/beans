@@ -95,52 +95,6 @@ export const teamMembers = pgTable(
   }),
 )
 
-export const agentToolExecutions = pgTable(
-  'agent_tool_executions',
-  {
-    id: text('id').primaryKey(),
-    eveSessionId: text('eve_session_id').notNull(),
-    callId: text('call_id').notNull(),
-    purpose: text('purpose').notNull(),
-    toolName: text('tool_name').notNull(),
-    teamId: text('team_id')
-      .notNull()
-      .references(() => teams.id, {onDelete: 'cascade'}),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, {onDelete: 'cascade'}),
-    result: jsonb('result').notNull(),
-    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
-  },
-  table => ({
-    sessionCallIdx: uniqueIndex('agent_tool_executions_session_call_unique').on(table.eveSessionId, table.callId),
-    teamIdx: index('agent_tool_executions_team_idx').on(table.teamId),
-  }),
-)
-
-export const teamDataAssistantChats = pgTable(
-  'team_data_assistant_chats',
-  {
-    id: text('id').primaryKey(),
-    teamId: text('team_id')
-      .notNull()
-      .references(() => teams.id, {onDelete: 'cascade'}),
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id, {onDelete: 'cascade'}),
-    createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
-    updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
-    lastUsedAt: timestamp('last_used_at', {mode: 'date'}).notNull(),
-    firstSubmittedAt: timestamp('first_submitted_at', {mode: 'date'}),
-    eveSessionId: text('eve_session_id'),
-    eveContinuationToken: text('eve_continuation_token'),
-  },
-  table => ({
-    teamUserLastUsedIdx: index('team_data_assistant_chats_team_user_last_used_idx').on(table.teamId, table.userId, table.lastUsedAt),
-    userIdx: index('team_data_assistant_chats_user_idx').on(table.userId),
-  }),
-)
-
 export const bankConnections = pgTable(
   'bank_connections',
   {
@@ -221,7 +175,6 @@ export const bankTransactions = pgTable(
     raw: jsonb('raw').notNull(),
     aiConfidence: integer('ai_confidence'),
     aiReasoning: text('ai_reasoning'),
-    categorizationRevision: integer('categorization_revision').notNull().default(0),
     createdAt: timestamp('created_at', {mode: 'date'}).notNull(),
     updatedAt: timestamp('updated_at', {mode: 'date'}).notNull(),
   },
@@ -362,7 +315,6 @@ export const userRelations = relations(user, ({many}) => ({
   accounts: many(account),
   personalTeams: many(teams),
   teamMemberships: many(teamMembers),
-  teamDataAssistantChats: many(teamDataAssistantChats),
 }))
 
 export const sessionRelations = relations(session, ({one}) => ({
@@ -385,7 +337,6 @@ export const teamsRelations = relations(teams, ({one, many}) => ({
     references: [user.id],
   }),
   members: many(teamMembers),
-  teamDataAssistantChats: many(teamDataAssistantChats),
   bankConnections: many(bankConnections),
   bankAccounts: many(bankAccounts),
   ledgerAccountGroups: many(ledgerAccountGroups),
@@ -400,17 +351,6 @@ export const teamMembersRelations = relations(teamMembers, ({one}) => ({
   }),
   user: one(user, {
     fields: [teamMembers.userId],
-    references: [user.id],
-  }),
-}))
-
-export const teamDataAssistantChatsRelations = relations(teamDataAssistantChats, ({one}) => ({
-  team: one(teams, {
-    fields: [teamDataAssistantChats.teamId],
-    references: [teams.id],
-  }),
-  user: one(user, {
-    fields: [teamDataAssistantChats.userId],
     references: [user.id],
   }),
 }))

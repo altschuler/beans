@@ -40,7 +40,7 @@ Provider amount strings are parsed at import into canonical scale-4 integer mone
 
 Manual transactions are entered from a manual bank account page. The user provides date, description, and a signed decimal amount; the account and currency come from the manual account. Penge stores them as booked `bank_transactions` with app-generated `providerTransactionId` values and a small manual `raw` marker, then creates the same balanced Uncategorized ledger interpretation used for provider imports.
 
-Manual transactions appear in the existing transaction review flow as uncategorized / needing review. Users categorize them later through the same Transactions page, chat, or AI paths used for synced bank transactions.
+Manual transactions appear in the existing transaction review flow as uncategorized / needing review. Users categorize them later through the same Transactions page used for synced bank transactions.
 
 ## Starting balances
 

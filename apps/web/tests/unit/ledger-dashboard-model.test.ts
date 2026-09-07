@@ -72,7 +72,6 @@ describe('buildLedgerDashboardModel', () => {
     const model = buildModelForTransaction({}, 'uncategorized', {aiConfidence: 1})
 
     expect(model.reviewCount).toBe(1)
-    expect(model).not.toHaveProperty('aiProcessingCount')
     expect(model.categorizationAccounts.map(account => account.name)).toEqual(['Groceries'])
     expect(model.accountGroups[0]).toMatchObject({name: 'Everyday spending'})
     expect(model.accountGroups[0]?.accounts.find(account => account.id === 'uncategorized')?.balance).toBe(-1_000_000)
@@ -89,8 +88,7 @@ describe('buildLedgerDashboardModel', () => {
       isSplit: false,
       splitLines: [],
       needsReview: true,
-      aiConfidence: 1,
-      aiIndicator: {kind: 'uncategorized', title: 'Transaction is Uncategorized and needs a category'},
+      statusIndicator: {kind: 'uncategorized', title: 'Transaction is Uncategorized and needs a category'},
     })
   })
 

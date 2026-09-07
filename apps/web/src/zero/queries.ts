@@ -4,7 +4,6 @@ import {zql} from './schema'
 import {
   requireZeroUserID,
   visibleBankAccount,
-  visibleTeamDataAssistantChat,
   visibleBankConnection,
   visibleBankTransaction,
   visibleLedgerAccount,
@@ -13,7 +12,6 @@ import {
   visibleTeam,
 } from './permissions'
 
-const teamDataAssistantChatsByTeamUserArgs = z.object({teamId: z.string().min(1), userId: z.string().min(1)})
 const ledgerAccountDetailArgs = z.object({accountId: z.string().min(1)})
 const bankTransactionsForBankAccountArgs = z.object({bankAccountId: z.string().min(1)})
 
@@ -30,10 +28,6 @@ export const queries = defineQueries({
     bankConnections: defineQuery(({ctx}) => {
       const userID = requireZeroUserID(ctx)
       return visibleBankConnection(userID)(zql.bankConnections).orderBy('createdAt', 'desc')
-    }),
-    teamDataAssistantChatsByTeamUser: defineQuery(teamDataAssistantChatsByTeamUserArgs, ({ctx, args}) => {
-      const userID = requireZeroUserID(ctx)
-      return visibleTeamDataAssistantChat(userID)(zql.teamDataAssistantChats.where('teamId', args.teamId).where('userId', args.userId)).orderBy('lastUsedAt', 'desc')
     }),
     bankAccounts: defineQuery(({ctx}) => {
       const userID = requireZeroUserID(ctx)

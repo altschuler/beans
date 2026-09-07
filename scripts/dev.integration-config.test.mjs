@@ -7,7 +7,6 @@ const readJson = async path => JSON.parse(await readFile(path, 'utf8'))
 test('tracked dev commands consume generated checkout ports', async () => {
   const compose = await readFile('docker-compose.yml', 'utf8')
   const webPackage = await readJson('apps/web/package.json')
-  const evePackage = await readJson('apps/eve/package.json')
   const playwrightConfig = await readFile('apps/web/playwright.config.ts', 'utf8')
 
   assert.match(compose, /'127\.0\.0\.1:\$\{POSTGRES_PORT:-5432\}:5432'/)
@@ -16,7 +15,6 @@ test('tracked dev commands consume generated checkout ports', async () => {
   assert.match(webPackage.scripts['dev:zero'], /--port \$\{ZERO_PORT:-4848\}/)
   assert.match(webPackage.scripts['dev:zero'], /--change-streamer-port \$\{ZERO_CHANGE_STREAMER_PORT:-4849\}/)
   assert.match(webPackage.scripts['test:e2e'], /^dotenv -e \.env -- playwright test$/)
-  assert.match(evePackage.scripts.dev, /dotenv -e \.env -- sh -c 'eve dev --port \$\{EVE_PORT:-3300\}'/)
   assert.match(playwrightConfig, /const appUrl = process\.env\.VITE_PUBLIC_APP_URL \?\? `https:\/\/localhost:\$\{process\.env\.PORT \?\? '3100'\}`/)
   assert.match(playwrightConfig, /baseURL: appUrl/)
   assert.match(playwrightConfig, /url: appUrl/)

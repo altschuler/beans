@@ -38,9 +38,7 @@ echo "Dependencies: $((SECONDS - started))s"
 
 echo '==> Local configuration and database'
 started=$SECONDS
-for app in web flue; do
-  [[ -f apps/$app/.env ]] || cp -- "apps/$app/.env.example" "apps/$app/.env"
-done
+[[ -f apps/web/.env ]] || cp -- apps/web/.env.example apps/web/.env
 # The build reads NODE_EXTRA_CA_CERTS before Vite can create its dev certificate.
 pnpm --filter @penge/web exec node --input-type=module -e "import {getLocalHttpsConfig} from './vite.local-https.ts'; getLocalHttpsConfig()"
 export PATH="/usr/lib/postgresql/18/bin:$PATH"

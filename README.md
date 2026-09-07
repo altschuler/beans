@@ -7,8 +7,7 @@ Penge is a local-first budgeting app workspace.
 ```txt
 .
 ├─ apps/
-│  ├─ web/    # TanStack Start app, Zero client/server, Drizzle schema and migrations
-│  └─ eve/    # Eve finance assistant runtime
+│  └─ web/    # TanStack Start app, Zero client/server, Drizzle schema and migrations
 ├─ packages/
 │  └─ domain/ # Shared domain and database code
 └─ docs/
@@ -25,11 +24,10 @@ Penge is a local-first budgeting app workspace.
 
 ```bash
 cp apps/web/.env.example apps/web/.env
-cp apps/eve/.env.example apps/eve/.env
 just setup
 ```
 
-The web app owns browser-facing authorization and product state. Eve runs as an internal sidecar; browser requests reach it only through Penge-owned routes.
+The web app owns browser-facing authorization and product state.
 
 ### Amp orbs
 
@@ -46,11 +44,11 @@ are intentionally relaxed for disposable development data. Setup never resets
 existing data or imports the private seed dump.
 
 Missing app `.env` files are copied from the examples without replacing existing
-files. External bank and AI integrations still need project secrets; setup does
+files. External bank integrations still need project secrets; setup does
 not authenticate users or populate real financial data.
 
 Do not use `just setup`, `just init`, or Docker-based `just dev`/`db-*` recipes in
-orbs. To run the app, supervise `pnpm dev:web` and `pnpm dev:flue` with
+orbs. To run the app, supervise `pnpm dev:web` with
 `amp orb service start`. Playwright's default server command is `just dev`, so
 start the app first and use its existing-server mode (`CI` unset). Portal origin
 and Zero proxy configuration are separate from this dependency setup.
@@ -63,9 +61,8 @@ just dev
 
 App: https://localhost:3100
 Zero cache: http://localhost:4848
-Eve runtime: http://localhost:3300
 
-Run one service with `just dev-web` or `just dev-eve`.
+Run the web services with `just dev-web`.
 
 ## Database
 
@@ -75,14 +72,14 @@ just db-migrate
 just db-reset
 ```
 
-Postgres runs in Docker with `wal_level=logical` so Zero can replicate changes. Eve runtime persistence is separate from Penge app/domain tables and is excluded from Zero. The explicit `penge_zero_app` publication contains only app/domain tables.
+Postgres runs in Docker with `wal_level=logical` so Zero can replicate changes. The explicit `penge_zero_app` publication contains only app/domain tables.
 
 ### Synthetic test data
 
 Run `just seed` against a running, migrated local database (uses `apps/web/.env`,
 with an already-exported `DATABASE_URL` taking precedence). It also works in
 orbs after `amp orb services ensure` and `pnpm db:migrate`. No bank credentials,
-private dump, AI service, or running web server are needed.
+private dump or running web server are needed.
 
 | Email | Password |
 | --- | --- |
@@ -95,8 +92,7 @@ history from April through September 2026. Scenarios include salary, rent, varie
 groceries, utilities, restaurants, refunds, reimbursements, split purchases,
 matched savings transfers, and uncategorized transactions needing review.
 Amounts use the application's scale-4 integer representation and every ledger
-entry balances. No real bank connections, sessions, or fake AI chat histories
-are created; users sign in normally and can start new chats.
+entry balances. No real bank connections or sessions are created; users sign in normally.
 
 The source of truth is `apps/web/scripts/seed-data.json`. All IDs, dates,
 timestamps, amounts, chart definitions, and test password hashes are fixed in
@@ -129,7 +125,6 @@ just check
 
 ```bash
 pnpm --filter @penge/web typecheck
-pnpm --filter @penge/eve typecheck
 pnpm --filter @penge/domain typecheck
 ```
 

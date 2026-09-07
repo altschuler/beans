@@ -27,15 +27,12 @@ worktree-list:
 dev:
   just db-up
   pnpm db:migrate
-  pnpm --parallel --stream --filter @penge/web --filter @penge/eve dev
+  pnpm dev:web
 
 dev-web:
   just db-up
   pnpm db:migrate
   pnpm dev:web
-
-dev-eve:
-  pnpm dev:eve
 
 db-up:
   just wait-db

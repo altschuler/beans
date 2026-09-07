@@ -32,48 +32,18 @@ export const updateCategoryAccountInputSchema = z.object({
 })
 export const deleteCategoryAccountInputSchema = z.object({userId: nonEmptyStringSchema, teamId: nonEmptyStringSchema.optional(), accountId: nonEmptyStringSchema})
 
-type TrustedScopeMarker = {trustedScope?: true}
-
-export type CreateCategoryGroupInput = z.infer<typeof createCategoryGroupInputSchema> & TrustedScopeMarker
-export type UpdateCategoryGroupInput = z.infer<typeof updateCategoryGroupInputSchema> & TrustedScopeMarker
-export type DeleteCategoryGroupInput = z.infer<typeof deleteCategoryGroupInputSchema> & TrustedScopeMarker
-export type CreateCategoryAccountInput = z.infer<typeof createCategoryAccountInputSchema> & TrustedScopeMarker
-export type UpdateCategoryAccountInput = z.infer<typeof updateCategoryAccountInputSchema> & TrustedScopeMarker
-export type DeleteCategoryAccountInput = z.infer<typeof deleteCategoryAccountInputSchema> & TrustedScopeMarker
+export type CreateCategoryGroupInput = z.infer<typeof createCategoryGroupInputSchema>
+export type UpdateCategoryGroupInput = z.infer<typeof updateCategoryGroupInputSchema>
+export type DeleteCategoryGroupInput = z.infer<typeof deleteCategoryGroupInputSchema>
+export type CreateCategoryAccountInput = z.infer<typeof createCategoryAccountInputSchema>
+export type UpdateCategoryAccountInput = z.infer<typeof updateCategoryAccountInputSchema>
+export type DeleteCategoryAccountInput = z.infer<typeof deleteCategoryAccountInputSchema>
 
 type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 export type CategoryManagementTransaction = Pick<DatabaseTransaction, 'select' | 'insert' | 'update' | 'delete'>
 
-export class CategoryNameConflictError extends Error {
-  constructor(isGroup: boolean) {
-    super(isGroup
-      ? 'Category group changed after approval. Review the latest category group and try again.'
-      : 'Category changed after approval. Review the latest category and try again.')
-  }
-}
-
-export async function assertExpectedCategoryName(
-  tx: CategoryManagementTransaction,
-  input: {teamId: string; target: 'group' | 'category'; targetId: string; expectedName: string},
-) {
-  const [target] = input.target === 'group'
-    ? await tx
-        .select({name: ledgerAccountGroups.name})
-        .from(ledgerAccountGroups)
-        .where(and(eq(ledgerAccountGroups.id, input.targetId), eq(ledgerAccountGroups.teamId, input.teamId)))
-        .for('update')
-        .limit(1)
-    : await tx
-        .select({name: ledgerAccounts.name})
-        .from(ledgerAccounts)
-        .where(and(eq(ledgerAccounts.id, input.targetId), eq(ledgerAccounts.teamId, input.teamId)))
-        .for('update')
-        .limit(1)
-  if (target && target.name !== input.expectedName) throw new CategoryNameConflictError(input.target === 'group')
-}
-
 export async function createCategoryGroup(tx: CategoryManagementTransaction, input: CreateCategoryGroupInput) {
-  if (!input.trustedScope) await requireTeamAccess(tx, input.teamId, input.userId)
+  await requireTeamAccess(tx, input.teamId, input.userId)
   const now = new Date()
   await tx.insert(ledgerAccountGroups).values({
     id: requireNonEmpty(input.id, 'Group id is required'),
@@ -87,13 +57,13 @@ export async function createCategoryGroup(tx: CategoryManagementTransaction, inp
 }
 
 export async function updateCategoryGroup(tx: CategoryManagementTransaction, input: UpdateCategoryGroupInput) {
-  const group = await loadAccessibleGroup(tx, input.userId, input.groupId, input.teamId, input.trustedScope)
+  const group = await loadAccessibleGroup(tx, input.userId, input.groupId, input.teamId)
   if (group.systemKey) throw new Error('System groups cannot be edited')
   await tx.update(ledgerAccountGroups).set({name: requireNonEmpty(input.name, 'Group name is required'), updatedAt: new Date()}).where(eq(ledgerAccountGroups.id, group.id))
 }
 
 export async function deleteCategoryGroup(tx: CategoryManagementTransaction, input: DeleteCategoryGroupInput) {
-  const group = await loadAccessibleGroup(tx, input.userId, input.groupId, input.teamId, input.trustedScope)
+  const group = await loadAccessibleGroup(tx, input.userId, input.groupId, input.teamId)
   if (group.systemKey) throw new Error('System groups cannot be deleted')
   const [account] = await tx.select({id: ledgerAccounts.id}).from(ledgerAccounts).where(eq(ledgerAccounts.groupId, group.id)).limit(1)
   if (account) throw new Error('Move or delete categories in this group first')
@@ -102,8 +72,8 @@ export async function deleteCategoryGroup(tx: CategoryManagementTransaction, inp
 
 export async function createCategoryAccount(tx: CategoryManagementTransaction, input: CreateCategoryAccountInput) {
   if (!isManagedCategoryType(input.type)) throw new Error('Invalid category type')
-  if (!input.trustedScope) await requireTeamAccess(tx, input.teamId, input.userId)
-  const group = await loadAccessibleGroup(tx, input.userId, input.groupId, input.teamId, input.trustedScope)
+  await requireTeamAccess(tx, input.teamId, input.userId)
+  const group = await loadAccessibleGroup(tx, input.userId, input.groupId, input.teamId)
   if (group.teamId !== input.teamId) throw new Error('Category group not found')
   if (group.systemKey) throw new Error('System groups cannot contain user categories')
   const now = new Date()
@@ -126,9 +96,9 @@ export async function createCategoryAccount(tx: CategoryManagementTransaction, i
 
 export async function updateCategoryAccount(tx: CategoryManagementTransaction, input: UpdateCategoryAccountInput) {
   if (!isManagedCategoryType(input.type)) throw new Error('Invalid category type')
-  const account = await loadAccessibleAccount(tx, input.userId, input.accountId, input.teamId, input.trustedScope)
+  const account = await loadAccessibleAccount(tx, input.userId, input.accountId, input.teamId)
   assertEditableAccount(account)
-  const group = await loadAccessibleGroup(tx, input.userId, input.groupId, input.teamId, input.trustedScope)
+  const group = await loadAccessibleGroup(tx, input.userId, input.groupId, input.teamId)
   if (group.teamId !== account.teamId) throw new Error('Category group not found')
   if (group.systemKey) throw new Error('System groups cannot contain user categories')
   await tx.update(ledgerAccounts).set({
@@ -142,7 +112,7 @@ export async function updateCategoryAccount(tx: CategoryManagementTransaction, i
 }
 
 export async function deleteCategoryAccount(tx: CategoryManagementTransaction, input: DeleteCategoryAccountInput) {
-  const account = await loadAccessibleAccount(tx, input.userId, input.accountId, input.teamId, input.trustedScope)
+  const account = await loadAccessibleAccount(tx, input.userId, input.accountId, input.teamId)
   assertEditableAccount(account)
   const [posting] = await tx.select({id: ledgerPostings.id}).from(ledgerPostings).where(eq(ledgerPostings.accountId, account.id)).limit(1)
   if (posting) throw new Error('Categories with ledger history cannot be deleted')
@@ -174,29 +144,21 @@ async function requireTeamAccess(tx: CategoryManagementTransaction, teamId: stri
   if (!membership) throw new Error('Team not found')
 }
 
-async function loadAccessibleGroup(tx: CategoryManagementTransaction, userId: string, groupId: string, teamId?: string, trustedScope?: true) {
-  if (trustedScope && !teamId) throw new Error('Trusted team scope is required')
+async function loadAccessibleGroup(tx: CategoryManagementTransaction, userId: string, groupId: string, teamId?: string) {
   const conditions = [eq(ledgerAccountGroups.id, groupId)]
   if (teamId) conditions.push(eq(ledgerAccountGroups.teamId, teamId))
 
-  const [group] = trustedScope
-    ? await tx
-        .select({id: ledgerAccountGroups.id, teamId: ledgerAccountGroups.teamId, systemKey: ledgerAccountGroups.systemKey})
-        .from(ledgerAccountGroups)
-        .where(and(...conditions))
-        .limit(1)
-    : await tx
-        .select({id: ledgerAccountGroups.id, teamId: ledgerAccountGroups.teamId, systemKey: ledgerAccountGroups.systemKey})
-        .from(ledgerAccountGroups)
-        .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerAccountGroups.teamId))
-        .where(and(...conditions, eq(teamMembers.userId, userId)))
-        .limit(1)
+  const [group] = await tx
+    .select({id: ledgerAccountGroups.id, teamId: ledgerAccountGroups.teamId, systemKey: ledgerAccountGroups.systemKey})
+    .from(ledgerAccountGroups)
+    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerAccountGroups.teamId))
+    .where(and(...conditions, eq(teamMembers.userId, userId)))
+    .limit(1)
   if (!group) throw new Error('Category group not found')
   return group
 }
 
-async function loadAccessibleAccount(tx: CategoryManagementTransaction, userId: string, accountId: string, teamId?: string, trustedScope?: true) {
-  if (trustedScope && !teamId) throw new Error('Trusted team scope is required')
+async function loadAccessibleAccount(tx: CategoryManagementTransaction, userId: string, accountId: string, teamId?: string) {
   const conditions = [eq(ledgerAccounts.id, accountId)]
   if (teamId) conditions.push(eq(ledgerAccounts.teamId, teamId))
 
@@ -208,18 +170,12 @@ async function loadAccessibleAccount(tx: CategoryManagementTransaction, userId: 
     systemKey: ledgerAccounts.systemKey,
     type: ledgerAccounts.type,
   }
-  const [account] = trustedScope
-    ? await tx
-        .select(accountSelection)
-        .from(ledgerAccounts)
-        .where(and(...conditions))
-        .limit(1)
-    : await tx
-        .select(accountSelection)
-        .from(ledgerAccounts)
-        .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerAccounts.teamId))
-        .where(and(...conditions, eq(teamMembers.userId, userId)))
-        .limit(1)
+  const [account] = await tx
+    .select(accountSelection)
+    .from(ledgerAccounts)
+    .innerJoin(teamMembers, eq(teamMembers.teamId, ledgerAccounts.teamId))
+    .where(and(...conditions, eq(teamMembers.userId, userId)))
+    .limit(1)
   if (!account) throw new Error('Category account not found')
   return account
 }

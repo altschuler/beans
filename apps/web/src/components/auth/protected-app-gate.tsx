@@ -96,7 +96,7 @@ export function ProtectedAppView({children, state}: ProtectedAppViewProps) {
 
   return (
     <AppZeroProvider userID={state.user.id}>
-      <Shell userEmail={state.user.email} userName={state.user.name} userId={state.user.id}>
+      <Shell userEmail={state.user.email} userName={state.user.name}>
         {children}
       </Shell>
     </AppZeroProvider>

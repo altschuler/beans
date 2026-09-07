@@ -27,7 +27,7 @@ All persisted and synced money amounts must be safe integers. Do not use JavaScr
 
 `bank_transactions.amount` and `ledger_postings.amount` are stored as Postgres `bigint` values. Drizzle and Zero expose them as `number`, with database checks keeping values inside JavaScript's safe-integer range.
 
-The invariant is global: money `amount` fields in storage, Zero data, model inputs, and display component props are scale-4 integers unless a boundary explicitly says it uses decimal strings. Eve's model-facing finance read results are one such boundary: transaction and posting `amount` fields are formatted as major-unit decimal strings so the model never has to interpret canonical scale-4 integers.
+The invariant is global: money `amount` fields in storage, Zero data, and display component props are scale-4 integers unless a boundary explicitly says it uses decimal strings.
 
 ## Import and form boundaries
 

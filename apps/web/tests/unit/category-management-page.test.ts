@@ -84,8 +84,6 @@ describe('CategoryManagementPage', () => {
     expect(screen.getByText('Expense')).toBeInTheDocument()
     expect(screen.getByText('100.00 DKK')).toBeInTheDocument()
     expect(screen.queryByText('2 categories')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', {name: 'Ask Penge'})).not.toBeInTheDocument()
-    expect(screen.queryByTestId('team-chat-panel')).not.toBeInTheDocument()
 
     // Bank-linked accounts are not categories, and other teams' data must never leak.
     expect(screen.queryByText('Checking')).not.toBeInTheDocument()

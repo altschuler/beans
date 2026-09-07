@@ -2,7 +2,7 @@ import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest'
 import {db} from '@/db/client'
 import {closeDatabase, migrateDatabase, resetDatabase} from '@/tests/helpers/db'
 import {teamMembers, teams, user} from '@penge/domain/schema'
-import {requireAccessibleTeamScope, requireCurrentPersonalTeamScope, userCanAccessTeam} from '@/teams/team-access.server'
+import {userCanAccessTeam} from '@/teams/team-access.server'
 
 const now = new Date('2026-06-27T10:00:00.000Z')
 
@@ -25,15 +25,6 @@ describe('server team access helpers', () => {
     await expect(userCanAccessTeam('team-2', 'user-1')).resolves.toBe(false)
   })
 
-  it('returns a trusted team scope only for accessible teams', async () => {
-    await expect(requireAccessibleTeamScope({teamId: 'team-1', userId: 'user-1'})).resolves.toEqual({teamId: 'team-1', userId: 'user-1'})
-    await expect(requireAccessibleTeamScope({teamId: 'team-2', userId: 'user-1'})).rejects.toThrow('Team not found')
-  })
-
-  it('resolves the current personal team scope for a user', async () => {
-    await expect(requireCurrentPersonalTeamScope({userId: 'user-1'})).resolves.toEqual({teamId: 'team-1', userId: 'user-1'})
-    await expect(requireCurrentPersonalTeamScope({userId: 'missing-user'})).rejects.toThrow('No active team found')
-  })
 })
 
 async function seedTeamFixture() {

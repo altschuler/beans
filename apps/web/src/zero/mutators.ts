@@ -39,21 +39,6 @@ export const clearCategorizationsInput = z.object({})
 export const managedCategoryTypeInput = z.enum(['expense', 'income', 'savings'])
 export const manualBankAccountTypeInput = z.enum(['checking', 'savings', 'credit-card', 'loan', 'cash'])
 
-export const createTeamDataAssistantChatInput = z.object({
-  id: trimmedNonEmptyString,
-  teamId: trimmedNonEmptyString,
-  userId: trimmedNonEmptyString,
-  createdAt: z.number().int(),
-  updatedAt: z.number().int(),
-  lastUsedAt: z.number().int(),
-  firstSubmittedAt: z.number().int().nullable(),
-}).strict()
-
-export const touchTeamDataAssistantChatInput = z.object({
-  chatId: trimmedNonEmptyString,
-  lastUsedAt: z.number().int(),
-  firstSubmittedAt: z.number().int().optional(),
-}).strict()
 const isoDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   const parsed = new Date(`${value}T00:00:00.000Z`)
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
@@ -262,20 +247,12 @@ async function rewriteOptimisticInterpretation(input: {
     await input.tx.mutate.ledgerPostings.insert(posting)
   }
 
-  const affectedBankTransactionIds = uniq([
-    input.bankTransaction.id,
-    ...input.existing.postings.flatMap(posting => (posting.bankTransactionId ? [posting.bankTransactionId] : [])),
-  ])
-  for (const bankTransactionId of affectedBankTransactionIds) {
-    const bankTransaction = bankTransactionId === input.bankTransaction.id ? input.bankTransaction : await input.tx.run(zql.bankTransactions.where('id', bankTransactionId).one())
-    if (!bankTransaction) continue
-    await input.tx.mutate.bankTransactions.update({
-      id: bankTransaction.id,
-      ...(bankTransaction.id === input.bankTransaction.id ? {aiConfidence: null, aiReasoning: null} : {}),
-      categorizationRevision: (bankTransaction.categorizationRevision ?? 0) + 1,
-      updatedAt: now,
-    })
-  }
+  await input.tx.mutate.bankTransactions.update({
+    id: input.bankTransaction.id,
+    aiConfidence: null,
+    aiReasoning: null,
+    updatedAt: now,
+  })
 }
 
 async function optimisticallyConfirmTransaction(input: {tx: ClientTx; userId: string; bankTransactionId: string}) {
@@ -295,56 +272,11 @@ async function optimisticallyConfirmTransaction(input: {tx: ClientTx; userId: st
     userConfirmedBy: input.userId,
     updatedAt: now,
   })
-  const postings = await input.tx.run(zql.ledgerPostings.where('ledgerTransactionId', transaction.id))
-  const bankTransactionIds = uniq([input.bankTransactionId, ...postings.flatMap(posting => (posting.bankTransactionId ? [posting.bankTransactionId] : []))])
-  for (const bankTransactionId of bankTransactionIds) {
-    const row = bankTransactionId === bankTransaction.id ? bankTransaction : await input.tx.run(zql.bankTransactions.where('id', bankTransactionId).one())
-    if (!row) continue
-    await input.tx.mutate.bankTransactions.update({
-      id: row.id,
-      categorizationRevision: (row.categorizationRevision ?? 0) + 1,
-      updatedAt: now,
-    })
-  }
 }
 
 async function optimisticallyClearCategorizations(_tx: ClientTx) {
   // Server-authoritative: reset rewrites can split matched transfers into multiple balanced
   // Uncategorized interpretations while preserving bank posting rows.
-}
-
-async function optimisticallyCreateTeamDataAssistantChat(input: {tx: ClientTx} & z.infer<typeof createTeamDataAssistantChatInput>) {
-  const existing = await input.tx.run(zql.teamDataAssistantChats.where('id', input.id).one())
-  if (existing) {
-    await input.tx.mutate.teamDataAssistantChats.update({
-      id: input.id,
-      updatedAt: input.updatedAt,
-      lastUsedAt: input.lastUsedAt,
-      ...(input.firstSubmittedAt && !existing.firstSubmittedAt ? {firstSubmittedAt: input.firstSubmittedAt} : {}),
-    })
-    return
-  }
-
-  await input.tx.mutate.teamDataAssistantChats.insert({
-    id: input.id,
-    teamId: input.teamId,
-    userId: input.userId,
-    createdAt: input.createdAt,
-    updatedAt: input.updatedAt,
-    lastUsedAt: input.lastUsedAt,
-    firstSubmittedAt: input.firstSubmittedAt,
-  })
-}
-
-async function optimisticallyTouchTeamDataAssistantChat(input: {tx: ClientTx; userId: string; chatId: string; lastUsedAt: number; firstSubmittedAt?: number}) {
-  const chat = await input.tx.run(zql.teamDataAssistantChats.where('id', input.chatId).one())
-  if (!chat || chat.userId !== input.userId) return
-  await input.tx.mutate.teamDataAssistantChats.update({
-    id: input.chatId,
-    updatedAt: input.lastUsedAt,
-    lastUsedAt: input.lastUsedAt,
-    ...(input.firstSubmittedAt && !chat.firstSubmittedAt ? {firstSubmittedAt: input.firstSubmittedAt} : {}),
-  })
 }
 
 async function optimisticallyCreateManualBankAccount(input: {tx: ClientTx; id: string; ledgerAccountId: string; bankLedgerGroupId: string; teamId: string; name: string; accountType: ManualBankAccountTypeInput; currency: string; notes: string}) {
@@ -414,7 +346,6 @@ async function optimisticallyCreateManualTransaction(input: {tx: ClientTx; id: s
     counterpartyName: null,
     aiConfidence: null,
     aiReasoning: null,
-    categorizationRevision: 0,
     createdAt: now,
     updatedAt: now,
   })
@@ -526,17 +457,6 @@ function optimisticCategoryPostingId(bankTransactionId: string, index: number) {
 }
 
 export const mutators = defineMutators({
-  assistant: {
-    createTeamDataAssistantChat: defineMutator(createTeamDataAssistantChatInput, async ({args, ctx, tx}) => {
-      if (tx.location !== 'client') return
-      if (args.userId !== requireUserID(ctx)) return
-      await optimisticallyCreateTeamDataAssistantChat({tx, ...args})
-    }),
-    touchTeamDataAssistantChat: defineMutator(touchTeamDataAssistantChatInput, async ({args, ctx, tx}) => {
-      if (tx.location !== 'client') return
-      await optimisticallyTouchTeamDataAssistantChat({tx, userId: requireUserID(ctx), ...args})
-    }),
-  },
   banking: {
     createManualBankAccount: defineMutator(createManualBankAccountInput, async ({args, tx}) => {
       if (tx.location !== 'client') return

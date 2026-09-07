@@ -352,7 +352,7 @@ describe('ledger Zero mutators', () => {
   it('keeps split over an existing transfer server-authoritative so the counter is not detached optimistically', async () => {
     const {mutators} = await import('@/zero/mutators')
     const tx = createClientTransaction({
-      bankTransactions: [bankTransaction(), bankTransaction({id: 'counter-bank-transaction', bankAccountId: 'bank-account-2', amount: 1_000_000, categorizationRevision: 3})],
+      bankTransactions: [bankTransaction(), bankTransaction({id: 'counter-bank-transaction', bankAccountId: 'bank-account-2', amount: 1_000_000})],
       ledgerAccounts: [bankLedgerAccount(), categoryAccount('groceries', 'Groceries'), categoryAccount('household', 'Household')],
       ledgerTransactions: [ledgerTransaction()],
       ledgerPostings: [
@@ -377,7 +377,7 @@ describe('ledger Zero mutators', () => {
   it('optimistically confirms the current interpretation by bank transaction id', async () => {
     const {mutators} = await import('@/zero/mutators')
     const tx = createClientTransaction({
-      bankTransactions: [bankTransaction(), bankTransaction({id: 'counter-bank-transaction', bankAccountId: 'bank-account-2', amount: 1_000_000, categorizationRevision: 3})],
+      bankTransactions: [bankTransaction(), bankTransaction({id: 'counter-bank-transaction', bankAccountId: 'bank-account-2', amount: 1_000_000})],
       ledgerTransactions: [ledgerTransaction({status: 'needs_review', categorizedBy: 'ai'})],
       ledgerPostings: [
         posting({id: 'bank-posting', accountId: 'checking', amount: -1_000_000, bankTransactionId: 'bank-transaction-1', sortOrder: 0}),
@@ -393,16 +393,6 @@ describe('ledger Zero mutators', () => {
         table: 'ledgerTransactions',
         kind: 'update',
         value: expect.objectContaining({id: 'ledger-transaction-1', status: 'confirmed', userConfirmedBy: 'user-1'}),
-      },
-      {
-        table: 'bankTransactions',
-        kind: 'update',
-        value: expect.objectContaining({id: 'bank-transaction-1', categorizationRevision: 1}),
-      },
-      {
-        table: 'bankTransactions',
-        kind: 'update',
-        value: expect.objectContaining({id: 'counter-bank-transaction', categorizationRevision: 4}),
       },
     ])
     expect(confirmBankTransactionInterpretation).not.toHaveBeenCalled()
@@ -501,7 +491,6 @@ describe('ledger Zero mutators', () => {
           currency: 'DKK',
           description: 'Coffee',
           counterpartyName: null,
-          categorizationRevision: 0,
         }),
       },
     ])
@@ -594,33 +583,6 @@ describe('ledger Zero mutators', () => {
     expect(deleteCategoryAccount).not.toHaveBeenCalled()
   })
 
-  it('keeps chat metadata writes in the assistant namespace and exposes no projection mutators', async () => {
-    const {createTeamDataAssistantChatInput, touchTeamDataAssistantChatInput, mutators} = await import('@/zero/mutators')
-    const {serverMutators} = await import('@/zero/mutators.server')
-
-    expect(mutators).toHaveProperty('assistant.createTeamDataAssistantChat')
-    expect(mutators).toHaveProperty('assistant.touchTeamDataAssistantChat')
-    expect(serverMutators).toHaveProperty('assistant.createTeamDataAssistantChat')
-    expect(serverMutators).toHaveProperty('assistant.touchTeamDataAssistantChat')
-    expect(mutators.assistant).not.toHaveProperty('createTeamDataAssistantChatEvent')
-    expect(mutators.assistant).not.toHaveProperty('updateTeamDataAssistantChatApproval')
-    expect(serverMutators.assistant).not.toHaveProperty('createTeamDataAssistantChatEvent')
-    expect(serverMutators.assistant).not.toHaveProperty('updateTeamDataAssistantChatApproval')
-    expect(createTeamDataAssistantChatInput.safeParse({
-      id: 'chat-1', teamId: 'team-1', userId: 'user-1', createdAt: 1, updatedAt: 1, lastUsedAt: 1, firstSubmittedAt: null, currentPage: 'transactions',
-    }).success).toBe(false)
-    expect(touchTeamDataAssistantChatInput.safeParse({chatId: 'chat-1', lastUsedAt: 1, currentPage: 'transactions'}).success).toBe(false)
-  })
-
-  it('does not expose AI orchestration as Zero mutators', async () => {
-    const {mutators} = await import('@/zero/mutators')
-    const {serverMutators} = await import('@/zero/mutators.server')
-
-    expect('aiCategorizeTransaction' in mutators.ledger).toBe(false)
-    expect('aiCategorizeNeedsReviewBatch' in mutators.ledger).toBe(false)
-    expect('aiCategorizeTransaction' in serverMutators.ledger).toBe(false)
-    expect('aiCategorizeNeedsReviewBatch' in serverMutators.ledger).toBe(false)
-  })
 })
 
 type TestRows = {
@@ -720,7 +682,6 @@ function bankTransaction(overrides: Record<string, unknown> = {}) {
     valueDate: null,
     aiConfidence: 1,
     aiReasoning: 'AI suggestion',
-    categorizationRevision: 0,
     ...overrides,
   }
 }

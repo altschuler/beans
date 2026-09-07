@@ -4,7 +4,7 @@
 
 Draft revised for review on 2026-06-20. This spec is intentionally limited to the accounting data model refactor. Manual account onboarding, account-kind setup flows, and new account-management UI are deferred until after this foundation is in place.
 
-This spec supersedes the clearing-account transfer modeling direction in `docs/specs/2026-06-19-bank-transfer-categorization-design.md`. Transfer UI remains out of scope for this refactor, but the data model should support a later direct two-posting imported transfer match.
+This spec supersedes the earlier clearing-account transfer modeling direction. Transfer UI remains out of scope for this refactor, but the data model should support a later direct two-posting imported transfer match.
 
 ## Summary
 

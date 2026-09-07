@@ -4,11 +4,6 @@ export default {
     '.': {
       entry: ['dev.config.mjs', 'scripts/dev.mjs', 'scripts/**/*.test.mjs'],
     },
-    // eve loads agent/ files by filesystem convention (agent.ts, channels/,
-    // tools/, hooks/, instructions/); nothing imports them directly.
-    'apps/eve': {
-      entry: ['agent/**/*.ts'],
-    },
     'apps/web': {
       entry: ['drizzle-zero.config.ts', 'postcss.config.mjs'],
     },

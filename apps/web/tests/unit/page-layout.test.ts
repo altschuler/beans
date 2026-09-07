@@ -11,10 +11,6 @@ vi.mock('@/components/ui/sidebar', () => ({
     React.createElement('button', {'aria-label': props['aria-label'], 'data-slot': 'sidebar-trigger'}, 'Toggle sidebar'),
 }))
 
-vi.mock('@/components/assistant/team-chat-sidebar', () => ({
-  TeamChatSidebarTrigger: () => React.createElement('button', {type: 'button', 'aria-label': 'Ask Penge', 'data-testid': 'team-chat-sidebar-trigger'}),
-}))
-
 import {PageLayout} from '@/components/page-layout'
 
 describe('PageLayout', () => {
@@ -41,7 +37,6 @@ describe('PageLayout', () => {
     expect(markup).toContain('data-slot="page-layout"')
     expect(markup).toContain('data-slot="page-layout-header"')
     expect(markup).toContain('data-slot="page-layout-actions"')
-    expect(markup).toContain('data-testid="team-chat-sidebar-trigger"')
     expect(markup).toContain('data-slot="page-layout-content"')
     expect(markup).toContain('aria-label="breadcrumb"')
     expect(markup).toContain('href="/app/categories"')
@@ -49,7 +44,6 @@ describe('PageLayout', () => {
     expect(markup).toContain('Groceries')
     expect(markup).toContain('aria-current="page"')
     expect(markup).toContain('Save')
-    expect(markup.indexOf('Save')).toBeLessThan(markup.indexOf('data-testid="team-chat-sidebar-trigger"'))
     expect(markup).toContain('Page content')
     expect(markup).toMatch(/data-slot="page-layout-header"[\s\S]*class="[^"]*shrink-0/)
     expect(markup).toMatch(/data-slot="page-layout-content"[\s\S]*class="[^"]*min-h-0[^"]*flex-1[^"]*overflow-auto[^"]*p-0/)

@@ -26,10 +26,8 @@ export type TransactionTableRow = {
   currency: string
   status: string
   needsReview: boolean
-  aiConfidence: number | null
   canCategorize: boolean
   statusIndicator: TransactionTableStatusIndicator
-  aiIndicator: TransactionTableStatusIndicator
   categoryAccountId: string | null
   categoryLabel: string
   isSplit: boolean
