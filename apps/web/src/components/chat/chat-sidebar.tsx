@@ -15,20 +15,20 @@ export function ChatSidebar() {
       {!open && (
         <Button variant="outline" className="fixed right-4 bottom-4 z-20 shadow-md" onClick={() => setOpen(true)}>
           <MessageCircle />
-          Mock chat
+          Chat
         </Button>
       )}
       {mobile ? (
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetContent className="w-full gap-0 sm:max-w-sm" showCloseButton={false}>
-            <SheetTitle className="sr-only">Mock chat</SheetTitle>
-            <SheetDescription className="sr-only">Private mock conversation in your personal workspace</SheetDescription>
+            <SheetTitle className="sr-only">Chat</SheetTitle>
+            <SheetDescription className="sr-only">Private conversation in your personal workspace</SheetDescription>
             <Chat onClose={() => setOpen(false)} />
           </SheetContent>
         </Sheet>
       ) : (
         open && (
-          <aside aria-label="Mock chat" className="h-svh w-96 shrink-0 border-l bg-background">
+          <aside aria-label="Chat" className="h-svh w-96 shrink-0 border-l bg-background">
             <Chat onClose={() => setOpen(false)} />
           </aside>
         )
@@ -45,7 +45,7 @@ function Chat({onClose}: {onClose: () => void}) {
     <section className="flex h-full min-h-0 flex-col">
       <header className="flex items-center justify-between border-b p-4">
         <div>
-          <h2 className="text-sm font-semibold">Mock chat</h2>
+          <h2 className="text-sm font-semibold">Chat</h2>
           <p className="text-xs text-muted-foreground">Private · Personal workspace</p>
         </div>
         <Button variant="ghost" size="icon" aria-label="Close chat" onClick={onClose}>
@@ -53,7 +53,7 @@ function Chat({onClose}: {onClose: () => void}) {
         </Button>
       </header>
       <p className="border-b bg-muted/40 p-3 text-xs text-muted-foreground">
-        Demo only: deterministic model mock, real Flue runtime and local sandbox. No AI provider calls or financial actions.
+        Local assistant with access to the server's filesystem and shell. No finance tools are connected.
       </p>
       <MessageScroller.Provider autoScroll defaultScrollPosition="end">
         <MessageScroller.Root className="min-h-0 flex-1">
@@ -62,7 +62,7 @@ function Chat({onClose}: {onClose: () => void}) {
               {!agent.historyReady && !agent.error && <p className="text-sm text-muted-foreground">Loading conversation…</p>}
               {agent.historyReady && agent.messages.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Send a message to run the fixed sandbox check. Your conversation is saved here.
+                  How can I help? Your conversation is saved here.
                 </p>
               )}
               {agent.messages
@@ -70,7 +70,7 @@ function Chat({onClose}: {onClose: () => void}) {
                 .map(message => (
                   <MessageScroller.Item key={message.id} messageId={message.id}>
                     <article className="space-y-1 text-sm">
-                      <p className="text-xs font-medium text-muted-foreground">{message.role === 'user' ? 'You' : 'Mock assistant'}</p>
+                      <p className="text-xs font-medium text-muted-foreground">{message.role === 'user' ? 'You' : 'Assistant'}</p>
                       {message.parts.map((part, index) =>
                         part.type === 'text' ? (
                           <p key={index} className="whitespace-pre-wrap break-words">
@@ -78,7 +78,7 @@ function Chat({onClose}: {onClose: () => void}) {
                           </p>
                         ) : part.type === 'dynamic-tool' ? (
                           <p key={index} className="text-xs text-muted-foreground">
-                            Fixed sandbox check
+                            Tool
                             {part.state === 'output-available' ? ' complete' : '…'}
                           </p>
                         ) : null,
@@ -96,7 +96,7 @@ function Chat({onClose}: {onClose: () => void}) {
       <div className="space-y-2 border-t p-3">
         {busy && (
           <p role="status" className="text-xs text-muted-foreground">
-            Running mock sandbox check…
+            Working…
           </p>
         )}
         {agent.error && (
@@ -123,7 +123,7 @@ function Chat({onClose}: {onClose: () => void}) {
         >
           <Textarea
             aria-label="Message"
-            placeholder="Try the mock sandbox check…"
+            placeholder="Ask the assistant…"
             maxLength={4000}
             value={input}
             onChange={event => setInput(event.target.value)}

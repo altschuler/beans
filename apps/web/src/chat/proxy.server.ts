@@ -10,8 +10,8 @@ import {db} from '@/db/client'
 const messageSchema = z.object({kind: z.literal('user'), body: z.string().trim().min(1).max(4000)}).strict()
 
 export async function proxyChat(request: Request) {
-  const unavailable = () => Response.json({error: {type: 'runtime_unavailable', message: 'Mock chat is unavailable', details: ''}}, {status: 503})
-  if (process.env.FLUE_MOCK !== '1' || process.env.NODE_ENV === 'production' || !process.env.FLUE_INTERNAL_TOKEN) return unavailable()
+  const unavailable = () => Response.json({error: {type: 'runtime_unavailable', message: 'Chat is unavailable', details: ''}}, {status: 503})
+  if (!process.env.FLUE_INTERNAL_TOKEN) return unavailable()
   const session = await getSessionFromRequest(request)
   if (!session) return new Response('Unauthorized', {status: 401})
 

@@ -17,7 +17,8 @@ afterEach(() => {
 beforeEach(async () => {
   await resetDatabase()
   identity.id = 'alice'
-  vi.stubEnv('FLUE_MOCK', '1')
+  vi.stubEnv('FLUE_MOCK', '')
+  vi.stubEnv('NODE_ENV', 'production')
   vi.stubEnv('FLUE_INTERNAL_TOKEN', 'test-internal-only')
   const now = new Date()
   for (const id of ['alice', 'bob']) {
@@ -61,7 +62,7 @@ it('isolates histories by authenticated user and persisted personal-team members
   expect((await proxyChat(request())).status).toBe(401)
 })
 
-it('rejects authority injection and cross-origin writes; hides runtime errors and fails closed in production', async () => {
+it('rejects authority injection and cross-origin writes; hides runtime errors and requires a service credential', async () => {
   const upstream = vi.fn(async () => new Response('private path and credential', {status: 500}))
   vi.stubGlobal('fetch', upstream)
   for (const body of [
@@ -78,7 +79,7 @@ it('rejects authority injection and cross-origin writes; hides runtime errors an
   const response = await proxyChat(request())
   expect(response.status).toBe(503)
   expect(await response.text()).not.toContain('private')
-  vi.stubEnv('NODE_ENV', 'production')
+  vi.stubEnv('FLUE_INTERNAL_TOKEN', '')
   expect((await proxyChat(request())).status).toBe(503)
   expect(upstream).toHaveBeenCalledTimes(1)
 })

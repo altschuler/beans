@@ -1,11 +1,6 @@
 import { fauxAssistantMessage, fauxProvider, fauxToolCall, type Provider } from '@earendil-works/pi-ai';
 import { setProvider } from '@flue/runtime';
 
-// Never fall back to environment credentials, even if provider keys are present.
-if (process.env.FLUE_MOCK !== '1' || process.env.NODE_ENV === 'production') {
-	throw new Error('Only mock mode is configured. Run with FLUE_MOCK=1; no provider keys are needed.');
-}
-
 const options = {
 	provider: 'mock',
 	api: 'mock-local',

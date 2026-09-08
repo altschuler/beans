@@ -1,105 +1,121 @@
-# Flue mock chat
+# Flue chat
 
-The app's desktop sidebar/mobile sheet uses Flue **2.0.3** end to end:
-`@flue/react` → same-origin authenticated web route → private Flue HTTP server
-→ `Assistant` with `useModel('mock/local')` and `useSandbox(local())`.
-There are no finance tools, automated categorization, or real-provider calls.
+The sidebar uses Flue **2.0.3** end to end: `@flue/react` → authenticated
+same-origin web proxy → private Flue HTTP server → `Assistant` with a local
+sandbox. OpenAI is the default. Mocking is optional, for CI, E2E tests and orbs.
 
-## Run in an orb
+## Environment
+
+| Variable | Where | Purpose |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | Flue only | Your OpenAI API key. Required for the default model. |
+| `FLUE_MODEL` | Flue only | Optional `provider/model`, default `openai/gpt-5.5`. For example `openai/gpt-4.1-mini` or `anthropic/claude-sonnet-4-6`. |
+| `FLUE_MOCK` | Flue only | Set **`1`** to use the deterministic mock regardless of model/keys. Unset or `0` uses the real provider. |
+| `FLUE_INTERNAL_TOKEN` | Flue and web | The same private service credential in both processes; not a provider key. |
+| `PORT` | Flue | HTTP port; use **3200**, matching the web proxy. |
+
+Flue's standard built-in providers are registered. Other providers require their
+own credential, e.g. `ANTHROPIC_API_KEY` for Anthropic. Models must exist in the
+installed provider catalog. No automatic fallback to mocks occurs on missing
+credentials or provider errors. Restart Flue after changing its environment.
+
+Never use a `VITE_*` variable for a provider key or internal token. CLI and Vite
+dev load `apps/flue/.env`; shell-exported values win. The **built server does not
+load `.env`**, so export credentials into its process environment.
+
+## Local setup and sidebar chat
+
+Use Node >=22.19.0, pnpm, Docker and `just`. The Flue project is already scaffolded;
+do **not** run `flue init` again.
+
+For a fresh, disposable checkout only, `just init` installs dependencies and
+generates local env files, but **resets and seeds the local database**. For an
+already initialized checkout, use `pnpm install --frozen-lockfile` instead.
+
+From the repository root, generate the internal credential once (preserving an
+existing token) and build Flue:
+
+```sh
+mkdir -p .local
+test -s .local/flue-token || (umask 077; openssl rand -hex 32 > .local/flue-token)
+pnpm --filter @penge/flue build
+```
+
+Terminal 1, with your `OPENAI_API_KEY` already exported:
+
+```sh
+FLUE_MOCK=0 FLUE_INTERNAL_TOKEN="$(cat .local/flue-token)" PORT=3200 \
+  pnpm --filter @penge/flue start
+```
+
+Terminal 2:
+
+```sh
+FLUE_INTERNAL_TOKEN="$(cat .local/flue-token)" just dev
+```
+
+Open the web dev URL printed by Vite, sign in, then open **Chat**. `just dev`
+starts the web app, Zero and the database; Flue runs separately. For mock sidebar
+chat, change `FLUE_MOCK=0` to `FLUE_MOCK=1` in Terminal 1. No web-side mock flag
+is required. Rebuild and restart Flue after runtime code changes.
+
+CLI-only real and mocked runs (from the repository root):
+
+```sh
+FLUE_MOCK=0 pnpm --filter @penge/flue exec flue run src/agents/assistant.ts --message "Hi" --id local-chat
+pnpm --filter @penge/flue mock --message "Hi" --id mock-check --env /dev/null
+```
+
+`--id` resumes a conversation; use a different id for mock testing. Sidebar
+history is shared across provider changes, so prior mock replies remain visible.
+
+## CI, E2E and orbs — no provider calls
+
+```sh
+pnpm --filter @penge/flue test
+pnpm --filter @penge/flue check:types
+```
+
+Tests spawn isolated processes without inherited credentials or developer env
+files. They exercise mock CLI/HTTP/sandbox runs, persistence, concurrent users,
+missing OpenAI credentials, and the real OpenAI provider with intercepted HTTP
+responses (default and overridden model). No real provider calls are made.
+
+In an orb:
 
 ```sh
 .agents/setup
 amp orb services ensure
 ```
 
-Open the printed **Penge — mock Flue chat** portal, sign up with a local demo
-account, and open **Mock chat**. Any message runs the same fixed sandbox check.
-The response reports the persisted number of user messages. Close/reopen or
-reload to resume. A service outage shows a generic error and a Reconnect button;
-a failed send preserves the input for manual resubmission.
-
-Setup installs the locked dependencies, migrates the isolated PostgreSQL cluster,
-builds/tests Flue, and generates a private `.local/flue-token`. Resume checks the
-artifacts without installing. The manifest supervises PostgreSQL, Zero, Flue, and
-web. Rebuild and restart Flue after runtime edits:
-
-```sh
-pnpm --filter @penge/flue test
-amp orb service restart flue
-```
-
-The orb uses the **built** server, with an explicit environment and no `.env`
-loading. Do not expose `vite dev`: Vite's own source/debug routes are outside
-Hono authentication. Web's orb listener is HTTP behind the HTTPS Amp portal;
-normal local development retains HTTPS. Zero's WebSocket uses the same-origin
-`/zero` Vite proxy so Secure Better Auth cookies reach Zero and its authenticated
-query/mutate callbacks. Existing local env files should set
-`VITE_PUBLIC_ZERO_CACHE_URL=/zero`; production needs an equivalent reverse proxy
-or a separately configured authenticated Zero origin.
-
-CLI-only usage remains available, deliberately ignoring local env files:
-
-```sh
-pnpm --filter @penge/flue mock --message "Hi" --id example --json --env /dev/null
-pnpm --filter @penge/flue check:types
-pnpm --filter @penge/flue test
-```
-
-## Authorization and limits
-
-- The browser addresses only `/api/chat/current` (and `/abort`). Every operation
-  requires a Better Auth session and a persisted personal-team membership.
-  The server derives the durable id from `[team.id, session.user.id]`; the browser
-  cannot select another user's conversation, supply authority, signals, images,
-  attachments, `initialData`, or an incarnation `uid`. Writes require same origin.
-- The private runtime requires a server-only bearer credential on all conversation
-  routes. Only `/health` is public and returns a fixed readiness string.
-  It has no public portal. Never share that credential with a browser.
-- Both runtime and web boundary require `FLUE_MOCK=1` and reject
-  `NODE_ENV=production`. No real-provider path exists. The build registers zero
-  built-in providers (`providers: []`); injected provider keys cannot select one.
-- The only mocked boundary is Pi's model provider. Each model call owns a fresh
-  faux queue and decides from its conversation context, so concurrent users and
-  repeated submissions cannot consume each other's responses. It streams a fixed
-  `bash` tool call, then a fixed reply only after checking the real result.
-- `local()` is **not security isolation**: it can access the host filesystem.
-  This mock never converts user text into commands. Its only command is a fixed
-  `printf`; no host data or secrets are read. Never enable a real model or arbitrary
-  tools on this sandbox without a new security design.
-- The UI shows visible user/assistant text and a generic tool status, never raw
-  tools, reasoning, system/advisory messages, or exception details. HTTP failures
-  are sanitized; reads retain Flue's standard projected transcript protocol.
-- One private conversation per user/personal team; SQLite in `data/flue.db`;
-  one live Node owner. No multi-host coordination, retention, quota, production
-  rollout, or long-lived stream reauthorization is implemented. This is a local
-  integration demo, not a production multi-tenant agent service.
-
-## Provenance
-
-The Node HTTP/Vite files were folded in from a temporary
-`@flue/cli@2.0.3 init --target node --deploy` scaffold, never `--force` over the
-customized agent. The original CLI scaffold and durable agent identity remain.
-
-The UI uses **`@shadcn/react` 0.3.1 MessageScroller**, also used by
-[Flue's official shadcn demo](https://github.com/withastro/flue/tree/main/demo),
-plus the app's existing shadcn Button, Textarea, and Sheet. This is presentation
-only: the [native Flue React hook](https://flueframework.com/docs/guide/react/)
-owns history, optimistic messages, SSE, reconnect, and long-poll fallback.
-There is no AI SDK adapter or custom transport reducer.
-
-Installed docs are authoritative:
-`pnpm --filter @penge/flue exec flue docs read guide/react`
-(also `guide/routing`, `reference/streaming-protocol`, `guide/node-target`).
-
-Tests exercise the real CLI, HTTP runtime, local sandbox, concurrent identities,
-restart persistence, and production rejection with credential-free child
-environments. The web proxy tests use real PostgreSQL membership checks and
-mock only session identity/upstream HTTP. Browser acceptance uses the real
-signed-in app and Zero data, not fabricated UI messages.
-
-Run the browser suite against the printed portal origin with
+The existing manifest intentionally keeps Flue in `FLUE_MOCK=1` with a scrubbed
+environment, even if the orb has provider keys. Setup installs/builds/tests it
+and creates the private token; resume checks artifacts without reinstalling.
+Use the printed portal. Run browser tests against it with
 `FLUE_MOCK=1 VITE_PUBLIC_APP_URL=<portal-origin> pnpm --filter @penge/web test:e2e`.
-The mock-chat case is explicitly skipped without `FLUE_MOCK=1`; the ordinary
-app-shell smoke test still runs. In a 4 GB orb, use
-`NODE_OPTIONS=--max-old-space-size=512 pnpm --filter @penge/web test` to keep
-Vitest's heap bounded while services run.
+The E2E flag enables the test; the sidecar must also be running in mock mode.
+
+## Boundaries and limits
+
+- `local()` gives the model **real host filesystem and shell access**, not an
+  isolation boundary. Real model tool calls are no longer restricted to the
+  mock's fixed `printf`. Use only for trusted local development; do not expose
+  this as an untrusted multi-tenant service. No finance tools are connected, but
+  host access can reach local files. Keep sensitive data off the runtime host.
+- One private conversation per authenticated user/personal team. The web proxy
+  derives the id and verifies membership on every request; it rejects external
+  ids, authority fields, attachments and cross-origin writes. The runtime
+  requires the internal bearer on all conversation routes. `/health` is public.
+- Use the built runtime behind the web proxy, not a publicly exposed Vite dev
+  server. Vite's source/debug routes are outside the runtime's authentication.
+- SQLite in `apps/flue/data/flue.db`; one live Node owner. No multi-host
+  coordination, retention, quotas or long-lived stream reauthorization.
+- Mock responses are explicitly labeled in their text. Only the model is mocked;
+  the fixed sandbox check, Flue transport and persistence remain real.
+- Zero uses the same-origin `/zero` Vite proxy locally. Production needs an
+  equivalent reverse proxy or a separately authenticated Zero origin.
+
+The UI uses `@shadcn/react` MessageScroller from Flue's official demo, plus the
+existing shadcn primitives. The native Flue hook owns streaming/history; there
+is no custom protocol reducer. Installed docs are authoritative:
+`pnpm --filter @penge/flue exec flue docs read guide/models`.

@@ -7,12 +7,12 @@ For product/system-design explanations, use `docs/reference/` alongside this arc
 Penge is a pnpm monorepo:
 
 - `apps/web/` is the TanStack Start application. It owns the browser UI, Better Auth, Zero, Drizzle schema/migrations, and web-facing server functions.
-- `apps/flue/` is the private Flue v2 Node agent runtime, with explicit model mocks and a local sandbox. The web app's same-origin authenticated chat proxy connects its sidebar to Flue's standard React/SDK transport. See its README for execution and safety limits.
+- `apps/flue/` is the private Flue v2 Node agent runtime, using OpenAI by default (`OPENAI_API_KEY`), configurable through `FLUE_MODEL`, with opt-in `FLUE_MOCK=1` for tests/orbs and a local sandbox. The web app's same-origin authenticated chat proxy connects its sidebar to Flue's standard React/SDK transport. See its README for execution and safety limits.
 - `packages/domain/` contains domain/database code used by the web app, including schema exports, categorization services, category management, and money helpers.
 
 Run commands from the workspace root by default. Package-local source paths in docs generally refer to `apps/web/src/...` for web code.
 
-The chat sidebar is a mock-only integration demo, not a financial assistant. There is no automated transaction categorization. Existing financial interpretations and historical provenance remain reviewable through the normal app. Flue owns its separate SQLite conversation state; it does not read or write Zero-backed financial data.
+The chat sidebar is a general local assistant, not a financial assistant. There is no automated transaction categorization or finance tooling. Existing financial interpretations and historical provenance remain reviewable through the normal app. Flue owns its separate SQLite conversation state. Its local sandbox has host filesystem/shell access, so it is only suitable for trusted local users, not untrusted multi-tenant deployment.
 
 ## Local development
 

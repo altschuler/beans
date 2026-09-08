@@ -3,7 +3,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "FLUE_MOCK=1 vite dev",
+		"dev": "vite dev",
 		"build": "vite build",
 		"start": "node dist/server.mjs",
 		"check:types": "tsc --noEmit",

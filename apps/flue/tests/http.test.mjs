@@ -3,18 +3,21 @@ import {spawn} from 'node:child_process'
 import {randomUUID} from 'node:crypto'
 import {cp, mkdir, mkdtemp, rm} from 'node:fs/promises'
 import {resolve} from 'node:path'
+import process from 'node:process'
 import {setTimeout as delay} from 'node:timers/promises'
 import {test} from 'node:test'
 import {createFlueClient} from '@flue/sdk'
 
-test('built HTTP runtime: private access, concurrent isolated mock turns, durable restart and production rejection', async () => {
+const {fetch} = globalThis
+
+test('built HTTP runtime: private access, concurrent isolated mock turns and durable restart in production mode', async () => {
   await mkdir('data', {recursive: true})
   const cwd = await mkdtemp(resolve('data/http-test-'))
   const token = randomUUID()
   const url = 'http://127.0.0.1:3299/agents/assistant'
   let server
-  const start = async () => {
-    server = spawn(process.execPath, ['dist/server.mjs'], {cwd, env: {PATH: process.env.PATH, PORT: '3299', FLUE_MOCK: '1', FLUE_INTERNAL_TOKEN: token}, stdio: 'ignore'})
+  const start = async (providerEnv = {FLUE_MOCK: '1'}) => {
+    server = spawn(process.execPath, ['dist/server.mjs'], {cwd, env: {PATH: process.env.PATH, PORT: '3299', NODE_ENV: 'production', FLUE_INTERNAL_TOKEN: token, ...providerEnv}, stdio: 'ignore'})
     for (let i = 0; i < 100; i++) {
       try { if ((await fetch(`${url}/alice`)).status === 401) return } catch { /* Wait for the child listener. */ }
       await delay(50)
@@ -50,9 +53,19 @@ test('built HTTP runtime: private access, concurrent isolated mock turns, durabl
     await start()
     assert.match(JSON.stringify(await alice.history()), /Alice only/)
     assert.match(JSON.stringify(await send(bob, 'Continue')), /Mock reply \(2 user messages\): local sandbox works/)
-    await stop()
-    const production = spawn(process.execPath, ['dist/server.mjs'], {cwd, env: {PATH: process.env.PATH, NODE_ENV: 'production', FLUE_MOCK: '1'}, stdio: 'ignore'})
-    assert.equal(await new Promise(resolve => production.once('exit', resolve)), 1)
+
+    // Real provider registration, authentication and streaming parsing, but all
+    // outgoing HTTP is intercepted locally. No real key or paid request.
+    for (const model of [undefined, 'openai/gpt-4.1-mini']) {
+      await stop()
+      await start({
+        OPENAI_API_KEY: 'test-not-a-real-key',
+        NODE_OPTIONS: `--import=${resolve('tests/fixtures/openai-fetch.mjs')}`,
+        ...(model ? {FLUE_MODEL: model} : {}),
+      })
+      const client = createFlueClient({url: `${url}/${randomUUID()}`, token})
+      assert.match(JSON.stringify(await send(client, 'Hello OpenAI')), /OpenAI transport stub reply/)
+    }
   } finally {
     await stop()
     await rm(cwd, {recursive: true, force: true})
