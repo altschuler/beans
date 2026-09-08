@@ -1,6 +1,6 @@
 import {groupBy, keyBy, uniq, uniqBy} from 'lodash-es'
 import {absoluteMoneyAmount, formatMoneyDecimal} from '@penge/domain/money'
-import {deriveLedgerAccountBalances, isCategorizationAccount} from '@penge/domain/categorization'
+import {deriveLedgerAccountBalances, isCategorizationAccount, validateLedgerPostingsBalance} from '@penge/domain/categorization'
 
 export type LedgerDashboardGroup = {id: string; name: string; sortOrder: number | null}
 export type LedgerDashboardAccount = {
@@ -44,13 +44,11 @@ export type LedgerDashboardBankTransaction = {
   bookingDate: string | null
   valueDate: string | null
   description: string
-  aiConfidence?: number | null
-  aiReasoning?: string | null
   posting?: LedgerDashboardPosting
 }
 export type LedgerDashboardBankAccount = {id: string; name: string; currency?: string | null}
 export type LedgerDashboardStatusIndicator = {
-  kind: 'uncategorized' | 'confirmed' | 'ai_confident' | 'needs_review' | 'ai_failed'
+  kind: 'uncategorized' | 'confirmed' | 'needs_review'
   title: string
   ariaLabel: string
   className: string
@@ -60,7 +58,6 @@ export type LedgerDashboardStatusIndicator = {
 type NormalizedAccount = LedgerDashboardAccount & {status: string; sortOrder: number; systemKey: string | null; linkedBankAccountId: string | null}
 type NormalizedPosting = LedgerDashboardPosting & {amount: number; sortOrder: number; bankTransactionId: string | null}
 type RowInterpretation = {
-  categoryAccounts: NormalizedAccount[]
   categoryAccountId: string | null
   categoryLabel: string
   isSplit: boolean
@@ -85,12 +82,7 @@ export function buildLedgerDashboardModel(input: {
     linkedBankAccountId: account.linkedBankAccountId ?? null,
   }))
   const postings = normalizePostings(input.postings ?? input.accounts.flatMap(account => account.postings ?? []))
-  const bankTransactions = input.bankTransactions.map(transaction => ({
-    ...transaction,
-    amount: transaction.amount,
-    aiConfidence: transaction.aiConfidence ?? null,
-    aiReasoning: transaction.aiReasoning ?? null,
-  }))
+  const bankTransactions = input.bankTransactions
   const balances = deriveLedgerAccountBalances(accounts, postings)
   const accountsById = keyBy(accounts, account => account.id)
   const ledgerTransactionsById = keyBy(input.ledgerTransactions ?? [], transaction => transaction.id)
@@ -152,15 +144,10 @@ export function buildLedgerDashboardModel(input: {
       const statusIndicator = transaction
         ? buildStatusIndicator({
             transaction,
-            aiConfidence: bankTransaction.aiConfidence,
-            aiReasoning: bankTransaction.aiReasoning,
-            categoryAccounts: interpretation.categoryAccounts,
             isUncategorized: interpretation.isUncategorized,
+            isValid: isConfirmableInterpretation(transactionPostings, accountsById),
           })
-        : buildUnreconciledStatusIndicator({
-            aiConfidence: bankTransaction.aiConfidence,
-            aiReasoning: bankTransaction.aiReasoning,
-          })
+        : buildUnreconciledStatusIndicator()
 
       return [
         {
@@ -174,7 +161,7 @@ export function buildLedgerDashboardModel(input: {
           amount: bankTransaction.amount,
           currency: bankTransaction.currency,
           status: transaction?.status ?? 'needs_review',
-          needsReview: transaction?.status !== 'confirmed',
+          needsReview: statusIndicator.kind !== 'confirmed',
           canCategorize: true,
           statusIndicator,
           categoryAccountId: interpretation.categoryAccountId,
@@ -241,7 +228,6 @@ function normalizePosting(posting: LedgerDashboardPosting): NormalizedPosting {
 
 function buildUnreconciledRowInterpretation(): RowInterpretation {
   return {
-    categoryAccounts: [],
     categoryAccountId: null,
     categoryLabel: 'Choose category',
     isSplit: false,
@@ -250,18 +236,7 @@ function buildUnreconciledRowInterpretation(): RowInterpretation {
   }
 }
 
-function buildUnreconciledStatusIndicator(input: {aiConfidence: number | null; aiReasoning: string | null}): LedgerDashboardStatusIndicator {
-  if (input.aiConfidence === 0) {
-    const title = `AI could not categorize this transaction.${input.aiReasoning ? ` Reason: ${input.aiReasoning}` : ''}`
-    return {
-      kind: 'ai_failed',
-      title,
-      ariaLabel: title,
-      className: 'bg-destructive',
-      canConfirm: false,
-    }
-  }
-
+function buildUnreconciledStatusIndicator(): LedgerDashboardStatusIndicator {
   return {
     kind: 'uncategorized',
     title: 'Transaction is Uncategorized and needs a category',
@@ -273,14 +248,10 @@ function buildUnreconciledStatusIndicator(input: {aiConfidence: number | null; a
 
 function buildStatusIndicator(input: {
   transaction: LedgerDashboardTransaction
-  aiConfidence: number | null
-  aiReasoning: string | null
-  categoryAccounts: NormalizedAccount[]
   isUncategorized: boolean
+  isValid: boolean
 }): LedgerDashboardStatusIndicator {
-  const {transaction, aiConfidence, aiReasoning, categoryAccounts, isUncategorized} = input
-  const hasRealCategory = categoryAccounts.some(isRealCategorizationAccount)
-  const reasoningSuffix = aiReasoning ? ` Reason: ${aiReasoning}` : ''
+  const {transaction, isUncategorized, isValid} = input
 
   if (isUncategorized) {
     return {
@@ -292,11 +263,8 @@ function buildStatusIndicator(input: {
     }
   }
 
-  if (transaction.userConfirmedAt || transaction.categorizedBy === 'user') {
-    const title =
-      transaction.categorizedBy === 'ai'
-        ? `Category confirmed by you. AI originally categorized this transaction.${reasoningSuffix}`
-        : 'Category confirmed by you'
+  if (isValid && (transaction.userConfirmedAt != null || transaction.userConfirmedBy)) {
+    const title = 'Category confirmed by you'
     return {
       kind: 'confirmed',
       title,
@@ -306,46 +274,30 @@ function buildStatusIndicator(input: {
     }
   }
 
-  if (aiConfidence === 2) {
-    const title = `AI categorized with high confidence; not yet confirmed by you.${reasoningSuffix}`
-    return {
-      kind: 'ai_confident',
-      title,
-      ariaLabel: title,
-      className: 'bg-status-suggested',
-      canConfirm: hasRealCategory && transaction.categorizedBy === 'ai',
-    }
-  }
-
-  if (aiConfidence === 1) {
-    const title = `AI suggested a category; review recommended.${reasoningSuffix}`
-    return {
-      kind: 'needs_review',
-      title,
-      ariaLabel: title,
-      className: 'bg-status-review',
-      canConfirm: hasRealCategory && transaction.categorizedBy === 'ai',
-    }
-  }
-
-  if (aiConfidence === 0) {
-    const title = `AI could not categorize this transaction.${reasoningSuffix}`
-    return {
-      kind: 'ai_failed',
-      title,
-      ariaLabel: title,
-      className: 'bg-destructive',
-      canConfirm: false,
-    }
-  }
-
   return {
     kind: 'needs_review',
-    title: transaction.status === 'needs_review' ? 'Transaction needs review' : 'Transaction status is unknown',
-    ariaLabel: transaction.status === 'needs_review' ? 'Transaction needs review' : 'Transaction status is unknown',
-    className: transaction.status === 'needs_review' ? 'bg-destructive' : 'bg-muted-foreground',
-    canConfirm: false,
+    title: 'Transaction needs review',
+    ariaLabel: 'Transaction needs review',
+    className: 'bg-status-review',
+    canConfirm: isValid,
   }
+}
+
+function isConfirmableInterpretation(postings: NormalizedPosting[], accountsById: Record<string, NormalizedAccount>) {
+  try {
+    validateLedgerPostingsBalance(postings)
+  } catch {
+    return false
+  }
+  const bankPostings = postings.filter(posting => posting.bankTransactionId)
+  if (!bankPostings.every(posting => isBankLinkedPosting(posting, accountsById))) return false
+  if (bankPostings.length === 2 && postings.length === 2) {
+    return bankPostings[0]!.accountId !== bankPostings[1]!.accountId
+  }
+  return bankPostings.length === 1 && postings.filter(posting => !posting.bankTransactionId).every(posting => {
+    const account = accountsById[posting.accountId]
+    return account != null && isCategorizationAccount(account)
+  })
 }
 
 function buildRowInterpretation(input: {
@@ -371,7 +323,6 @@ function buildRowInterpretation(input: {
     const categoryAccountId = categoryAccountIds.length === 1 ? categoryAccountIds[0]! : null
     const isSplit = categoryPostings.length > 1
     return {
-      categoryAccounts,
       categoryAccountId,
       categoryLabel: isSplit ? 'Split transaction' : (input.accountsById[categoryAccountId ?? '']?.name ?? 'Unknown category'),
       isSplit,
@@ -386,7 +337,6 @@ function buildRowInterpretation(input: {
     const counterAccountName = counterAccount?.linkedBankAccountId ? (input.bankAccountNamesById[counterAccount.linkedBankAccountId] ?? counterAccount.name) : 'Unknown account'
     const direction = input.bankPosting.amount < 0 ? 'to' : 'from'
     return {
-      categoryAccounts: [],
       categoryAccountId: null,
       categoryLabel: `Transfer ${direction}: ${counterAccountName}`,
       isSplit: false,
@@ -396,7 +346,6 @@ function buildRowInterpretation(input: {
   }
 
   return {
-    categoryAccounts: [],
     categoryAccountId: null,
     categoryLabel: 'Choose category',
     isSplit: false,
@@ -409,11 +358,6 @@ function isBankLinkedPosting(posting: NormalizedPosting, accountsById: Record<st
   return Boolean(accountsById[posting.accountId]?.linkedBankAccountId)
 }
 
-function isRealCategorizationAccount(account: NormalizedAccount) {
-  return isCategorizationAccount(account)
-}
-
 function uniqueAccounts(accounts: NormalizedAccount[]) {
   return uniqBy(accounts, account => account.id)
 }
-

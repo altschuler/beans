@@ -36,6 +36,14 @@ CI=true pnpm install --frozen-lockfile
 pnpm --filter @penge/web exec playwright install chromium
 echo "Dependencies: $((SECONDS - started))s"
 
+echo '==> Flue v2 local runtime (no provider credentials)'
+started=$SECONDS
+# The CLI integration test uses an isolated temporary SQLite DB and a faux model.
+# No Flue .env or long-lived service is needed for this CLI-only stage.
+pnpm --filter @penge/flue check:types
+pnpm --filter @penge/flue test
+echo "Flue runtime: $((SECONDS - started))s"
+
 echo '==> Local configuration and database'
 started=$SECONDS
 [[ -f apps/web/.env ]] || cp -- apps/web/.env.example apps/web/.env

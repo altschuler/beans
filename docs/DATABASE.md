@@ -50,7 +50,7 @@ These columns are Postgres `bigint` values exposed by Drizzle and Zero as `numbe
 
 When adding a new app/domain table, it is not complete until it is represented in both Drizzle and Zero generation config, and the generated Zero schema has been updated.
 
-Migration history is preserved. Use forward migrations for removals; do not rewrite applied SQL or snapshots. The live schema contains no assistant runtime tables. Historical categorization confidence, reasoning, and provenance remain financial review data, not processing state.
+Migration history is preserved. Use forward migrations for removals; do not rewrite applied SQL or snapshots. The live schema contains no assistant runtime tables. Historical categorization confidence and reasoning remain nullable, inert database evidence excluded from Zero. Categorizer provenance is preserved, but does not control review status or human confirmation.
 
 ## Client mutations
 

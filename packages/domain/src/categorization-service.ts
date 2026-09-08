@@ -259,7 +259,6 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
     }
     await tx.delete(ledgerTransactions).where(eq(ledgerTransactions.id, counterExisting.ledgerTransaction.id))
     await validatePersistedTransactionBalance(tx, ledgerTransactionId)
-    await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
     return true
   }
 
@@ -290,7 +289,6 @@ async function applyBankTransactionInterpretation(tx: DrizzleTransaction, input:
   // The source bank posting was preserved; only insert the rebuilt category postings.
   await tx.insert(ledgerPostings).values(postings.filter(posting => posting.bankTransactionId !== loaded.bankTransaction.id))
   await validatePersistedTransactionBalance(tx, ledgerTransactionId)
-  await clearBankTransactionAiState(tx, loaded.bankTransaction.id, now)
   return true
 }
 
@@ -1053,11 +1051,4 @@ async function validatePersistedTransactionBalance(tx: DrizzleTransaction, ledge
     .from(ledgerPostings)
     .where(eq(ledgerPostings.ledgerTransactionId, ledgerTransactionId))
   validateLedgerPostingsBalance(postings)
-}
-
-async function clearBankTransactionAiState(tx: DrizzleTransaction, bankTransactionId: string, now: Date) {
-  await tx
-    .update(bankTransactions)
-    .set({aiConfidence: null, aiReasoning: null, updatedAt: now})
-    .where(eq(bankTransactions.id, bankTransactionId))
 }

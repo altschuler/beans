@@ -110,8 +110,6 @@ const baseBankTransactions = [
     bookingDate: '2026-06-18',
     valueDate: null,
     description: 'Account A transaction',
-    aiConfidence: null,
-    aiReasoning: null,
   },
   {
     id: 'bank-transaction-2',
@@ -121,8 +119,6 @@ const baseBankTransactions = [
     bookingDate: '2026-06-19',
     valueDate: null,
     description: 'Account B transaction',
-    aiConfidence: null,
-    aiReasoning: null,
   },
 ]
 
@@ -238,11 +234,11 @@ describe('buildLedgerDashboardModel', () => {
     expect(model.accountGroups[0]?.accounts.find(account => account.id === 'account-food')?.balance).toBe('Multiple currencies')
   })
 
-  it('labels bank-linked counter postings as transfers to or from the counter bank account', () => {
+  it.each([null, 1])('labels transfers and requires explicit human confirmation (%s)', userConfirmedAt => {
     const model = buildLedgerDashboardModel({
       groups: baseGroups,
       accounts: baseAccounts,
-      ledgerTransactions: [{...baseLedgerTransactions[0]!, status: 'confirmed', categorizedBy: 'user'}],
+      ledgerTransactions: [{...baseLedgerTransactions[0]!, status: 'confirmed', categorizedBy: 'ai', userConfirmedAt}],
       postings: [
         {...basePostings[0]!, id: 'transfer-bank-a', amount: -100_000, bankTransactionId: 'bank-transaction-1'},
         {...basePostings[2]!, ledgerTransactionId: 'ledger-1', id: 'transfer-bank-b', amount: 100_000, bankTransactionId: 'bank-transaction-2'},
@@ -251,6 +247,8 @@ describe('buildLedgerDashboardModel', () => {
       bankAccounts: baseBankAccounts,
     })
 
+    expect(model.reviewCount).toBe(userConfirmedAt ? 0 : 2)
+    expect(model.transactionRows.every(row => row.statusIndicator.canConfirm === !userConfirmedAt)).toBe(true)
     expect(
       model.transactionRows.map(row => ({
         id: row.id,
@@ -273,7 +271,7 @@ describe('buildLedgerDashboardModel', () => {
         isSplit: false,
         splitLines: [],
         canCategorize: true,
-        statusKind: 'confirmed',
+        statusKind: userConfirmedAt ? 'confirmed' : 'needs_review',
       },
       {
         id: 'bank-transaction-1',
@@ -284,8 +282,27 @@ describe('buildLedgerDashboardModel', () => {
         isSplit: false,
         splitLines: [],
         canCategorize: true,
-        statusKind: 'confirmed',
+        statusKind: userConfirmedAt ? 'confirmed' : 'needs_review',
       },
     ])
+  })
+
+  it.each([
+    {amount: 90_000},
+    {accountId: 'missing'},
+    {currency: 'EUR'},
+  ])('does not confirm an invalid interpretation even with human metadata: %j', override => {
+    const model = buildLedgerDashboardModel({
+      groups: baseGroups,
+      accounts: baseAccounts,
+      ledgerTransactions: [{...baseLedgerTransactions[0]!, status: 'confirmed', userConfirmedAt: 1}],
+      postings: [basePostings[0]!, {...basePostings[1]!, ...override}],
+      bankTransactions: [baseBankTransactions[0]!],
+      bankAccounts: baseBankAccounts,
+    })
+
+    expect(model.reviewCount).toBe(1)
+    expect(model.transactionRows[0]?.statusIndicator.kind).not.toBe('confirmed')
+    expect(model.transactionRows[0]?.statusIndicator.canConfirm).toBe(false)
   })
 })

@@ -246,13 +246,6 @@ async function rewriteOptimisticInterpretation(input: {
   for (const posting of categoryPostings) {
     await input.tx.mutate.ledgerPostings.insert(posting)
   }
-
-  await input.tx.mutate.bankTransactions.update({
-    id: input.bankTransaction.id,
-    aiConfidence: null,
-    aiReasoning: null,
-    updatedAt: now,
-  })
 }
 
 async function optimisticallyConfirmTransaction(input: {tx: ClientTx; userId: string; bankTransactionId: string}) {
@@ -344,8 +337,6 @@ async function optimisticallyCreateManualTransaction(input: {tx: ClientTx; id: s
     currency: account.currency ?? '',
     description: input.description.trim(),
     counterpartyName: null,
-    aiConfidence: null,
-    aiReasoning: null,
     createdAt: now,
     updatedAt: now,
   })

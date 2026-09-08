@@ -240,8 +240,6 @@ async function insertUnreconciledBankTransaction(input: {
     currency: input.currency ?? 'DKK',
     description: input.description ?? 'Imported transaction',
     counterpartyName: null,
-    aiConfidence: null,
-    aiReasoning: null,
     raw: {},
     createdAt: baseNow,
     updatedAt: baseNow,
@@ -446,7 +444,7 @@ describe('posting-based ledger categorization server functions', () => {
     expect(transaction).toMatchObject({source: 'bank_import', status: 'confirmed', categorizedBy: 'user', description: null, date: '2026-06-20'})
   })
 
-  it('manual categorization replaces historical AI metadata', async () => {
+  it('manual categorization leaves historical bank metadata inert and unchanged', async () => {
     const {categorizeBankTransaction} = await import('@penge/domain/categorization-service')
     await db.update(ledgerTransactions).set({status: 'confirmed', categorizedBy: 'ai'}).where(eq(ledgerTransactions.id, 'ledger-transaction-1'))
     await db.update(bankTransactions).set({aiConfidence: 2, aiReasoning: 'Historical result'}).where(eq(bankTransactions.id, 'bank-transaction-1'))
@@ -463,7 +461,7 @@ describe('posting-based ledger categorization server functions', () => {
     expect(didCategorize).toBe(true)
     expect(after?.transaction).toMatchObject({status: 'confirmed', categorizedBy: 'user', userConfirmedBy: 'user-1'})
     const [row] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, 'bank-transaction-1'))
-    expect(row).toMatchObject({aiConfidence: null, aiReasoning: null})
+    expect(row).toMatchObject({aiConfidence: 2, aiReasoning: 'Historical result'})
   })
 
   it('rejects transfer categorization when no counter bank transaction matches', async () => {

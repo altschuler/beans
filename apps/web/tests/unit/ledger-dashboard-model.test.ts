@@ -58,8 +58,6 @@ function buildModelForTransaction(
         bookingDate: '2026-06-18',
         valueDate: null,
         description: 'Netto',
-        aiConfidence: null,
-        aiReasoning: null,
         ...bankOverrides,
       },
     ],
@@ -69,7 +67,7 @@ function buildModelForTransaction(
 
 describe('buildLedgerDashboardModel', () => {
   it('groups balances and creates transaction rows with category state', () => {
-    const model = buildModelForTransaction({}, 'uncategorized', {aiConfidence: 1})
+    const model = buildModelForTransaction({}, 'uncategorized')
 
     expect(model.reviewCount).toBe(1)
     expect(model.categorizationAccounts.map(account => account.name)).toEqual(['Groceries'])
@@ -107,8 +105,6 @@ describe('buildLedgerDashboardModel', () => {
           bookingDate: '2026-06-18',
           valueDate: null,
           description: 'Netto',
-          aiConfidence: 2,
-          aiReasoning: 'Matched groceries.',
           posting: {
             id: 'bank-posting-1',
             ledgerTransactionId: 'ledger-transaction-1',
@@ -158,7 +154,8 @@ describe('buildLedgerDashboardModel', () => {
       ledgerTransactionId: 'ledger-transaction-1',
       categoryAccountId: 'groceries',
       categoryLabel: 'Groceries',
-      statusIndicator: {kind: 'ai_confident', canConfirm: true},
+      needsReview: true,
+      statusIndicator: {kind: 'needs_review', canConfirm: true},
     })
   })
 
@@ -173,7 +170,7 @@ describe('buildLedgerDashboardModel', () => {
     })
   })
 
-  it('shows user-confirmed AI rows with the confirmed status token and AI reasoning', () => {
+  it('shows human confirmation independently of historical provenance', () => {
     const model = buildModelForTransaction(
       {
         status: 'confirmed',
@@ -181,41 +178,41 @@ describe('buildLedgerDashboardModel', () => {
         userConfirmedAt: new Date('2026-06-19T10:00:00.000Z'),
       },
       'groceries',
-      {aiConfidence: 2, aiReasoning: 'Matched past Netto grocery transactions.'},
     )
 
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'confirmed',
-      title: 'Category confirmed by you. AI originally categorized this transaction. Reason: Matched past Netto grocery transactions.',
+      title: 'Category confirmed by you',
       className: 'bg-status-confirmed',
       canConfirm: false,
     })
   })
 
-  it('shows high-confidence AI rows with the suggested status token and reasoning', () => {
-    const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'ai'}, 'groceries', {aiConfidence: 2, aiReasoning: 'Matched past Netto grocery transactions.'})
+  it.each(['ai', 'user', null])('keeps confirmed status without human confirmation reviewable for provenance %s', categorizedBy => {
+    const model = buildModelForTransaction({status: 'confirmed', categorizedBy}, 'groceries')
 
-    expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
-      kind: 'ai_confident',
-      title: 'AI categorized with high confidence; not yet confirmed by you. Reason: Matched past Netto grocery transactions.',
-      className: 'bg-status-suggested',
-      canConfirm: true,
-    })
-  })
-
-  it('shows medium-confidence AI rows with the review status token and confirmable', () => {
-    const model = buildModelForTransaction({categorizedBy: 'ai'}, 'groceries', {aiConfidence: 1, aiReasoning: 'Merchant looks like groceries.'})
-
+    expect(model.reviewCount).toBe(1)
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'needs_review',
-      title: 'AI suggested a category; review recommended. Reason: Merchant looks like groceries.',
+      title: 'Transaction needs review',
       className: 'bg-status-review',
       canConfirm: true,
     })
   })
 
-  it('shows any effectively Uncategorized row as red even when AI confidence is high', () => {
-    const model = buildModelForTransaction({status: 'confirmed', categorizedBy: 'ai'}, 'uncategorized', {aiConfidence: 2})
+  it('allows confirmation of a valid category without categorizer provenance', () => {
+    const model = buildModelForTransaction({}, 'groceries')
+
+    expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
+      kind: 'needs_review',
+      title: 'Transaction needs review',
+      className: 'bg-status-review',
+      canConfirm: true,
+    })
+  })
+
+  it('shows any effectively Uncategorized row as red even with confirmed status', () => {
+    const model = buildModelForTransaction({status: 'confirmed', userConfirmedAt: 1}, 'uncategorized')
 
     expect(model.transactionRows[0]?.statusIndicator).toMatchObject({
       kind: 'uncategorized',

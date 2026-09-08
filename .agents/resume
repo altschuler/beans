@@ -4,5 +4,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # Services are supervised by Amp; resume must never reinstall dependencies.
 test -d node_modules
+test -x apps/flue/node_modules/.bin/flue
 test -f .local/orb-postgres/PG_VERSION
 echo 'Orb dependencies and PostgreSQL data are ready. Use amp orb services ensure to start PostgreSQL.'
+echo 'Flue is CLI-only: pnpm --filter @penge/flue mock --message "Hi"'

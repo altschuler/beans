@@ -125,8 +125,6 @@ async function seedReconciledBankTransaction() {
     description: 'Original description',
     counterpartyName: null,
     raw: {transactionAmount: {amount: '100.00', currency: 'DKK'}},
-    aiConfidence: null,
-    aiReasoning: null,
     createdAt: baseNow,
     updatedAt: baseNow,
   })

@@ -7,7 +7,7 @@ export type TransferAccountOption = {id: string; bankAccountId: string; name: st
 export type CategorySelection = {kind: 'category'; accountId: string} | {kind: 'transfer'; accountId: string}
 
 export type TransactionTableStatusIndicator = {
-  kind: 'uncategorized' | 'confirmed' | 'ai_confident' | 'needs_review' | 'ai_failed'
+  kind: 'uncategorized' | 'confirmed' | 'needs_review'
   title: string
   ariaLabel: string
   className: string

@@ -37,8 +37,7 @@ Use semantic tokens by intent:
 | `bg-accent`, `text-accent-foreground` | Hover/focus/active menu states. |
 | `text-destructive`, `bg-destructive` | Errors and destructive actions. |
 | `bg-status-confirmed` | Confirmed/successful categorization status dots. |
-| `bg-status-suggested` | High-confidence AI suggestion status dots. |
-| `bg-status-review` | Needs-review / medium-confidence status dots. |
+| `bg-status-review` | Categorized transactions awaiting human confirmation. |
 | `border`, `border-border`, `border-input` | Borders and form controls. |
 | `ring-ring` | Focus rings. |
 | `bg-sidebar`, `text-sidebar-foreground` | Sidebar surfaces and text. |

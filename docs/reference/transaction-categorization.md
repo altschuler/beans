@@ -26,7 +26,6 @@ Choosing a category creates or replaces the internal ledger interpretation for t
 4. keep the reconciled bank posting row in place
 5. replace the Uncategorized posting with one category posting or multiple split postings
 6. mark the interpretation confirmed by the user
-7. clear stale AI metadata for that bank transaction
 
 The imported bank transaction row itself is not edited.
 
@@ -49,14 +48,13 @@ The server validates the target bank account and searches for an unreconciled op
 
 ## Status dot and confirmation
 
-The status dot is an attention marker, not a raw AI confidence display. It reflects the row's latest persisted categorization state. Historical AI results remain reviewable, but no automated categorization runs in the app.
+The status dot reflects interpretation validity and explicit human confirmation metadata, not confidence, categorizer provenance, or the raw persisted status.
 
-- red: uncategorized or AI could not categorize
-- yellow: AI suggested a plausible category and review is recommended
-- softer green: AI categorized with high confidence, but the user has not explicitly confirmed it
-- bright green: user-confirmed
+- red: uncategorized
+- yellow: needs review; valid categories, splits, and transfers can be confirmed
+- green: valid interpretation with human confirmation metadata
 
-Clicking a confirmable AI-result dot confirms the current interpretation by `bankTransactionId`. Confirmation preserves that AI originally categorized the transaction while recording user confirmation metadata on the ledger transaction.
+Clicking a confirmable dot confirms the current interpretation by `bankTransactionId`, preserving categorizer provenance while recording human confirmation metadata. Historical `status: 'confirmed'` rows without human confirmation still need review and retain the confirmation action. Nullable confidence/reasoning columns remain inert database evidence; they are neither synced to clients nor changed by categorization.
 
 ## Clear categorizations
 

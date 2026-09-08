@@ -680,8 +680,6 @@ function bankTransaction(overrides: Record<string, unknown> = {}) {
     currency: 'DKK',
     bookingDate: '2026-06-18',
     valueDate: null,
-    aiConfidence: 1,
-    aiReasoning: 'AI suggestion',
     ...overrides,
   }
 }

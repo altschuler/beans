@@ -28,7 +28,7 @@ test('justfile exposes managed worktree lifecycle and seed reset recipes', async
   }
 
   assert.match(justfile, /node scripts\/dev\.mjs create "\{\{ branch \}\}"/)
-  assert.match(justfile, /docker compose down -v --remove-orphans\n  just _zero-cache-clean\n  just wait-db\n  pnpm db:migrate\n  just seed-restore\n  pnpm db:migrate/)
+  assert.match(justfile, /db-reset:\n  docker compose down -v --remove-orphans\n  just _zero-cache-clean\n  just wait-db\n  pnpm db:migrate\n  just seed\n/)
   assert.match(justfile, /--table='"user"'/)
   assert.match(justfile, /--table=account/)
   assert.doesNotMatch(justfile, /--table=session/)

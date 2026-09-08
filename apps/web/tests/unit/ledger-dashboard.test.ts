@@ -42,11 +42,9 @@ const queryRows = vi.hoisted(() => ({
     id: string
     source: string
     status: string
-    aiConfidence: number | null
     categorizedBy: string | null
     userConfirmedAt: Date | null
     userConfirmedBy: string | null
-    aiReasoning: string | null
     date: string | null
     description: string
   }>,
@@ -67,8 +65,6 @@ const queryRows = vi.hoisted(() => ({
     bookingDate: string | null
     valueDate: string | null
     description: string
-    aiConfidence: number | null
-    aiReasoning: string | null
     posting?: {
       id: string
       ledgerTransactionId: string
@@ -81,11 +77,9 @@ const queryRows = vi.hoisted(() => ({
         id: string
         source: string
         status: string
-        aiConfidence: number | null
         categorizedBy: string | null
         userConfirmedAt: Date | null
         userConfirmedBy: string | null
-        aiReasoning: string | null
         date: string | null
         description: string
         postings?: Array<{
@@ -413,11 +407,9 @@ describe('LedgerDashboard', () => {
         id: 'ledger-transaction-1',
         source: 'bank_import',
         status: 'needs_review',
-        aiConfidence: 1,
         categorizedBy: 'ai',
         userConfirmedAt: null,
         userConfirmedBy: null,
-        aiReasoning: 'Looks like a supermarket purchase.',
         date: '2026-06-18',
         description: 'Netto',
       },
@@ -451,8 +443,6 @@ describe('LedgerDashboard', () => {
         bookingDate: '2026-06-18',
         valueDate: null,
         description: 'Netto',
-        aiConfidence: 1,
-        aiReasoning: 'Looks like a supermarket purchase.',
         posting: {
           ...queryRows.postings[0]!,
           ledgerTransaction: {
@@ -508,11 +498,9 @@ describe('LedgerDashboard', () => {
         id: 'ledger-transaction-2',
         source: 'bank_import',
         status: 'needs_review',
-        aiConfidence: null,
         categorizedBy: null,
         userConfirmedAt: null,
         userConfirmedBy: null,
-        aiReasoning: null,
         date: '2026-06-19',
         description: 'Other account transaction',
       },
@@ -548,8 +536,6 @@ describe('LedgerDashboard', () => {
         bookingDate: '2026-06-19',
         valueDate: null,
         description: 'Other Shop',
-        aiConfidence: null,
-        aiReasoning: null,
       },
     ]
     queryRows.bankAccounts = [...queryRows.bankAccounts, {id: 'bank-account-2', name: 'Savings', teamId: 'team-1'}]
@@ -603,8 +589,6 @@ describe('LedgerDashboard', () => {
         bookingDate: '2026-06-19',
         valueDate: null,
         description: 'Uncategorized café',
-        aiConfidence: null,
-        aiReasoning: null,
       },
     ]
 
@@ -750,14 +734,19 @@ describe('LedgerDashboard', () => {
     expect(markup).toContain('Status')
     expect(markup).toContain('Amount')
     expect(markup).toContain('Checking')
-    expect(markup).toContain('title="AI suggested a category; review recommended. Reason: Looks like a supermarket purchase."')
+    expect(markup).toContain('title="Transaction needs review"')
     const confirmDot = findButtonByLabelPrefix('Confirm category for Netto.')
     expect(confirmDot?.disabled).toBeFalsy()
     expect(markup).toContain('aria-label="Category for Netto"')
   })
 
-  it('confirms the current transaction category through a narrow Zero mutator', async () => {
-    renderToStaticMarkup(React.createElement(LedgerDashboard))
+  it('keeps historical confirmed status without human confirmation reviewable and confirmable', async () => {
+    queryRows.bankTransactions[0]!.posting!.ledgerTransaction!.status = 'confirmed'
+    const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
+
+    expect(markup).toContain('1 needs review')
+    expect(markup).not.toContain('Category confirmed by you')
+    expect(findButtonByLabelPrefix('Confirm category for Netto.')?.disabled).toBeFalsy()
 
     findButtonByLabelPrefix('Confirm category for Netto.')?.onClick?.()
     await flushPromises()
@@ -772,7 +761,7 @@ describe('LedgerDashboard', () => {
     const markup = renderToStaticMarkup(React.createElement(LedgerDashboard))
 
     expect(markup).toContain('Clear categorizations')
-    expect(markup).not.toContain('Imported bank transactions will be kept. This removes their categories, splits, confirmations, and AI metadata so they need review again.')
+    expect(markup).not.toContain('Imported bank transactions will be kept. This removes their categories, splits, and confirmations so they need review again.')
     expect(zeroMutate).not.toHaveBeenCalled()
 
     findButton('Clear categorizations')?.onClick?.()

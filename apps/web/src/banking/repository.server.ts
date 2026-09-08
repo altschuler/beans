@@ -131,8 +131,6 @@ export async function createManualTransaction(tx: BankingCommandTransaction, inp
     description,
     counterpartyName: null,
     raw: {source: 'manual'},
-    aiConfidence: null,
-    aiReasoning: null,
     createdAt: now,
     updatedAt: now,
   })
