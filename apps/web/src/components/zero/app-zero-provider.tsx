@@ -13,7 +13,7 @@ export function AppZeroProvider({children, userID}: {children: ReactNode; userID
     <ZeroProvider
       userID={userID}
       context={{userID}}
-      cacheURL={import.meta.env.VITE_PUBLIC_ZERO_CACHE_URL ?? 'http://localhost:4848'}
+      cacheURL={new URL(import.meta.env.VITE_PUBLIC_ZERO_CACHE_URL ?? '/zero', window.location.origin).href}
       schema={schema}
       mutators={mutators}
     >

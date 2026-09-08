@@ -11,7 +11,16 @@ export default defineConfig(({command}) => ({
   },
   server: {
     port: 3100,
-    ...(command === 'serve' ? {https: getLocalHttpsConfig()} : {}),
+    strictPort: true,
+    allowedHosts: process.env.AMP_ORB ? true : undefined,
+    ...(command === 'serve' && !process.env.AMP_ORB ? {https: getLocalHttpsConfig()} : {}),
+    proxy: {
+      '/zero': {
+        target: `http://127.0.0.1:${process.env.ZERO_PORT ?? '4848'}`,
+        ws: true,
+        rewrite: path => path.replace(/^\/zero/, ''),
+      },
+    },
   },
   plugins: [
     tanstackStart({

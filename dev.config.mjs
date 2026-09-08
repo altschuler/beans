@@ -20,7 +20,7 @@ export default {
     ZERO_QUERY_FORWARD_COOKIES: 'true',
     ZERO_MUTATE_FORWARD_COOKIES: 'true',
     ZERO_LOG_LEVEL: 'warn',
-    VITE_PUBLIC_ZERO_CACHE_URL: ({env}) => `http://localhost:${env.ZERO_PORT}`,
+    VITE_PUBLIC_ZERO_CACHE_URL: '/zero',
     BETTER_AUTH_URL: ({env}) => `https://localhost:${env.PORT}`,
     BETTER_AUTH_TRUSTED_ORIGINS: 'https://localhost:*',
     VITE_PUBLIC_APP_URL: ({env}) => `https://localhost:${env.PORT}`,

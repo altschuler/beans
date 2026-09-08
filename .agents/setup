@@ -39,7 +39,11 @@ echo "Dependencies: $((SECONDS - started))s"
 echo '==> Flue v2 local runtime (no provider credentials)'
 started=$SECONDS
 # The CLI integration test uses an isolated temporary SQLite DB and a faux model.
-# No Flue .env or long-lived service is needed for this CLI-only stage.
+# The runtime and web proxy share a local-only credential, never a provider key.
+mkdir -p .local
+if [[ ! -s .local/flue-token ]]; then
+  (umask 077; openssl rand -hex 32 > .local/flue-token)
+fi
 pnpm --filter @penge/flue check:types
 pnpm --filter @penge/flue test
 echo "Flue runtime: $((SECONDS - started))s"
@@ -76,4 +80,4 @@ for db in penge penge_test; do
   DATABASE_URL="postgres://postgres:postgres@127.0.0.1:$port/$db" pnpm db:migrate
 done
 echo "Local database: $((SECONDS - started))s"
-echo 'Orb setup complete. Start PostgreSQL with: amp orb services ensure'
+echo 'Orb setup complete. Start PostgreSQL, Zero, Flue and web with: amp orb services ensure'

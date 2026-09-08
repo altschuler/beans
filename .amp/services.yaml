@@ -2,3 +2,30 @@ services:
   postgres:
     command: exec /usr/lib/postgresql/18/bin/postgres -D "$PWD/.local/orb-postgres" -k /tmp -p "$PORT"
     port: 5432
+  flue:
+    command: env -i PATH="$PATH" HOME="$HOME" PORT="$PORT" FLUE_MOCK=1 FLUE_INTERNAL_TOKEN="$(cat .local/flue-token)" pnpm --filter @penge/flue start
+    port: 3200
+    health: /health
+  zero:
+    command: pnpm --filter @penge/web dev:zero
+    port: 4848
+    env:
+      ZERO_UPSTREAM_DB: postgres://postgres:postgres@127.0.0.1:5432/penge
+      ZERO_QUERY_URL: http://localhost:3100/api/zero/query
+      ZERO_MUTATE_URL: http://localhost:3100/api/zero/mutate
+      ZERO_QUERY_FORWARD_COOKIES: 'true'
+      ZERO_MUTATE_FORWARD_COOKIES: 'true'
+      ZERO_PORT: '4848'
+      ZERO_CHANGE_STREAMER_PORT: '4849'
+  web:
+    command: FLUE_INTERNAL_TOKEN="$(cat .local/flue-token)" BETTER_AUTH_URL="$PUBLIC_URL" BETTER_AUTH_TRUSTED_ORIGINS="$PUBLIC_URL,https://localhost:3100" pnpm --filter @penge/web dev:app
+    port: 3100
+    health: /login
+    env:
+      FLUE_MOCK: '1'
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/penge
+      VITE_PUBLIC_ZERO_CACHE_URL: /zero
+      ZERO_PORT: '4848'
+    portal:
+      title: Penge — mock Flue chat
+      description: Sign up with a local demo account. Mock model only; no provider keys or finance tools.

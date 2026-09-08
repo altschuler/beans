@@ -12,13 +12,11 @@ const authSecret = process.env.BETTER_AUTH_SECRET
 export const auth = betterAuth({
   baseURL: authBaseURL,
   secret: authSecret,
-  database: drizzleAdapter(db, {
-    provider: 'pg',
-    schema,
-  }),
-  emailAndPassword: {
-    enabled: true,
-  },
+  trustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS?.split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean),
+  database: drizzleAdapter(db, {provider: 'pg', schema}),
+  emailAndPassword: {enabled: true},
   plugins: [tanstackStartCookies()],
 })
 

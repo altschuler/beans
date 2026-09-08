@@ -35,22 +35,40 @@ importers:
       '@flue/runtime':
         specifier: 2.0.3
         version: 2.0.3(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(typescript@6.0.3)(ws@8.21.0)(zod@4.4.3)
+      hono:
+        specifier: 4.13.7
+        version: 4.13.7
     devDependencies:
       '@flue/cli':
         specifier: 2.0.3
         version: 2.0.3(@babel/core@8.0.1)(@babel/runtime@7.29.7)(@cloudflare/workers-types@5.20260908.1)(@modelcontextprotocol/client@2.0.0)(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(@modelcontextprotocol/server@2.0.0)(@types/node@22.20.1)(esbuild@0.28.1)(hono@4.13.7)(jiti@2.7.0)(react@19.2.7)(rolldown@1.2.7)(tsx@4.22.4)(typescript@6.0.3)(ws@8.21.0)(yaml@2.9.0)(zod@4.4.3)
+      '@flue/sdk':
+        specifier: 2.0.3
+        version: 2.0.3
+      '@flue/vite':
+        specifier: 2.0.3
+        version: 2.0.3(@babel/core@8.0.1)(@babel/runtime@7.29.7)(@cloudflare/workers-types@5.20260908.1)(@modelcontextprotocol/client@2.0.0)(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(@modelcontextprotocol/server@2.0.0)(hono@4.13.7)(react@19.2.7)(rolldown@1.2.7)(typescript@6.0.3)(vite@8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(ws@8.21.0)(zod@4.4.3)
       '@types/node':
         specifier: ^22.10.10
         version: 22.20.1
       typescript:
         specifier: 6.0.3
         version: 6.0.3
+      vite:
+        specifier: 8.0.16
+        version: 8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
 
   apps/web:
     dependencies:
       '@better-auth/drizzle-adapter':
         specifier: 1.6.18
         version: 1.6.18(@better-auth/core@1.6.18(@better-auth/utils@0.4.1)(@better-fetch/fetch@1.3.0)(@cloudflare/workers-types@5.20260908.1)(@opentelemetry/api@1.9.1)(better-call@1.3.6(zod@4.4.3))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.1)(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260908.1)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(postgres@3.4.9)(sql.js@1.14.1))
+      '@flue/react':
+        specifier: 2.0.3
+        version: 2.0.3(@flue/sdk@2.0.3)(react@19.2.7)
+      '@flue/sdk':
+        specifier: 2.0.3
+        version: 2.0.3
       '@penge/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -63,6 +81,9 @@ importers:
       '@rocicorp/zero':
         specifier: 1.7.0
         version: 1.7.0(@opentelemetry/core@2.8.0(@opentelemetry/api@1.9.1))(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260908.1)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(kysely@0.28.17)(postgres@3.4.9)(sql.js@1.14.1))(kysely@0.28.17)(react@19.2.7)
+      '@shadcn/react':
+        specifier: ^0.3.1
+        version: 0.3.1(@types/react@19.2.17)(react@19.2.7)
       '@tanstack/react-router':
         specifier: 1.170.15
         version: 1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -675,6 +696,11 @@ packages:
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
 
+  '@durable-streams/client@0.2.6':
+    resolution: {integrity: sha512-uHKKbWpsKLhFMeGjG0PgM6LXE3oEIi7FHKlJZkmYGxcqd4Yjjd/QEvnQnDzteRP4Av1uJVM8qjTL7kfKsgeS/w==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+
   '@earendil-works/pi-agent-core@0.83.0':
     resolution: {integrity: sha512-RorGp9OH5l3ElpuC5a5ZQ2eWcchZGXflXRzVGkV99y3y6tT+LLNyxoYIdVKvTKWEObwhExeQbTH0fI2tE4iX4g==}
     engines: {node: '>=22.19.0'}
@@ -1258,9 +1284,18 @@ packages:
     engines: {node: '>=22.19.0'}
     hasBin: true
 
+  '@flue/react@2.0.3':
+    resolution: {integrity: sha512-6Yd5EVUhCFyypFUyZ1RjPhre/NG06nUHPru7wITQnCjzi2syF1U2bP3sl9jJj0cqznHhsXl3fPXU8sPRo/3+DQ==}
+    peerDependencies:
+      '@flue/sdk': 2.0.3
+      react: '>=18'
+
   '@flue/runtime@2.0.3':
     resolution: {integrity: sha512-RfWyZG9x2hlDb1264XTESX42tzzG3AA8er3XjaTIxIMh28pTD91zKd9Jh6PFXKeTkZegLsGiJKDxmiCddlyeug==}
     engines: {node: '>=22.19.0'}
+
+  '@flue/sdk@2.0.3':
+    resolution: {integrity: sha512-ZD5HZGeVxWu0/G6KYrpOh1RGGBpvk/i9QojWMykNzVrH0w4g3nTPdZN9kY4JvYh/+aRtqTrwb3c1Tb3hUm8BIg==}
 
   '@flue/vite@2.0.3':
     resolution: {integrity: sha512-Klrl+vFzp+z9sYQ+yc7k/yxGrjWMvjoeKtzEZ+wgYwzLfai1sR9iYlMrpLg2ORTH8KqZ+kHvKR0Y2l8wHIvSIA==}
@@ -1334,6 +1369,9 @@ packages:
 
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
+
+  '@microsoft/fetch-event-source@2.0.1':
+    resolution: {integrity: sha512-W6CLUJ2eBMw3Rec70qrsEW0jOm/3twwJv21mrmj2yORiaVmVYGS4sSS5yUwvQc1ZlDLYGPnClVWmUUMagKNsfA==}
 
   '@mistralai/mistralai@2.2.6':
     resolution: {integrity: sha512-W8pX7zHxjJvMIpw8JMxeJEleapXX0Q9NPszdNzqkM3MIEoIGPObdodujj+WHteXEvGfaP/AMwlNyRfEzSY6dQQ==}
@@ -3266,6 +3304,17 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
+  '@shadcn/react@0.3.1':
+    resolution: {integrity: sha512-2gOR0HDMtWeRsCZfNDaU0YDFdgH3zsDQ6lz67Fv/y/qjY9y+R8kJqAn6q56phqv7/zHi0wqURjntrNO9zL7vnQ==}
+    peerDependencies:
+      '@types/react': '>=19'
+      react: '>=19'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      react:
+        optional: true
+
   '@smithy/core@3.33.3':
     resolution: {integrity: sha512-CsOeKq/9kA3y6VJHt+/+VTCtBaxJ4OTFpgrjIUhPpDIKxBci1k2bJaQASF2h/ELWrulGp+t97DZ0mevfAD8idg==}
     engines: {node: '>=18.0.0'}
@@ -4849,6 +4898,10 @@ packages:
   hermes-parser@0.25.1:
     resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
+  hono@4.12.8:
+    resolution: {integrity: sha512-VJCEvtrezO1IAR+kqEYnxUOoStaQPGrCmX3j4wDTNOcD1uRPFpGlwQUIW8niPuvHXaTUxeOUl5MMDGrl+tmO9A==}
+    engines: {node: '>=16.9.0'}
+
   hono@4.13.7:
     resolution: {integrity: sha512-c8/gF9ac8Y78/agExVocyLevgR+JlpNB444Py0FSX8pJoPdYUfUzRcXtYEYGwt6l19qIlVZPN5Mfsw9jFShmQQ==}
     engines: {node: '>=16.9.0'}
@@ -5348,11 +5401,6 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  nanoid@3.3.12:
-    resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
-    engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
-    hasBin: true
-
   nanoid@3.3.18:
     resolution: {integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -5577,10 +5625,6 @@ packages:
   possible-typed-array-names@1.1.0:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
     engines: {node: '>= 0.4'}
-
-  postcss@8.5.15:
-    resolution: {integrity: sha512-FfR8sjd4em2T6fb3I2MwAJU7HWVMr9zba+enmQeeWFfCbm+UOC/0X4DS8XtpUTMwWMGbjKYP7xjfNekzyGmB3A==}
-    engines: {node: ^10 || ^12 || >=14}
 
   postcss@8.5.28:
     resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
@@ -7121,16 +7165,21 @@ snapshots:
       eciesjs: 0.4.18
       enquirer: 2.4.1
       execa: 5.1.1
-      fdir: 6.5.0(picomatch@4.0.4)
+      fdir: 6.5.0(picomatch@4.0.7)
       ignore: 5.3.2
       object-treeify: 1.1.33
-      picomatch: 4.0.4
+      picomatch: 4.0.7
       which: 4.0.0
       yocto-spinner: 1.2.0
 
   '@drdgvhbh/postgres-error-codes@0.0.6': {}
 
   '@drizzle-team/brocli@0.10.2': {}
+
+  '@durable-streams/client@0.2.6':
+    dependencies:
+      '@microsoft/fetch-event-source': 2.0.1
+      fastq: 1.20.1
 
   '@earendil-works/pi-agent-core@0.83.0(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)':
     dependencies:
@@ -7588,6 +7637,11 @@ snapshots:
       - yaml
       - zod
 
+  '@flue/react@2.0.3(@flue/sdk@2.0.3)(react@19.2.7)':
+    dependencies:
+      '@flue/sdk': 2.0.3
+      react: 19.2.7
+
   '@flue/runtime@2.0.3(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(typescript@6.0.3)(ws@8.21.0)(zod@4.4.3)':
     dependencies:
       '@earendil-works/pi-agent-core': 0.83.0(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
@@ -7602,6 +7656,45 @@ snapshots:
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - bufferutil
+      - supports-color
+      - typescript
+      - utf-8-validate
+      - ws
+      - zod
+
+  '@flue/sdk@2.0.3':
+    dependencies:
+      '@durable-streams/client': 0.2.6
+
+  '@flue/vite@2.0.3(@babel/core@8.0.1)(@babel/runtime@7.29.7)(@cloudflare/workers-types@5.20260908.1)(@modelcontextprotocol/client@2.0.0)(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(@modelcontextprotocol/server@2.0.0)(hono@4.13.7)(react@19.2.7)(rolldown@1.2.7)(typescript@6.0.3)(vite@8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(ws@8.21.0)(zod@4.4.3)':
+    dependencies:
+      '@flue/runtime': 2.0.3(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(typescript@6.0.3)(ws@8.21.0)(zod@4.4.3)
+      '@hono/node-server': 2.1.1(hono@4.13.7)
+      agents: 0.20.1(@babel/core@8.0.1)(@babel/runtime@7.29.7)(@cloudflare/workers-types@5.20260908.1)(@modelcontextprotocol/client@2.0.0)(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(@modelcontextprotocol/server@2.0.0)(react@19.2.7)(rolldown@1.2.7)(vite@8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(zod@4.4.3)
+      magic-string: 1.2.3
+      tinyglobby: 0.2.17
+      ulidx: 2.4.1
+      vite: 8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
+    transitivePeerDependencies:
+      - '@ai-sdk/react'
+      - '@babel/core'
+      - '@babel/plugin-transform-runtime'
+      - '@babel/runtime'
+      - '@cloudflare/codemode'
+      - '@cloudflare/workers-types'
+      - '@modelcontextprotocol/client'
+      - '@modelcontextprotocol/sdk'
+      - '@modelcontextprotocol/server'
+      - '@tanstack/ai'
+      - '@x402/core'
+      - '@x402/evm'
+      - ai
+      - bufferutil
+      - chat
+      - hono
+      - just-bash
+      - react
+      - rolldown
       - supports-color
       - typescript
       - utf-8-validate
@@ -7670,6 +7763,10 @@ snapshots:
       protobufjs: 7.6.4
       yargs: 17.7.2
 
+  '@hono/node-server@2.1.1(hono@4.12.8)':
+    dependencies:
+      hono: 4.12.8
+
   '@hono/node-server@2.1.1(hono@4.13.7)':
     dependencies:
       hono: 4.13.7
@@ -7711,6 +7808,8 @@ snapshots:
 
   '@js-sdsl/ordered-map@4.4.2': {}
 
+  '@microsoft/fetch-event-source@2.0.1': {}
+
   '@mistralai/mistralai@2.2.6(@opentelemetry/api@1.9.0)':
     dependencies:
       '@opentelemetry/semantic-conventions': 1.41.1
@@ -7739,7 +7838,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)':
     dependencies:
-      '@hono/node-server': 2.1.1(hono@4.13.7)
+      '@hono/node-server': 2.1.1(hono@4.12.8)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -7749,7 +7848,7 @@ snapshots:
       eventsource-parser: 3.1.1
       express: 5.2.1
       express-rate-limit: 8.7.0(express@5.2.1)
-      hono: 4.13.7
+      hono: 4.12.8
       jose: 6.2.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -9671,6 +9770,15 @@ snapshots:
   '@rolldown/binding-win32-x64-msvc@1.2.7':
     optional: true
 
+  '@rolldown/plugin-babel@0.2.3(@babel/core@8.0.1)(@babel/runtime@7.29.7)(rolldown@1.2.7)(vite@8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))':
+    dependencies:
+      '@babel/core': 8.0.1
+      picomatch: 4.0.4
+      rolldown: 1.2.7
+    optionalDependencies:
+      '@babel/runtime': 7.29.7
+      vite: 8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
+
   '@rolldown/plugin-babel@0.2.3(@babel/core@8.0.1)(@babel/runtime@7.29.7)(rolldown@1.2.7)(vite@8.0.16(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))':
     dependencies:
       '@babel/core': 8.0.1
@@ -9690,6 +9798,11 @@ snapshots:
       vite: 8.2.2(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
 
   '@rolldown/pluginutils@1.0.1': {}
+
+  '@shadcn/react@0.3.1(@types/react@19.2.17)(react@19.2.7)':
+    optionalDependencies:
+      '@types/react': 19.2.17
+      react: 19.2.7
 
   '@smithy/core@3.33.3':
     dependencies:
@@ -9970,9 +10083,9 @@ snapshots:
       '@tanstack/router-utils': 1.162.2
       '@tanstack/start-server-core': 1.169.14(crossws@0.4.9(srvx@0.11.21))
       exsolve: 1.0.8
-      lightningcss: 1.32.0
+      lightningcss: 1.33.0
       pathe: 2.0.3
-      picomatch: 4.0.4
+      picomatch: 4.0.7
       seroval: 1.5.4
       source-map: 0.7.6
       srvx: 0.11.16
@@ -10325,6 +10438,33 @@ snapshots:
   acorn@8.17.0: {}
 
   agent-base@7.1.4: {}
+
+  agents@0.20.1(@babel/core@8.0.1)(@babel/runtime@7.29.7)(@cloudflare/workers-types@5.20260908.1)(@modelcontextprotocol/client@2.0.0)(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(@modelcontextprotocol/server@2.0.0)(react@19.2.7)(rolldown@1.2.7)(vite@8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(zod@4.4.3):
+    dependencies:
+      '@babel/plugin-proposal-decorators': 8.0.2(@babel/core@8.0.1)
+      '@cfworker/json-schema': 4.1.1
+      '@modelcontextprotocol/client': 2.0.0
+      '@modelcontextprotocol/sdk': 1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
+      '@modelcontextprotocol/server': 2.0.0
+      '@rolldown/plugin-babel': 0.2.3(@babel/core@8.0.1)(@babel/runtime@7.29.7)(rolldown@1.2.7)(vite@8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+      cron-schedule: 6.0.0
+      esbuild: 0.28.1
+      mimetext: 3.0.28
+      nanoid: 5.1.16
+      partyserver: 0.5.10(@cloudflare/workers-types@5.20260908.1)
+      partysocket: 1.3.0(react@19.2.7)
+      react: 19.2.7
+      yaml: 2.9.0
+      yargs: 18.0.0
+      zod: 4.4.3
+    optionalDependencies:
+      vite: 8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@babel/plugin-transform-runtime'
+      - '@babel/runtime'
+      - '@cloudflare/workers-types'
+      - rolldown
 
   agents@0.20.1(@babel/core@8.0.1)(@babel/runtime@7.29.7)(@cloudflare/workers-types@5.20260908.1)(@modelcontextprotocol/client@2.0.0)(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(@modelcontextprotocol/server@2.0.0)(react@19.2.7)(rolldown@1.2.7)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(zod@4.4.3):
     dependencies:
@@ -11152,6 +11292,10 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.4
 
+  fdir@6.5.0(picomatch@4.0.7):
+    optionalDependencies:
+      picomatch: 4.0.7
+
   fetch-blob@3.2.0:
     dependencies:
       node-domexception: 1.0.0
@@ -11325,6 +11469,8 @@ snapshots:
   hermes-parser@0.25.1:
     dependencies:
       hermes-estree: 0.25.1
+
+  hono@4.12.8: {}
 
   hono@4.13.7: {}
 
@@ -11748,8 +11894,6 @@ snapshots:
 
   ms@2.1.3: {}
 
-  nanoid@3.3.12: {}
-
   nanoid@3.3.18: {}
 
   nanoid@5.1.11: {}
@@ -11992,12 +12136,6 @@ snapshots:
   pluralize@8.0.0: {}
 
   possible-typed-array-names@1.1.0: {}
-
-  postcss@8.5.15:
-    dependencies:
-      nanoid: 3.3.12
-      picocolors: 1.1.1
-      source-map-js: 1.2.1
 
   postcss@8.5.28:
     dependencies:
@@ -12548,8 +12686,8 @@ snapshots:
 
   tinyglobby@0.2.17:
     dependencies:
-      fdir: 6.5.0(picomatch@4.0.4)
-      picomatch: 4.0.4
+      fdir: 6.5.0(picomatch@4.0.7)
+      picomatch: 4.0.7
 
   tinypool@2.1.0: {}
 
@@ -12646,7 +12784,7 @@ snapshots:
   unplugin@3.0.0:
     dependencies:
       '@jridgewell/remapping': 2.3.5
-      picomatch: 4.0.4
+      picomatch: 4.0.7
       webpack-virtual-modules: 0.6.2
 
   update-browserslist-db@1.2.3(browserslist@4.28.2):
@@ -12700,11 +12838,26 @@ snapshots:
 
   vary@1.1.2: {}
 
+  vite@8.0.16(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0):
+    dependencies:
+      lightningcss: 1.33.0
+      picomatch: 4.0.7
+      postcss: 8.5.28
+      rolldown: 1.0.3
+      tinyglobby: 0.2.17
+    optionalDependencies:
+      '@types/node': 22.20.1
+      esbuild: 0.28.1
+      fsevents: 2.3.3
+      jiti: 2.7.0
+      tsx: 4.22.4
+      yaml: 2.9.0
+
   vite@8.0.16(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0):
     dependencies:
-      lightningcss: 1.32.0
-      picomatch: 4.0.4
-      postcss: 8.5.15
+      lightningcss: 1.33.0
+      picomatch: 4.0.7
+      postcss: 8.5.28
       rolldown: 1.0.3
       tinyglobby: 0.2.17
     optionalDependencies:

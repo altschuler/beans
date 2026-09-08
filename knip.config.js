@@ -8,7 +8,7 @@ export default {
       entry: ['drizzle-zero.config.ts', 'postcss.config.mjs'],
     },
     'apps/flue': {
-      entry: ['flue.config.ts', 'src/agents/*.ts', 'src/db.ts', 'tests/*.test.mjs'],
+      entry: ['flue.config.ts', 'src/app.ts', 'src/agents/*.ts', 'src/db.ts', 'tests/*.test.mjs'],
     },
   },
 }
